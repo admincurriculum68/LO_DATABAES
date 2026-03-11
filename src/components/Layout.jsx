@@ -12,9 +12,14 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         <div className="bg-gradient-to-r from-blue-600 to-indigo-600p-2 rounded-lg shadow-sm w-9 h-9 flex items-center justify-center">
                             <BookOpen className="text-white w-5 h-5 flex-shrink-0" />
                         </div>
-                        <span className="font-bold text-lg text-slate-800 tracking-tight hidden sm:block">
-                            LO Database
-                        </span>
+                        <div className="hidden sm:flex flex-col justify-center">
+                            <span className="font-bold text-lg text-slate-800 tracking-tight leading-none">
+                                LO Database
+                            </span>
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full w-max mt-1 leading-none truncate max-w-[200px]">
+                                {import.meta.env.VITE_SCHOOL_NAME || 'ระบบฐานข้อมูล สพฐ.'}
+                            </span>
+                        </div>
                         <span className="text-slate-300 mx-2 hidden sm:block">|</span>
                         <h1 className="font-semibold text-slate-600 truncate max-w-[200px] sm:max-w-xs">{title}</h1>
                     </div>
