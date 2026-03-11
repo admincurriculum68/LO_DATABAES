@@ -277,18 +277,19 @@ export default function AdminDashboard() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
-                                        let idCol, idValue;
-                                        if (selectedTable === 'users_students') {idCol = 'student_id'; idValue = row.student_id; }
-                                        if (selectedTable === 'users_teachers') {idCol = 'teacher_id'; idValue = row.teacher_id; }
-                                        if (selectedTable === 'subjects') {idCol = 'subject_id'; idValue = row.subject_id; }
-                                        if (selectedTable === 'learning_outcomes') {idCol = 'lo_id'; idValue = row.lo_id; }
-                                        if (selectedTable === 'behavior_templates') {idCol = 'id'; idValue = row.id; }
+                                        {tableData.map((row, idx) => {
+                                            let idCol, idValue;
+                                            if (selectedTable === 'users_students') {idCol = 'student_id'; idValue = row.student_id; }
+                                            if (selectedTable === 'users_teachers') {idCol = 'teacher_id'; idValue = row.teacher_id; }
+                                            if (selectedTable === 'subjects') {idCol = 'subject_id'; idValue = row.subject_id; }
+                                            if (selectedTable === 'learning_outcomes') {idCol = 'lo_id'; idValue = row.lo_id; }
+                                            if (selectedTable === 'behavior_templates') {idCol = 'id'; idValue = row.id; }
 
-                                        const isEditing = editingRow?.id === idValue;
+                                            const isEditing = editingRow?.id === idValue;
 
-                                        return (
-                                        <tr key={index => idx} className="hover:bg-slate-50/70 py-2 group">
-                                            <td className="px-4 py-2 text-center text-slate-400">{idx + 1}</td>
+                                            return (
+                                            <tr key={idx} className="hover:bg-slate-50/70 py-2 group">
+                                                <td className="px-4 py-2 text-center text-slate-400">{idx + 1}</td>
                                             {Object.keys(row).filter(k => !['password_hash', 'school_id'].includes(k)).map(key => (
                                                 <td key={key} className="px-4 py-2 text-slate-700 max-w-sm truncate whitespace-normal">
                                                     {isEditing ? (
