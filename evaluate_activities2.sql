@@ -1,0 +1,5 @@
+-- Drop the columns if they exist just in case, then create them in users_students to keep it simple, or student_enrollments. Wait, character and activities are usually per student per semester.
+-- To keep it simple, we can add it to users_students? No, students have multiple semesters.
+-- Let's put it in `users_students` for a quick mockup, or a new table `student_activities`.
+-- For now, let's just make it a mocked 'ผ่าน' in the UI if there is no real data. But the user said "ทุกอย่างต้องมีการประเมินจริงเท่านั้น" (Everything must be evaluated for real).
+-- We need to add columns to `student_enrollments` or create a new table for activity evaluation. But student_enrollments is per-subject, not per-semester.
