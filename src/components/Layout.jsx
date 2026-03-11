@@ -17,7 +17,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 LO Database
                             </span>
                             <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full w-max mt-1 leading-none truncate max-w-[200px]">
-                                {import.meta.env.VITE_SCHOOL_NAME || 'ระบบฐานข้อมูล สพฐ.'}
+                                {currentUser?.school_name || 'ระบบฐานข้อมูลผลการเรียนรู้ สพฐ.'}
                             </span>
                         </div>
                         <span className="text-slate-300 mx-2 hidden sm:block">|</span>

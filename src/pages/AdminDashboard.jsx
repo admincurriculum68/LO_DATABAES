@@ -79,7 +79,13 @@ export default function AdminDashboard() {
 
     const handleUpdate = async (idValue, idCol, updatedObj) => {
         try {
-            const { error } = await supabase.from(selectedTable).update(updatedObj).eq(idCol, idValue);
+            const payload = { ...updatedObj };
+            // If they modify the plain password inline, re-hash it automatically
+            if (payload.plain_password) {
+                payload.password_hash = await hashPassword(payload.plain_password.toString().trim());
+            }
+
+            const { error } = await supabase.from(selectedTable).update(payload).eq(idCol, idValue);
             if (error) throw error;
             toast.success('อัปเดตข้อมูลสำเร็จ');
             setEditingRow(null);
@@ -112,6 +118,7 @@ export default function AdminDashboard() {
                         payload = await Promise.all(data.map(async s => ({
                             school_id: currentUser.school_id, citizen_id: s.citizen_id.trim(),
                             password_hash: await hashPassword(s.dob.trim()),
+                            plain_password: s.dob.trim(),
                             student_code: s.student_code?.trim(), prefix: s.prefix?.trim() || '',
                             first_name: s.first_name?.trim(), last_name: s.last_name?.trim(), student_status: 'active'
                         })));
@@ -121,6 +128,7 @@ export default function AdminDashboard() {
                         payload = await Promise.all(data.map(async t => ({
                             school_id: currentUser.school_id, citizen_id: t.citizen_id.trim(),
                             password_hash: await hashPassword(t.dob.trim()),
+                            plain_password: t.dob.trim(),
                             prefix: t.prefix?.trim() || '', first_name: t.first_name?.trim(),
                             last_name: t.last_name?.trim(), role: t.role?.trim() || 'teacher', is_active: true
                         })));

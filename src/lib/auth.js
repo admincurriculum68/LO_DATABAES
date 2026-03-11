@@ -14,7 +14,7 @@ export async function loginWithCitizenId(citizenId, dob) {
         // Check teachers/admins/executives table
         const { data: teacherData, error: teacherError } = await supabase
             .from('users_teachers')
-            .select('*')
+            .select('*, schools(school_name)')
             .eq('citizen_id', citizenId);
 
         if (teacherError) throw teacherError;
@@ -30,6 +30,7 @@ export async function loginWithCitizenId(citizenId, dob) {
                             id: user.teacher_id,
                             teacher_id: user.teacher_id,
                             school_id: user.school_id,
+                            school_name: user.schools?.school_name || null,
                             full_name: `${user.prefix || ''}${user.first_name} ${user.last_name}`,
                             role: user.role, // teacher, admin, executive
                             homeroom: user.homeroom
@@ -46,7 +47,7 @@ export async function loginWithCitizenId(citizenId, dob) {
         // Check students table if not found in teachers
         const { data: studentData, error: studentError } = await supabase
             .from('users_students')
-            .select('*')
+            .select('*, schools(school_name)')
             .eq('citizen_id', citizenId);
 
         if (studentError) throw studentError;
@@ -62,6 +63,7 @@ export async function loginWithCitizenId(citizenId, dob) {
                             id: user.student_id,
                             student_id: user.student_id,
                             school_id: user.school_id,
+                            school_name: user.schools?.school_name || null,
                             full_name: `${user.prefix || ''}${user.first_name} ${user.last_name}`,
                             role: 'student'
                         }

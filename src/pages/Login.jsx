@@ -58,7 +58,7 @@ export default function Login() {
                             <GraduationCap className="w-10 h-10 text-white transform -rotate-3 hover:-rotate-6 transition-transform" />
                         </div>
                         <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">LO Database</h1>
-                        <p className="text-blue-200/80 text-sm font-medium">{import.meta.env.VITE_SCHOOL_NAME || 'ระบบฐานข้อมูลผลการเรียนรู้ สพฐ.'}</p>
+                        <p className="text-blue-200/80 text-sm font-medium">ระบบฐานข้อมูลผลการเรียนรู้ สพฐ.</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-6">
