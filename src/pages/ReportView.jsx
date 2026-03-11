@@ -147,39 +147,39 @@ export default function ReportView() {
                 </button>
             </div>
 
-            <div className="max-w-[210mm] min-h-[297mm] mx-auto bg-white shadow-2xl p-10 sm:p-14 print:shadow-none print:m-0 print:p-8 relative font-['Sarabun'] text-black text-[16pt] leading-tight flex flex-col justify-between">
+            <div className="max-w-[210mm] min-h-[297mm] mx-auto bg-white shadow-2xl p-10 sm:p-14 print:shadow-none print:m-0 print:p-10 relative font-sarabun-new text-black text-[16pt] leading-[1.2] flex flex-col justify-between">
 
                 <div>
                     {/* Header */}
                     <div className="text-center mb-6">
-                        <h1 className="text-[20pt] font-bold text-black mb-4">แบบการรายงานผลการเรียนชั้น{representativeSubject.grade_level || 'ประถมศึกษา'}</h1>
-                        <h2 className="text-[18pt] font-bold text-black flex justify-between px-8">
+                        <h1 className="text-[22pt] font-bold text-black mb-3">แบบการรายงานผลการเรียนชั้น{representativeSubject.grade_level || 'ประถมศึกษา'}</h1>
+                        <h2 className="text-[18pt] font-bold text-black flex justify-between px-4">
                             <span>ชื่อ - สกุล <span className="mx-2 underline decoration-dotted underline-offset-4">{fullName}</span></span>
                             <span>การเข้าชั้นเรียน <span className="mx-2 underline decoration-dotted underline-offset-4">&nbsp;&nbsp;{avgAttendanceThai}&nbsp;&nbsp;</span>%</span>
                         </h2>
                     </div>
 
                     {/* Table 1 */}
-                    <table className="w-full text-[16pt] border-collapse border border-black mb-8 leading-tight">
-                        <thead className="print:bg-transparent text-center">
+                    <table className="w-full text-[16pt] border-collapse border border-black mb-10 leading-[1.3]">
+                        <thead className="print:bg-transparent text-center bg-slate-50/80">
                             <tr>
-                                <th className="py-2 px-3 font-bold border border-black w-1/2">ความสามารถชั้นปี</th>
-                                <th className="py-2 px-3 font-bold border border-black w-1/6">ระดับ<br />ความสามารถที่<br />คาดหวัง</th>
-                                <th className="py-2 px-3 font-bold border border-black w-1/6">ระดับ<br />ความสามารถที่<br />ที่ได้</th>
-                                <th className="py-2 px-3 font-bold border border-black w-1/6">พัฒนาการ</th>
+                                <th className="py-2.5 px-3 font-bold border border-black w-1/2 align-middle">ความสามารถชั้นปี</th>
+                                <th className="py-2.5 px-3 font-bold border border-black w-1/6 align-middle">ระดับ<br />ความสามารถที่<br />คาดหวัง</th>
+                                <th className="py-2.5 px-3 font-bold border border-black w-1/6 align-middle">ระดับ<br />ความสามารถ<br />ที่ได้</th>
+                                <th className="py-2.5 px-3 font-bold border border-black w-1/6 align-middle">พัฒนาการ</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-black text-center border-black">
                             {Object.keys(groupedEvals).length === 0 ? (
                                 <tr>
-                                    <td colSpan="4" className="py-8 text-center text-slate-500">ยังไม่มีข้อมูลการประเมินวิชาในภาคเรียนนี้</td>
+                                    <td colSpan="4" className="py-10 text-center text-slate-500 text-[14pt]">ยังไม่มีข้อมูลการประเมินวิชาในภาคเรียนนี้</td>
                                 </tr>
                             ) : (
                                 Object.keys(groupedEvals).map((groupName) => {
                                     return (
                                         <React.Fragment key={groupName}>
-                                            <tr className="bg-slate-100/50 print:bg-transparent border-y border-black font-bold">
-                                                <td colSpan="4" className="py-2.5 px-4 text-left border-r border-black">{groupName}</td>
+                                            <tr className="bg-slate-100/40 print:bg-transparent border-y border-black font-bold">
+                                                <td colSpan="4" className="py-2.5 px-3 text-left border-r border-black">{groupName}</td>
                                             </tr>
                                             {groupedEvals[groupName].map((ev, index) => {
                                                 const lo = ev.learning_outcomes;
@@ -188,19 +188,19 @@ export default function ReportView() {
 
                                                 return (
                                                     <tr key={ev.evaluation_id} className="border-y border-black">
-                                                        <td className="py-3 px-4 text-left border-r border-black align-top">
+                                                        <td className="py-2 px-3 text-left border-r border-black align-top font-normal">
                                                             <div className="flex">
-                                                                <span className="mr-2">{index + 1}.</span>
-                                                                <span>{lo.lo_description}</span>
+                                                                <span className="mr-2 font-normal">{index + 1}.</span>
+                                                                <span className="text-justify font-normal">{lo.lo_description}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="py-4 px-2 border-r border-black align-middle">
+                                                        <td className="py-2 px-2 border-r border-black align-middle font-normal">
                                                             พัฒนา
                                                         </td>
-                                                        <td className="py-4 px-2 border-r border-black align-middle">
+                                                        <td className="py-2 px-2 border-r border-black align-middle font-normal">
                                                             {level}
                                                         </td>
-                                                        <td className="py-4 px-2 border-r border-black align-middle text-[14pt]">
+                                                        <td className="py-2 px-2 border-r border-black align-middle font-normal">
                                                             {growth}
                                                         </td>
                                                     </tr>
@@ -210,43 +210,43 @@ export default function ReportView() {
                                     )
                                 })
                             )}
-                            <tr className="border-t border-black font-bold text-left">
-                                <td colSpan="2" className="py-3 px-4 text-left border-r border-black">กิจกรรมพัฒนาผู้เรียน</td>
-                                <td colSpan="2" className="py-3 px-4 text-center">
-                                    <span className="mr-6"><span className="border border-black inline-flex justify-center items-center w-4 h-4 mr-2 align-middle text-[10pt] leading-none overflow-hidden pb-0.5">{activities.activity_status === 'ผ่าน' ? '✓' : ''}</span>ผ่าน</span>
-                                    <span><span className="border border-black inline-flex justify-center items-center w-4 h-4 mr-2 align-middle text-[10pt] leading-none overflow-hidden pb-0.5">{activities.activity_status === 'ไม่ผ่าน' ? '✓' : ''}</span>ไม่ผ่าน</span>
+                            <tr className="border-t border-black text-left">
+                                <td colSpan="2" className="py-2.5 px-3 text-left border-r border-black font-bold">กิจกรรมพัฒนาผู้เรียน</td>
+                                <td colSpan="2" className="py-2.5 px-3 text-center font-normal">
+                                    <span className="mr-6"><span className="border border-black inline-flex justify-center items-center w-3 h-3 mr-1.5 align-middle text-[12pt] leading-none overflow-hidden pb-0.5">{activities.activity_status === 'ผ่าน' ? '✓' : ''}</span>ผ่าน</span>
+                                    <span><span className="border border-black inline-flex justify-center items-center w-3 h-3 mr-1.5 align-middle text-[12pt] leading-none overflow-hidden pb-0.5">{activities.activity_status === 'ไม่ผ่าน' ? '✓' : ''}</span>ไม่ผ่าน</span>
                                 </td>
                             </tr>
-                            <tr className="border-t border-black font-bold text-left">
-                                <td colSpan="2" className="py-3 px-4 text-left border-r border-black">คุณลักษณะอันพึงประสงค์</td>
-                                <td colSpan="2" className="py-3 px-4 text-center">
-                                    <span className="mr-6"><span className="border border-black inline-flex justify-center items-center w-4 h-4 mr-2 align-middle text-[10pt] leading-none overflow-hidden pb-0.5">{activities.character_status === 'ผ่าน' ? '✓' : ''}</span>ผ่าน</span>
-                                    <span><span className="border border-black inline-flex justify-center items-center w-4 h-4 mr-2 align-middle text-[10pt] leading-none overflow-hidden pb-0.5">{activities.character_status === 'ไม่ผ่าน' ? '✓' : ''}</span>ไม่ผ่าน</span>
+                            <tr className="border-t border-black text-left">
+                                <td colSpan="2" className="py-2.5 px-3 text-left border-r border-black font-bold">คุณลักษณะอันพึงประสงค์</td>
+                                <td colSpan="2" className="py-2.5 px-3 text-center font-normal">
+                                    <span className="mr-6"><span className="border border-black inline-flex justify-center items-center w-3 h-3 mr-1.5 align-middle text-[12pt] leading-none overflow-hidden pb-0.5">{activities.character_status === 'ผ่าน' ? '✓' : ''}</span>ผ่าน</span>
+                                    <span><span className="border border-black inline-flex justify-center items-center w-3 h-3 mr-1.5 align-middle text-[12pt] leading-none overflow-hidden pb-0.5">{activities.character_status === 'ไม่ผ่าน' ? '✓' : ''}</span>ไม่ผ่าน</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
 
-                    <div className="flex justify-between items-end mt-12 px-8">
+                    <div className="flex justify-between items-end mt-16 px-12">
                         <div className="text-center">
-                            <p className="mb-2">(.................................................................)</p>
+                            <p className="mb-2 font-normal">(.................................................................)</p>
                             <p className="font-bold">ครูประจำชั้น</p>
                         </div>
                         <div className="text-center">
-                            <p className="mb-2">(.................................................................)</p>
+                            <p className="mb-2 font-normal">(.................................................................)</p>
                             <p className="font-bold">ผู้อำนวยการ</p>
                         </div>
                     </div>
                 </div>
 
                 <div className="page-break-before mt-16 print:mt-16 print:break-before-page">
-                    <h3 className="text-[18pt] font-bold mb-4 font-bold">คำอธิบายพฤติกรรม</h3>
-                    <table className="w-full text-[16pt] border-collapse border border-black">
-                        <thead className="print:bg-transparent text-center font-bold">
+                    <h3 className="text-[18pt] font-bold mb-4">คำอธิบายพฤติกรรม</h3>
+                    <table className="w-full text-[16pt] border-collapse border border-black leading-[1.3]">
+                        <thead className="print:bg-transparent text-center bg-slate-50/80">
                             <tr>
-                                <th className="py-2 px-3 border border-black w-24">ความสามารถ<br />ข้อที่</th>
-                                <th className="py-2 px-3 border border-black w-32">ระดับความสามารถ<br />ที่ได้</th>
-                                <th className="py-2 px-3 border border-black">พฤติกรรมของนักเรียน</th>
+                                <th className="py-2.5 px-3 border border-black w-24 font-bold align-middle">ความสามารถ<br />ข้อที่</th>
+                                <th className="py-2.5 px-3 border border-black w-36 font-bold align-middle">ระดับ<br />ความสามารถที่ได้</th>
+                                <th className="py-2.5 px-3 border border-black font-bold align-middle">พฤติกรรมของนักเรียน</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-black text-center">
@@ -255,7 +255,6 @@ export default function ReportView() {
                                 const level = ev.competency_level;
                                 const area = lo.competency_area || 'ทั่วไป';
 
-                                // หาคำอธิบาย
                                 let behaviorText = '';
                                 const bMatch = behaviors.find(b => b.competency_area === area && b.competency_level === level);
                                 if (bMatch) {
@@ -266,13 +265,13 @@ export default function ReportView() {
 
                                 return (
                                     <tr key={ev.evaluation_id} className="border-y border-black">
-                                        <td className="py-3 px-2 border-r border-black align-top font-bold">
+                                        <td className="py-2.5 px-2 border-r border-black align-top font-bold">
                                             {index + 1}
                                         </td>
-                                        <td className="py-3 px-2 border-r border-black align-top">
+                                        <td className="py-2.5 px-2 border-r border-black align-top font-normal">
                                             {level}
                                         </td>
-                                        <td className="py-3 px-4 text-left align-top leading-tight text-justify">
+                                        <td className="py-2.5 px-4 text-left align-top font-normal text-justify">
                                             {behaviorText}
                                         </td>
                                     </tr>
