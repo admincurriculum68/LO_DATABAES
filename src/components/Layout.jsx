@@ -35,10 +35,15 @@ export default function Layout({ children, title, onActionClick, actionText, act
                             </button>
                         )}
 
-                        <div className="flex items-center space-x-2 text-sm font-medium bg-slate-100 px-3 py-1.5 rounded-full text-slate-700 border border-slate-200">
-                            <UserCircle className="w-5 h-5 text-slate-400" />
-                            <span className="truncate max-w-[120px]">{currentUser?.full_name}</span>
+                        <div className="flex items-center space-x-3 text-sm font-medium bg-slate-50 px-4 py-1.5 rounded-full text-slate-700 border border-slate-200 shadow-sm">
+                            <div className="flex flex-col text-right hidden sm:flex">
+                                <span className="truncate max-w-[150px] text-xs font-bold text-slate-800">{currentUser?.full_name}</span>
+                                <span className="truncate max-w-[150px] text-[10px] text-slate-500">{currentUser?.school_name || 'ไม่ระบุโรงเรียน'}</span>
+                            </div>
+                            <UserCircle className="w-7 h-7 text-indigo-400" />
+                            <span className="sm:hidden truncate max-w-[100px] bg-slate-200 px-2 rounded-full">{currentUser?.full_name}</span>
                         </div>
+
 
                         <button
                             onClick={logoutUser}
