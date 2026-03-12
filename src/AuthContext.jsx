@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 
 const AuthContext = createContext();
 
@@ -7,9 +8,39 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const savedUser = localStorage.getItem('loUser');
-        if (savedUser) setCurrentUser(JSON.parse(savedUser));
-        setLoading(false);
+        const verifyUser = async () => {
+            const savedUserStr = localStorage.getItem('loUser');
+            if (savedUserStr) {
+                try {
+                    const savedUser = JSON.parse(savedUserStr);
+                    // Fetch from database to prevent LocalStorage modification bypass
+                    if (savedUser.role === 'student') {
+                        const { data } = await supabase.from('users_students').select('student_status').eq('student_id', savedUser.id).single();
+                        if (data && data.student_status === 'active') {
+                            setCurrentUser(savedUser);
+                        } else {
+                            localStorage.removeItem('loUser');
+                        }
+                    } else {
+                        // Check teachers table
+                        const { data } = await supabase.from('users_teachers').select('role, is_active').eq('teacher_id', savedUser.id).single();
+                        if (data && data.is_active) {
+                            // Overwrite role to whatever is in the database to prevent manual tampering
+                            const verifiedUser = { ...savedUser, role: data.role };
+                            setCurrentUser(verifiedUser);
+                            localStorage.setItem('loUser', JSON.stringify(verifiedUser));
+                        } else {
+                            localStorage.removeItem('loUser');
+                        }
+                    }
+                } catch (err) {
+                    console.error('Session verification failed:', err);
+                    localStorage.removeItem('loUser');
+                }
+            }
+            setLoading(false);
+        };
+        verifyUser();
     }, []);
 
     const loginUser = (user) => {

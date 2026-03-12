@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen } from 'lucide-react';
+import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { hashPassword } from '../lib/auth';
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('data');
 
     // Stats for Dashboard Overview
@@ -20,6 +22,8 @@ export default function AdminDashboard() {
     const [loadingData, setLoadingData] = useState(false);
     const [editingRow, setEditingRow] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
 
     // Mapping Tab States
     const [subjects, setSubjects] = useState([]);
@@ -60,23 +64,35 @@ export default function AdminDashboard() {
     }, [currentUser]);
 
     // --- DATA MANAGEMENT ---
-    const loadTableData = async (table) => {
+    const loadTableData = async (table, page = 1) => {
+        if (table !== selectedTable) {
+            setSearchTerm(''); // Clear search when switching tables
+            setCurrentPage(1);
+            page = 1;
+        }
         setSelectedTable(table);
-        setSearchTerm(''); // Clear search when switching tables
         if (!table) { setTableData([]); return; }
 
         setLoadingData(true);
         try {
-            let query = supabase.from(table).select('*').order('created_at', { ascending: false });
+            const limit = 50;
+            const from = (page - 1) * limit;
+            const to = from + limit - 1;
+
+            let query = supabase.from(table).select('*', { count: 'exact' });
             if (['users_students', 'users_teachers', 'subjects'].includes(table)) {
                 query = query.eq('school_id', currentUser.school_id);
             }
             if (table === 'learning_outcomes') query.order('ability_no', { ascending: true });
-            if (table === 'users_students') query.order('student_code', { ascending: true });
+            else if (table === 'users_students') query.order('student_code', { ascending: true });
+            else query.order('created_at', { ascending: false });
 
-            const { data, error } = await query;
+            const { data, count, error } = await query.range(from, to);
             if (error) throw error;
+            
             setTableData(data || []);
+            setTotalPages(Math.ceil((count || 0) / limit) || 1);
+            setCurrentPage(page);
         } catch (err) {
             toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
         } finally {
@@ -99,8 +115,9 @@ export default function AdminDashboard() {
     const handleUpdate = async (idValue, idCol, updatedObj) => {
         try {
             const payload = { ...updatedObj };
-            if (payload.plain_password) {
-                payload.password_hash = await hashPassword(payload.plain_password.toString().trim());
+            if (payload.new_password) {
+                payload.password_hash = await hashPassword(payload.new_password.toString().trim());
+                delete payload.new_password;
             }
 
             const { error } = await supabase.from(selectedTable).update(payload).eq(idCol, idValue);
@@ -144,49 +161,132 @@ export default function AdminDashboard() {
                         if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง', { id: 'csv' }); return; }
                         payload = await Promise.all(data.map(async s => ({
                             school_id: currentUser.school_id, citizen_id: s.citizen_id.trim(),
-                            password_hash: await hashPassword(s.dob.trim()), plain_password: s.dob.trim(),
+                            password_hash: await hashPassword(s.dob.trim()),
                             student_code: s.student_code?.trim(), prefix: s.prefix?.trim() || '',
                             first_name: s.first_name?.trim(), last_name: s.last_name?.trim(), student_status: 'active'
                         })));
-                        await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
+                        const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
+                        if (error) throw error;
                     }
                     else if (importType === 'teachers') {
                         payload = await Promise.all(data.map(async t => ({
                             school_id: currentUser.school_id, citizen_id: t.citizen_id.trim(),
-                            password_hash: await hashPassword(t.dob.trim()), plain_password: t.dob.trim(),
+                            password_hash: await hashPassword(t.dob.trim()),
                             prefix: t.prefix?.trim() || '', first_name: t.first_name?.trim(),
                             last_name: t.last_name?.trim(), role: t.role?.trim() || 'teacher', is_active: true
                         })));
-                        await supabase.from('users_teachers').upsert(payload, { onConflict: 'citizen_id' });
+                        const { error } = await supabase.from('users_teachers').upsert(payload, { onConflict: 'citizen_id' });
+                        if (error) throw error;
                     }
                     else if (importType === 'subjects') {
-                        payload = data.map(s => ({
-                            school_id: currentUser.school_id, academic_year: parseInt(s.academic_year),
-                            semester: parseInt(s.semester), subject_code: s.subject_code?.trim(),
+                        let tempPayload = data.map(s => ({
+                            school_id: currentUser.school_id, academic_year: parseInt(s.academic_year) || 2567,
+                            semester: parseInt(s.semester) || 1, subject_code: s.subject_code?.trim(),
                             subject_name: s.subject_name?.trim(), grade_level: s.grade_level?.trim(),
-                            subject_group: s.subject_group?.trim() || null, teacher_id: s.teacher_id?.trim()
+                            subject_group: s.subject_group?.trim() || null, teacher_id: s.teacher_id?.trim() || null
                         }));
-                        await supabase.from('subjects').insert(payload);
+                        
+                        // ป้องกันข้อมูลซ้ำ (รหัสวิชา_ปี_เทอม)
+                        const existingSet = new Set(subjects.map(s => `${s.subject_code}_${s.academic_year}_${s.semester}`));
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_code}_${p.academic_year}_${p.semester}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('subjects').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลรายวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            return;
+                        }
                     }
                     else if (importType === 'enrollments') {
-                        payload = data.map(e => ({ student_id: e.student_id?.trim(), subject_id: e.subject_id?.trim(), room: e.room?.trim() }));
-                        await supabase.from('student_enrollments').insert(payload);
+                        let tempPayload = data.map(e => ({ student_id: e.student_id?.trim(), subject_id: e.subject_id?.trim(), room: e.room?.trim() }));
+                        
+                        // ดึงข้อมูลการลงทะเบียนทั้งหมดมาเทียบ
+                        const { data: existingEn } = await supabase.from('student_enrollments').select('student_id, subject_id');
+                        const existingSet = new Set((existingEn || []).map(e => `${e.student_id}_${e.subject_id}`));
+                        
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.student_id}_${p.subject_id}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('student_enrollments').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลลงทะเบียนซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            return;
+                        }
                     }
                     else if (importType === 'learning_outcomes') {
-                        payload = data.map(l => ({
+                        let tempPayload = data.map(l => ({
                             lo_code: l.lo_code?.trim(), ability_no: parseInt(l.ability_no), level_group: l.level_group?.trim(),
                             competency_area: l.competency_area?.trim(), lo_description: l.lo_description?.trim()
                         }));
-                        await supabase.from('learning_outcomes').insert(payload);
+                        
+                        // เซ็คซ้ำ (lo_code และ ability_no)
+                        const { data: existingLO } = await supabase.from('learning_outcomes').select('lo_code, ability_no');
+                        const existingSet = new Set((existingLO || []).map(l => `${l.lo_code}_${l.ability_no}`));
+                        
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.lo_code}_${p.ability_no}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('learning_outcomes').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลสมรรถนะ (LO) ซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            return;
+                        }
                     }
                     else if (importType === 'behaviors') {
-                        payload = data.map(b => ({
+                        let tempPayload = data.map(b => ({
                             competency_area: b.competency_area?.trim(), competency_level: b.competency_level?.trim(), behavior_text: b.behavior_text?.trim()
                         }));
-                        await supabase.from('behavior_templates').insert(payload);
+                        
+                        // เซ็คซ้ำ 
+                        const { data: existingB } = await supabase.from('behavior_templates').select('competency_area, competency_level, behavior_text');
+                        const existingSet = new Set((existingB || []).map(b => `${b.competency_area}_${b.competency_level}_${b.behavior_text}`));
+                        
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.competency_area}_${p.competency_level}_${p.behavior_text}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('behavior_templates').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลคลังพฤติกรรม ซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            return;
+                        }
                     }
 
                     toast.success(`นำเข้าสำเร็จ ${payload.length} รายการ`, { id: 'csv' });
+
+                    // อัปเดต state ตัวแปรที่ใช้ทำงานต่อไม่ต้องให้ผู้ใช้รีโหลดหน้า
+                    if (importType === 'subjects') {
+                        const { data: updatedSubjects } = await supabase.from('subjects').select('*').eq('school_id', currentUser.school_id);
+                        setSubjects(updatedSubjects || []);
+                        setStats(prev => ({ ...prev, subjects: updatedSubjects?.length || 0 }));
+                    } else if (importType === 'students') {
+                        const { data: updatedStudents } = await supabase.from('users_students').select('*').eq('school_id', currentUser.school_id);
+                        setAllStudents(updatedStudents || []);
+                        setStats(prev => ({ ...prev, students: updatedStudents?.length || 0 }));
+                    } else if (importType === 'teachers') {
+                        const { count } = await supabase.from('users_teachers').select('teacher_id', { count: 'exact', head: true }).eq('school_id', currentUser.school_id);
+                        setStats(prev => ({ ...prev, teachers: count || 0 }));
+                    } else if (importType === 'learning_outcomes' && mappingSubject) {
+                        // refresh mapping data if a subject is already selected
+                        loadMappingData(mappingSubject);
+                    }
+
+                    // อัปเดตตารางข้อมูลดิบถ้ากำลังเปิดดูตารางนั้นอยู่
+                    const mapImportToTable = {
+                        'students': 'users_students',
+                        'teachers': 'users_teachers',
+                        'subjects': 'subjects',
+                        'enrollments': 'student_enrollments',
+                        'learning_outcomes': 'learning_outcomes',
+                        'behaviors': 'behavior_templates'
+                    };
+                    if (selectedTable === mapImportToTable[importType]) {
+                        loadTableData(selectedTable);
+                    }
+
                 } catch (err) {
                     toast.error('ข้อผิดพลาดการนำเข้า: ' + err.message, { id: 'csv' });
                 }
@@ -261,6 +361,104 @@ export default function AdminDashboard() {
                     <div className="bg-white/20 p-4 rounded-2xl"><BookOpen className="w-8 h-8" /></div>
                 </div>
             </div>
+
+            {/* Setup Checklist — shown until all steps complete */}
+            {(stats.teachers === 0 || stats.students === 0 || stats.subjects === 0) && (
+                <div className="mb-8 bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden">
+                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100 flex items-center gap-3">
+                        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 text-base font-extrabold shrink-0">🚀</div>
+                        <div>
+                            <p className="font-extrabold text-amber-900 text-sm">เริ่มต้นใช้งาน CBE Track</p>
+                            <p className="text-xs text-amber-600 font-medium">ทำตามขั้นตอนด้านล่างให้ครบเพื่อเริ่มระบบประเมินผล</p>
+                        </div>
+                    </div>
+                    <div className="p-6">
+                        <div className="space-y-3">
+                            {[
+                                {
+                                    step: 1,
+                                    done: stats.teachers > 0,
+                                    label: 'นำเข้าข้อมูลครู',
+                                    desc: `${stats.teachers > 0 ? `มีครูในระบบ ${stats.teachers} คนแล้ว` : 'ยังไม่มีครูในระบบ'}`,
+                                    action: () => setActiveTab('import'),
+                                    actionLabel: 'ไปนำเข้าครู →'
+                                },
+                                {
+                                    step: 2,
+                                    done: stats.students > 0,
+                                    label: 'นำเข้าข้อมูลนักเรียน',
+                                    desc: `${stats.students > 0 ? `มีนักเรียนในระบบ ${stats.students} คนแล้ว` : 'ยังไม่มีนักเรียนในระบบ'}`,
+                                    action: () => setActiveTab('import'),
+                                    actionLabel: 'ไปนำเข้านักเรียน →'
+                                },
+                                {
+                                    step: 3,
+                                    done: stats.subjects > 0,
+                                    label: 'สร้างรายวิชาและผูก LO',
+                                    desc: `${stats.subjects > 0 ? `มีรายวิชา ${stats.subjects} วิชาแล้ว` : 'ยังไม่มีรายวิชาในระบบ'}`,
+                                    action: () => setActiveTab('import'),
+                                    actionLabel: 'ไปสร้างรายวิชา →'
+                                },
+                                {
+                                    step: 4,
+                                    done: stats.subjects > 0 && stats.students > 0,
+                                    label: 'จัดนักเรียนเข้าห้องเรียน/รายวิชา',
+                                    desc: 'เชื่อมนักเรียนเข้ากับรายวิชาที่ต้องการ',
+                                    action: () => setActiveTab('enrollment'),
+                                    actionLabel: 'ไปจัดนักเรียน →'
+                                },
+                            ].map(item => (
+                                <div key={item.step} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${item.done ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'}`}>
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-extrabold shrink-0 ${item.done ? 'bg-green-500 text-white' : 'bg-white border-2 border-slate-300 text-slate-500'}`}>
+                                        {item.done ? '✓' : item.step}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`font-bold text-sm ${item.done ? 'text-green-800 line-through decoration-green-400' : 'text-slate-800'}`}>{item.label}</p>
+                                        <p className={`text-xs mt-0.5 ${item.done ? 'text-green-600' : 'text-slate-500'}`}>{item.desc}</p>
+                                    </div>
+                                    {!item.done && (
+                                        <button onClick={item.action} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-xl transition-all shrink-0">
+                                            {item.actionLabel}
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Admin Reports Quick Access */}
+            <div className="mb-8">
+                <h3 className="text-sm font-extrabold text-slate-500 uppercase tracking-widest mb-4">📊 รายงานภาพรวมวิชาการ (สำหรับ Admin เท่านั้น)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                        onClick={() => navigate('/admin/report-lo')}
+                        className="group flex items-center gap-4 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
+                    >
+                        <div className="w-12 h-12 bg-indigo-100 group-hover:bg-indigo-600 rounded-2xl flex items-center justify-center transition-colors">
+                            <FileBarChart2 className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div>
+                            <p className="font-extrabold text-slate-800">ตารางที่ 2 — ภาพรวม LO รายผลลัพธ์</p>
+                            <p className="text-sm text-slate-500 mt-0.5">รายงานผลลัพธ์การเรียนรู้ระดับรายผลลัพธ์การเรียนกับรายวิชาที่ผูกไว้ทั้งหมด</p>
+                        </div>
+                    </button>
+                    <button
+                        onClick={() => navigate('/admin/report-competency')}
+                        className="group flex items-center gap-4 bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
+                    >
+                        <div className="w-12 h-12 bg-purple-100 group-hover:bg-purple-600 rounded-2xl flex items-center justify-center transition-colors">
+                            <BarChart3 className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div>
+                            <p className="font-extrabold text-slate-800">ตารางที่ 3 — ภาพรวมรายด้านความสามารถ</p>
+                            <p className="text-sm text-slate-500 mt-0.5">รายงานผลการประเมินรายด้านความสามารถของนักเรียนทุกรายวิชาที่ผูกไว้</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
 
             <div className="lg:flex gap-8 mb-10">
                 {/* Modern Sidebar Navigation */}
@@ -344,12 +542,13 @@ export default function AdminDashboard() {
                                         {searchTerm ? 'ไม่พบข้อมูลที่ค้นหา' : 'ยังไม่มีข้อมูลในตารางนี้'}
                                     </div>
                                 ) : (
-                                    <div className="overflow-x-auto rounded-2xl border border-slate-200 h-[600px] overflow-y-auto">
+                                    <div className="flex flex-col space-y-4">
+                                        <div className="overflow-x-auto rounded-2xl border border-slate-200 h-[600px] overflow-y-auto">
                                         <table className="w-full text-sm text-left whitespace-nowrap">
                                             <thead className="bg-slate-100 text-slate-600 sticky top-0 z-10 shadow-sm uppercase tracking-wider text-xs">
                                                 <tr>
                                                     <th className="px-5 py-4 font-extrabold w-12 text-center border-b border-slate-200">#</th>
-                                                    {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'school_id'].includes(k)).map(key => (
+                                                    {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k)).map(key => (
                                                         <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{key}</th>
                                                     ))}
                                                     <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">✏️ จัดการ</th>
@@ -369,7 +568,7 @@ export default function AdminDashboard() {
                                                     return (
                                                     <tr key={idx} className="hover:bg-slate-50 py-2 group transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                                                    {Object.keys(row).filter(k => !['password_hash', 'school_id'].includes(k)).map(key => (
+                                                    {Object.keys(row).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k)).map(key => (
                                                         <td key={key} className="px-5 py-3 text-slate-700 max-w-[200px] truncate">
                                                             {isEditing ? (
                                                                 <input
@@ -378,7 +577,7 @@ export default function AdminDashboard() {
                                                                     onChange={(e) => setEditingRow({ ...editingRow, data: { ...editingRow.data, [key]: e.target.value } })}
                                                                 />
                                                             ) : (
-                                                                <span className={key === 'plain_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
+                                                                <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
                                                                     {row[key]?.toString() || '-'}
                                                                 </span>
                                                             )}
@@ -402,6 +601,31 @@ export default function AdminDashboard() {
                                                 })}
                                             </tbody>
                                         </table>
+                                        </div>
+
+                                        {/* Pagination Controls */}
+                                        <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-50 px-6 py-4 rounded-2xl border border-slate-200 gap-4">
+                                            <div className="text-sm text-slate-500 font-medium">
+                                                กำลังแสดงหน้า <span className="font-bold text-slate-800">{currentPage}</span> จากทั้งหมด <span className="font-bold text-slate-800">{totalPages}</span>
+                                                <span className="ml-2">(คำค้นหาอาจค้นพบแค่ในหน้านี้)</span>
+                                            </div>
+                                            <div className="flex space-x-2">
+                                                <button 
+                                                    onClick={() => loadTableData(selectedTable, currentPage - 1)}
+                                                    disabled={currentPage === 1 || loadingData}
+                                                    className="px-4 py-2 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
+                                                >
+                                                    &larr; หน้าก่อน
+                                                </button>
+                                                <button 
+                                                    onClick={() => loadTableData(selectedTable, currentPage + 1)}
+                                                    disabled={currentPage === totalPages || loadingData}
+                                                    className="px-4 py-2 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
+                                                >
+                                                    หน้าถัดไป &rarr;
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

@@ -9,6 +9,8 @@ import HomeroomView from './pages/HomeroomView';
 import StudentDashboard from './pages/StudentDashboard';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminReportLO from './pages/AdminReportLO';
+import AdminReportCompetency from './pages/AdminReportCompetency';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
@@ -62,10 +64,20 @@ export default function App() {
           </ProtectedRoute>
         } />
 
-        {/* Admin Route */}
+        {/* Admin Routes */}
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/report-lo" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminReportLO />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/report-competency" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminReportCompetency />
           </ProtectedRoute>
         } />
 

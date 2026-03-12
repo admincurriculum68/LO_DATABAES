@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "@tailwindcss/vite": "^4.2.1",
+    "jose": "^6.2.1",
     "json2csv": "^6.0.0-alpha.2",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.5.3",
