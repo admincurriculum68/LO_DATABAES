@@ -141,6 +141,51 @@ export default function AdminDashboard() {
         );
     }, [tableData, searchTerm]);
 
+    // ─── CSV Sanitize Helpers ────────────────────────────────────────────
+    // Fix Excel scientific notation: 1.43E+12 → "1429900127280"
+    // Fix decimal suffix: 1234567890123.00 → "1234567890123"
+    const sanitizeCitizenId = (raw) => {
+        if (!raw && raw !== 0) return '';
+        let s = String(raw).trim();
+        // Handle scientific notation (e.g. 1.43E+12)
+        if (/[eE]/.test(s)) {
+            const n = parseFloat(s);
+            if (!isNaN(n)) s = Math.round(n).toString();
+        }
+        // Strip trailing .0, .00, etc. (Excel decimal)
+        s = s.replace(/\.0+$/, '');
+        // Strip any non-digit characters (spaces, dashes)
+        s = s.replace(/\D/g, '');
+        return s;
+    };
+
+    const sanitizeDOB = (raw) => {
+        if (!raw && raw !== 0) return '';
+        let s = String(raw).trim();
+        // Handle scientific notation in dob (rare but possible)
+        if (/[eE]/.test(s)) {
+            const n = parseFloat(s);
+            if (!isNaN(n)) s = Math.round(n).toString();
+        }
+        s = s.replace(/\.0+$/, '');
+        s = s.replace(/\D/g, '');
+        // Pad to 8 digits if needed (e.g. 2022534 → 02022534)
+        s = s.padStart(8, '0');
+        return s;
+    };
+
+    // Validate a row's citizen_id and dob, return null if OK or error string
+    const validateCitizenRow = (cleanId, cleanDob, rowNum) => {
+        const errors = [];
+        if (!cleanId) errors.push(`แถว ${rowNum}: citizen_id ว่างเปล่า`);
+        else if (cleanId.length !== 13) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ต้องมี 13 หลัก (มี ${cleanId.length} หลัก)`);
+        else if (/^(1{13}|2{13}|3{13}|0{13})$/.test(cleanId)) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ดูเหมือนเป็นข้อมูลทดสอบ`);
+        if (!cleanDob) errors.push(`แถว ${rowNum}: dob ว่างเปล่า`);
+        else if (cleanDob.length !== 8) errors.push(`แถว ${rowNum}: dob "${cleanDob}" ต้องมี 8 หลัก DDMMYYYY`);
+        return errors;
+    };
+    // ────────────────────────────────────────────────────────────────────────
+
     // --- CSV IMPORT ---
     const handleFileUpload = (e, importType) => {
         const file = e.target.files[0];
@@ -158,23 +203,91 @@ export default function AdminDashboard() {
                 try {
                     let payload = [];
                     if (importType === 'students') {
-                        if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง', { id: 'csv' }); return; }
-                        payload = await Promise.all(data.map(async s => ({
-                            school_id: currentUser.school_id, citizen_id: s.citizen_id.trim(),
-                            password_hash: await hashPassword(s.dob.trim()),
-                            student_code: s.student_code?.trim(), prefix: s.prefix?.trim() || '',
-                            first_name: s.first_name?.trim(), last_name: s.last_name?.trim(), student_status: 'active'
+                        if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง: ต้องมี citizen_id และ dob', { id: 'csv' }); return; }
+
+                        // Sanitize & validate all rows first
+                        const validRows = [];
+                        const invalidRows = [];
+                        for (let i = 0; i < data.length; i++) {
+                            const cleanId = sanitizeCitizenId(data[i].citizen_id);
+                            const cleanDob = sanitizeDOB(data[i].dob);
+                            const errs = validateCitizenRow(cleanId, cleanDob, i + 2);
+                            if (errs.length > 0) {
+                                invalidRows.push({ row: i + 2, errors: errs, original: data[i].citizen_id });
+                            } else {
+                                validRows.push({ ...data[i], citizen_id: cleanId, dob: cleanDob });
+                            }
+                        }
+
+                        if (invalidRows.length > 0) {
+                            const msg = `พบข้อมูลไม่ถูกต้อง ${invalidRows.length} แถว:\n` +
+                                invalidRows.slice(0, 5).map(r => r.errors.join(', ')).join('\n') +
+                                (invalidRows.length > 5 ? `\n...และอีก ${invalidRows.length - 5} แถว` : '');
+                            if (validRows.length === 0) {
+                                toast.error('ไม่มีแถวที่ถูกต้อง — ยกเลิกการนำเข้า กรุณาตรวจสอบไฟล์ CSV', { id: 'csv' });
+                                toast.error(msg);
+                                return;
+                            }
+                            // Partial import: warn but continue with valid rows
+                            toast.error(`⚠️ ข้ามแถวที่ไม่ถูกต้อง ${invalidRows.length} แถว (ดูรายละเอียดใน Console)`);
+                            console.warn('[CSV Import] Invalid rows:', invalidRows);
+                        }
+
+                        payload = await Promise.all(validRows.map(async s => ({
+                            school_id: currentUser.school_id,
+                            citizen_id: s.citizen_id,
+                            password_hash: await hashPassword(s.dob),
+                            student_code: s.student_code?.trim(),
+                            prefix: s.prefix?.trim() || '',
+                            first_name: s.first_name?.trim(),
+                            last_name: s.last_name?.trim(),
+                            student_status: 'active'
                         })));
+                        if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
                         const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
                         if (error) throw error;
                     }
                     else if (importType === 'teachers') {
-                        payload = await Promise.all(data.map(async t => ({
-                            school_id: currentUser.school_id, citizen_id: t.citizen_id.trim(),
-                            password_hash: await hashPassword(t.dob.trim()),
-                            prefix: t.prefix?.trim() || '', first_name: t.first_name?.trim(),
-                            last_name: t.last_name?.trim(), role: t.role?.trim() || 'teacher', is_active: true
+                        if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง: ต้องมี citizen_id และ dob', { id: 'csv' }); return; }
+
+                        // Sanitize & validate all rows first
+                        const validRows = [];
+                        const invalidRows = [];
+                        for (let i = 0; i < data.length; i++) {
+                            const cleanId = sanitizeCitizenId(data[i].citizen_id);
+                            const cleanDob = sanitizeDOB(data[i].dob);
+                            const errs = validateCitizenRow(cleanId, cleanDob, i + 2);
+                            if (errs.length > 0) {
+                                invalidRows.push({ row: i + 2, errors: errs, original: data[i].citizen_id });
+                            } else {
+                                validRows.push({ ...data[i], citizen_id: cleanId, dob: cleanDob });
+                            }
+                        }
+
+                        if (invalidRows.length > 0) {
+                            const msg = `พบข้อมูลไม่ถูกต้อง ${invalidRows.length} แถว:\n` +
+                                invalidRows.slice(0, 5).map(r => r.errors.join(', ')).join('\n') +
+                                (invalidRows.length > 5 ? `\n...และอีก ${invalidRows.length - 5} แถว` : '');
+                            if (validRows.length === 0) {
+                                toast.error('ไม่มีแถวที่ถูกต้อง — ยกเลิกการนำเข้า กรุณาตรวจสอบไฟล์ CSV', { id: 'csv' });
+                                toast.error(msg);
+                                return;
+                            }
+                            toast.error(`⚠️ ข้ามแถวที่ไม่ถูกต้อง ${invalidRows.length} แถว (ดูรายละเอียดใน Console)`);
+                            console.warn('[CSV Import] Invalid rows:', invalidRows);
+                        }
+
+                        payload = await Promise.all(validRows.map(async t => ({
+                            school_id: currentUser.school_id,
+                            citizen_id: t.citizen_id,
+                            password_hash: await hashPassword(t.dob),
+                            prefix: t.prefix?.trim() || '',
+                            first_name: t.first_name?.trim(),
+                            last_name: t.last_name?.trim(),
+                            role: t.role?.trim() || 'teacher',
+                            is_active: true
                         })));
+                        if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
                         const { error } = await supabase.from('users_teachers').upsert(payload, { onConflict: 'citizen_id' });
                         if (error) throw error;
                     }
