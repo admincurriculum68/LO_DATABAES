@@ -216,6 +216,74 @@ export default function AdminDashboard() {
     });
     // ──────────────────────────────────────────────────────────────
 
+    // --- DMC Import Handler ---
+    const handleDMCImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = null;
+        toast.loading('กำลังอ่านไฟล์ DMC...', { id: 'dmc' });
+        try {
+            const reader = new FileReader();
+            const buffer = await new Promise((res, rej) => { reader.onload = ev => res(ev.target.result); reader.onerror = rej; reader.readAsArrayBuffer(file); });
+            const wb = XLSX.read(buffer, { type: 'array', cellText: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+
+            // DMC: Row0=metadata (contains "วันและเวลา"), Row1=column headers, Row2+=data
+            const isDMC = String(rawRows[0]?.[0] || '').includes('วันและเวลา');
+            if (!isDMC) { toast.error('ไฟล์นี้ไม่ใช่รูปแบบ DMC (แถวแรกต้องเป็น "วันและเวลาที่สร้างรายงาน")', { id: 'dmc' }); return; }
+
+            // DMC Column index (0-based): 0=รหัสรร 1=ลำดับ 2=citizen_id 3=ชั้น 4=ห้อง 5=student_code 6=เพศ 7=prefix 8=first_name 9=last_name 10=dob
+            const COL = { CITIZEN: 2, GRADE: 3, ROOM: 4, CODE: 5, PREFIX: 7, FNAME: 8, LNAME: 9, DOB: 10 };
+            const prefixMap = { 'เด็กชาย': 'ด.ช.', 'เด็กหญิง': 'ด.ญ.' };
+
+            // Convert DMC DOB: "25/06/2564" → "25062564" (DDMMYYYY BE for password)
+            const parseDMCDob = (raw) => {
+                const m = String(raw || '').trim().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                if (!m) return null;
+                return `${m[1].padStart(2,'0')}${m[2].padStart(2,'0')}${m[3]}`;
+            };
+
+            const validRows = [], invalidRows = [];
+            for (let i = 0; i < rawRows.slice(2).length; i++) {
+                const row = rawRows.slice(2)[i];
+                if (!row || row.every(c => !String(c).trim())) continue;
+                const cleanId = sanitizeCitizenId(String(row[COL.CITIZEN] || '').replace(/^'+/, ''));
+                const dobStr = parseDMCDob(row[COL.DOB]);
+                const fname = String(row[COL.FNAME] || '').trim();
+                const lname = String(row[COL.LNAME] || '').trim();
+                const prefix = prefixMap[String(row[COL.PREFIX] || '').trim()] || String(row[COL.PREFIX] || '').trim();
+                const code = String(row[COL.CODE] || '').trim().replace(/\.0+$/, '');
+                const errs = [];
+                if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
+                if (!dobStr) errs.push(`วันเกิด "${row[COL.DOB]}" ไม่ถูกต้อง`);
+                if (!fname) errs.push('ไม่มีชื่อ');
+                if (errs.length > 0) invalidRows.push({ row: i + 3, name: `${fname} ${lname}`, errors: errs });
+                else validRows.push({ citizen_id: cleanId, dob: dobStr, student_code: code, prefix, first_name: fname, last_name: lname });
+            }
+
+            if (validRows.length === 0) { toast.error(`ไม่มีแถวที่ถูกต้อง (${invalidRows.length} แถวผิด)`, { id: 'dmc' }); return; }
+            if (invalidRows.length > 0) { toast.error(`⚠️ ข้ามแถวผิด ${invalidRows.length} แถว`); console.warn('[DMC Invalid]', invalidRows); }
+
+            const payload = await Promise.all(validRows.map(async r => ({
+                school_id: currentUser.school_id, citizen_id: r.citizen_id,
+                password_hash: await hashPassword(r.dob),
+                student_code: r.student_code || null, prefix: r.prefix,
+                first_name: r.first_name, last_name: r.last_name, student_status: 'active',
+            })));
+
+            const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
+            if (error) throw error;
+            const { data: updated } = await supabase.from('users_students').select('*').eq('school_id', currentUser.school_id);
+            setAllStudents(updated || []);
+            setStats(prev => ({ ...prev, students: updated?.length || 0 }));
+            toast.success(`นำเข้าจาก DMC สำเร็จ! ${payload.length} คน`, { id: 'dmc' });
+            if (selectedTable === 'users_students') loadTableData('users_students');
+        } catch (err) {
+            toast.error('นำเข้าผิดพลาด: ' + err.message, { id: 'dmc' });
+        }
+    };
+
     // --- CSV IMPORT ---
     const handleFileUpload = async (e, importType) => {
         const file = e.target.files[0];
@@ -779,8 +847,32 @@ export default function AdminDashboard() {
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                 <div className="mb-8">
                                     <h2 className="text-xl font-extrabold text-slate-800 mb-2 flex items-center"><Upload className="w-6 h-6 mr-3 text-indigo-500" /> นำเข้าข้อมูลแบบรวดเร็ว (Bulk Upload)</h2>
-                                    <p className="text-slate-500 font-medium">ดาวน์โหลดแม่แบบ CSV ไปกรอกข้อมูล แล้วนำกลับมาอัปโหลดที่นี่</p>
+                                    <p className="text-slate-500 font-medium">ดาวน์โหลดแม่แบบ Excel ไปกรอกข้อมูล แล้วนำกลับมาอัปโหลดที่นี่</p>
                                 </div>
+
+                                {/* 🏫 DMC Import Card (Prominent) */}
+                                <div className="mb-8 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-indigo-300 rounded-3xl p-6">
+                                    <div className="flex flex-col md:flex-row md:items-start gap-5 mb-5 md:mb-0">
+                                        <div className="flex items-start gap-4 flex-1">
+                                            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shrink-0 text-white text-3xl shadow-md border-b-4 border-indigo-800">🏫</div>
+                                            <div>
+                                                <h3 className="font-extrabold text-xl text-indigo-900">นำเข้านักเรียนจากระบบ DMC โดยตรง</h3>
+                                                <p className="text-sm text-indigo-700 font-medium mt-1 leading-relaxed">รองรับไฟล์ Excel <span className="font-bold">(.xlsx, .xls)</span> ที่ส่งออกจากระบบ DMC <br className="hidden md:block" />โดยระบบจะจัดรูปแบบวันเกิดให้สามารถใช้เป็นรหัสผ่านได้ทันที</p>
+                                                <div className="flex flex-wrap gap-2 mt-3">
+                                                    {['เลขประจำตัว → citizen_id', 'วันเกิดในรูปแบบ พ.ศ. → รหัสผ่าน', 'รหัสนักเรียน', 'ชื่อ/สกุล'].map(t => (
+                                                        <span key={t} className="text-xs bg-white/70 border border-indigo-200 text-indigo-800 font-bold px-3 py-1.5 rounded-full shadow-sm">✓ {t}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <label className="md:self-center shrink-0 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-5 rounded-2xl font-extrabold text-[15px] cursor-pointer shadow-lg transition-all w-full md:w-auto transform hover:-translate-y-1">
+                                            <Upload className="w-6 h-6" />
+                                            อัปโหลดไฟล์ Excel ของ DMC
+                                            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDMCImport} />
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                                     {[
                                         { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี' },
