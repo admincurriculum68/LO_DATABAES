@@ -723,6 +723,18 @@ export default function AdminDashboard() {
                             <p className="text-sm text-slate-500 mt-0.5">บันทึกผลและพิมพ์แบบรายงานผลการเรียนชั้นปีรายบุคคล</p>
                         </div>
                     </button>
+                    <button
+                        onClick={() => navigate('/admin/phase-report')}
+                        className="group flex items-center gap-4 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
+                    >
+                        <div className="w-12 h-12 bg-teal-100 group-hover:bg-teal-600 rounded-2xl flex items-center justify-center transition-colors text-xl">
+                            🎓
+                        </div>
+                        <div>
+                            <p className="font-extrabold text-slate-800">รายงานผลการเรียนจบช่วงชั้น</p>
+                            <p className="text-sm text-slate-500 mt-0.5">บันทึกและพิมพ์ผลจบช่วงชั้นตอนต้น (ป.1–ป.3) / ตอนปลาย (ป.4–ป.6)</p>
+                        </div>
+                    </button>
                 </div>
             </div>
 

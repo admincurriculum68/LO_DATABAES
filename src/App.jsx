@@ -12,6 +12,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminReportLO from './pages/AdminReportLO';
 import AdminReportCompetency from './pages/AdminReportCompetency';
 import YearlyReportAdmin from './pages/YearlyReportAdmin';
+import PhaseReportAdmin from './pages/PhaseReportAdmin';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
@@ -84,6 +85,11 @@ export default function App() {
         <Route path="/admin/yearly-report" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <YearlyReportAdmin />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/phase-report" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <PhaseReportAdmin />
           </ProtectedRoute>
         } />
 
