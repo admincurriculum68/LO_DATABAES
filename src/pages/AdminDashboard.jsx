@@ -6,6 +6,7 @@ import Layout from '../components/Layout';
 import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
 
 export default function AdminDashboard() {
@@ -186,19 +187,47 @@ export default function AdminDashboard() {
     };
     // ────────────────────────────────────────────────────────────────────────
 
+    // ─── File Parser: supports both .csv and .xlsx ───────────────────────────
+    const parseUploadedFile = (file) => new Promise((resolve, reject) => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'xlsx' || ext === 'xls') {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'array', cellText: true, cellDates: true });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    // Use raw:false so numbers stay as formatted strings (prevents scientific notation)
+                    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+                    resolve(rows);
+                } catch (err) {
+                    reject(new Error('อ่านไฟล์ Excel ไม่สำเร็จ: ' + err.message));
+                }
+            };
+            reader.onerror = () => reject(new Error('เปิดไฟล์ไม่สำเร็จ'));
+            reader.readAsArrayBuffer(file);
+        } else {
+            // CSV fallback via PapaParse
+            Papa.parse(file, {
+                header: true, skipEmptyLines: true,
+                complete: (results) => resolve(results.data),
+                error: (err) => reject(new Error(err.message)),
+            });
+        }
+    });
+    // ──────────────────────────────────────────────────────────────
+
     // --- CSV IMPORT ---
-    const handleFileUpload = (e, importType) => {
+    const handleFileUpload = async (e, importType) => {
         const file = e.target.files[0];
         if (!file) return;
+        e.target.value = null;
+        const ext = file.name.split('.').pop().toLowerCase();
+        const label = ext === 'xlsx' || ext === 'xls' ? 'Excel' : 'CSV';
+        toast.loading(`กำลังอ่านไฟล์ ${label} สำหรับ: ${importType}...`, { id: 'csv' });
 
-        e.target.value = null; // Reset input
-        toast.loading(`กำลังอ่านไฟล์ CSV สำหรับ: ${importType}...`, { id: 'csv' });
-
-        Papa.parse(file, {
-            header: true, skipEmptyLines: true,
-            complete: async (results) => {
-                const data = results.data;
-                if (data.length === 0) { toast.error('ไฟล์ว่างเปล่า', { id: 'csv' }); return; }
+        try {
+            const data = await parseUploadedFile(file);
+            if (!data || data.length === 0) { toast.error('ไฟล์ว่างเปล่า', { id: 'csv' }); return; }
 
                 try {
                     let payload = [];
@@ -403,8 +432,9 @@ export default function AdminDashboard() {
                 } catch (err) {
                     toast.error('ข้อผิดพลาดการนำเข้า: ' + err.message, { id: 'csv' });
                 }
-            }
-        });
+        } catch (err) {
+            toast.error('อ่านไฟล์ไม่สำเร็จ: ' + err.message, { id: 'csv' });
+        }
     };
 
     // --- LO MAPPING ---
@@ -770,24 +800,36 @@ export default function AdminDashboard() {
                                             <div className="flex flex-col sm:flex-row gap-3 mt-auto pt-6 border-t border-slate-200">
                                                 <button
                                                     onClick={() => {
-                                                        const blob = new Blob(['\ufeff' + card.template], { type: 'text/csv;charset=utf-8;' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const link = document.createElement('a');
-                                                        link.href = url;
-                                                        link.setAttribute('download', `template_${card.id}.csv`);
-                                                        document.body.appendChild(link);
-                                                        link.click();
-                                                        document.body.removeChild(link);
+                                                        // Build XLSX with Text-formatted columns
+                                                        const ws = XLSX.utils.aoa_to_sheet([]);
+                                                        const headers = card.template.split('\n')[0].split(',');
+                                                        const sampleRow = card.template.split('\n')[1]?.split(',') || [];
+                                                        XLSX.utils.sheet_add_aoa(ws, [headers, sampleRow], { origin: 'A1' });
+                                                        // Format citizen_id and dob columns as Text to prevent Excel scientific notation
+                                                        const textCols = ['citizen_id', 'dob', 'student_code'];
+                                                        headers.forEach((h, colIdx) => {
+                                                            if (textCols.includes(h.trim())) {
+                                                                const colLetter = XLSX.utils.encode_col(colIdx);
+                                                                if (!ws['!cols']) ws['!cols'] = [];
+                                                                ws['!cols'][colIdx] = { wch: 18 };
+                                                                // Mark sample cell as text
+                                                                const cellAddr = colLetter + '2';
+                                                                if (ws[cellAddr]) ws[cellAddr].t = 's';
+                                                            }
+                                                        });
+                                                        const wb = XLSX.utils.book_new();
+                                                        XLSX.utils.book_append_sheet(wb, ws, 'data');
+                                                        XLSX.writeFile(wb, `แม่แบบ_${card.id}.xlsx`);
                                                     }}
                                                     className="flex-1 bg-white border-2 border-slate-300 hover:border-indigo-600 hover:text-indigo-600 text-slate-600 px-4 py-3 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 group/btn"
                                                 >
                                                     <Download className="w-4 h-4 group-hover/btn:-translate-y-1 transition-transform" />
-                                                    <span>โหลดแม่แบบ (CSV)</span>
+                                                    <span>ไฟล์ Excel แม่แบบ (.xlsx)</span>
                                                 </button>
                                                 <label className="flex-1 bg-slate-900 hover:bg-black border-2 border-slate-900 hover:border-black text-white px-4 py-3 rounded-2xl font-bold text-sm cursor-pointer shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden group/btn2">
                                                     <Upload className="w-4 h-4 group-hover/btn2:-translate-y-1 transition-transform" />
                                                     <span>อัปโหลดข้อมูล</span>
-                                                    <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} />
+                                                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} />
                                                 </label>
                                             </div>
                                         </div>
