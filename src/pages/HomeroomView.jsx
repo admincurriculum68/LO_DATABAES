@@ -249,7 +249,6 @@ enrollment_id, room, student_id, subject_id,
                                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider min-w-[200px] border-r border-slate-200">ชื่อ-นามสกุล</th>
                                 {uniqueSubjects.map(sub => (
                                     <th key={sub.id} className="px-3 py-4 text-center text-xs font-bold uppercase w-24 border-r border-slate-200 leading-tight">
-                                        <span className="block text-indigo-600">{sub.info.subject_code}</span>
                                         <span className="block font-medium text-[10px] text-slate-400 truncate max-w-[100px]">{sub.info.subject_name}</span>
                                     </th>
                                 ))}

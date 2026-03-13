@@ -191,7 +191,6 @@ export default function AdminReportLO() {
                                                 </th>
                                                 {subjects.map(sub => (
                                                     <th key={sub.subject_id} className="px-4 py-3 text-center font-bold border-r border-indigo-500 print:border-black min-w-[120px] text-xs">
-                                                        <span className="block font-extrabold">{sub.subject_code}</span>
                                                         <span className="block font-normal text-indigo-200 print:text-slate-500 mt-0.5 whitespace-normal leading-tight max-w-[120px]">{sub.subject_name}</span>
                                                         <span className="block text-[11px] font-normal text-indigo-300 print:text-slate-400">{sub.grade_level} | เทอม {sub.semester}/{sub.academic_year}</span>
                                                     </th>

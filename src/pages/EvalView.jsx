@@ -178,7 +178,7 @@ export default function EvalView() {
                         </button>
                         <div className="hidden sm:block w-px h-6 bg-slate-300"></div>
                         <h1 className="font-bold text-lg text-slate-800 truncate">
-                            {subject ? `${subject.subject_code} ${subject.subject_name}` : 'กำลังโหลด...'}
+                            {subject ? subject.subject_name : 'กำลังโหลด...'}
                         </h1>
                     </div>
                     {/* Auto-save / Save state indicator */}

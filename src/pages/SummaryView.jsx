@@ -99,7 +99,7 @@ export default function SummaryView() {
                         <h1 className="font-bold text-base text-slate-800 truncate flex items-center">
                             <FileBarChart className="w-5 h-5 mr-2 text-indigo-500 shrink-0" />
                             ตารางที่ 1 — รายงานผลลัพธ์ฯ รายวิชา:&nbsp;
-                            <span className="text-indigo-600">{subject ? `${subject.subject_code} ${subject.subject_name}` : ''}</span>
+                            <span className="text-indigo-600">{subject ? subject.subject_name : ''}</span>
                         </h1>
                     </div>
                     <button
@@ -117,7 +117,7 @@ export default function SummaryView() {
                 {/* Print-only title block */}
                 <div className="hidden print:block mb-6">
                     <p className="font-extrabold text-base mb-1">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</p>
-                    <p className="text-sm">รายวิชา {subject?.subject_code} {subject?.subject_name}&emsp;
+                    <p className="text-sm">รายวิชา {subject?.subject_name}&emsp;
                        ระดับชั้น {subject?.grade_level}&emsp;
                        ภาคเรียน {subject?.semester}/{subject?.academic_year}</p>
                 </div>
@@ -128,7 +128,7 @@ export default function SummaryView() {
                         <div>
                             <p className="text-xs text-indigo-500 font-extrabold uppercase tracking-widest mb-1">ตารางที่ 1 — รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</p>
                             <h2 className="text-lg font-extrabold text-slate-800">
-                                {subject?.subject_code} {subject?.subject_name}
+                                {subject?.subject_name}
                             </h2>
                             <p className="text-sm text-slate-500 mt-1">
                                 ระดับชั้น <span className="font-bold text-slate-700">{subject?.grade_level}</span>

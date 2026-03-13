@@ -391,14 +391,14 @@ export default function AdminDashboard() {
                     else if (importType === 'subjects') {
                         let tempPayload = data.map(s => ({
                             school_id: currentUser.school_id, academic_year: parseInt(s.academic_year) || 2567,
-                            semester: parseInt(s.semester) || 1, subject_code: s.subject_code?.trim(),
+                            semester: parseInt(s.semester) || 1,
                             subject_name: s.subject_name?.trim(), grade_level: s.grade_level?.trim(),
                             subject_group: s.subject_group?.trim() || null, teacher_id: s.teacher_id?.trim() || null
                         }));
                         
-                        // ป้องกันข้อมูลซ้ำ (รหัสวิชา_ปี_เทอม)
-                        const existingSet = new Set(subjects.map(s => `${s.subject_code}_${s.academic_year}_${s.semester}`));
-                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_code}_${p.academic_year}_${p.semester}`));
+                        // ป้องกันข้อมูลซ้ำ (ชื่อวิชา_ปี_เทอม)
+                        const existingSet = new Set(subjects.map(s => `${s.subject_name}_${s.academic_year}_${s.semester}`));
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_name}_${p.academic_year}_${p.semester}`));
 
                         if (payload.length > 0) {
                             const { error } = await supabase.from('subjects').insert(payload);
@@ -945,7 +945,7 @@ export default function AdminDashboard() {
                                     {[
                                         { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี' },
                                         { id: 'teachers', title: '2. ข้อมูลครู (Teachers)', desc: 'รายชื่อครูและบุคลากรในโรงเรียน', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_id\n2569,1,ค11101,คณิตศาสตร์พื้นฐาน,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,id-ครู' },
+                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_id\n2569,1,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,id-ครู' },
                                         { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_id,subject_id,room\nid-นักเรียน,id-วิชา,ป.1/1' },
                                         { id: 'learning_outcomes', title: '5. คลังสมรรถนะ (LO)', desc: 'คำอธิบายรายวิชา (LO) ทั้งหมด', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
                                         { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
@@ -1015,7 +1015,7 @@ export default function AdminDashboard() {
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-extrabold outline-none"
                                         >
                                             <option value="" disabled>- โปรดเลือกลายวิชาเพื่อจัดการ -</option>
-                                            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_code} {s.subject_name}</option>)}
+                                            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) เทอม {s.semester}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -1100,7 +1100,7 @@ export default function AdminDashboard() {
                                     >
                                         <option value="" disabled>- 1. เลือกรายวิชาต้นทาง -</option>
                                         {subjects.map(s => (
-                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_code} - {s.subject_name} ({s.grade_level})</option>
+                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) เทอม {s.semester}</option>
                                         ))}
                                     </select>
 

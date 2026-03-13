@@ -249,7 +249,6 @@ export default function AdminReportCompetency() {
                                             <tr className="bg-purple-700 text-purple-100 print:bg-transparent print:text-black">
                                                 {columns.map((col, i) => (
                                                     <th key={i} className="px-3 py-2 text-center border-r border-purple-500 print:border-black min-w-[110px] text-xs">
-                                                        <span className="block font-bold text-white print:text-black">{col.sub.subject_code}</span>
                                                         <span className="block font-normal text-purple-200 print:text-slate-500 whitespace-normal leading-tight">{col.sub.subject_name}</span>
                                                     </th>
                                                 ))}

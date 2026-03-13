@@ -121,7 +121,7 @@ export default function TeacherDashboard() {
 
                                 <div className="space-y-2 mb-8">
                                     <span className="inline-block text-sm font-extrabold text-slate-400 font-mono tracking-widest uppercase">
-                                        {sub.subject_code}
+                                        {sub.subject_name}
                                     </span>
                                     <h3 className="text-2xl font-extrabold text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors line-clamp-2">
                                         {sub.subject_name}
