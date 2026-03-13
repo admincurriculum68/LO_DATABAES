@@ -464,6 +464,50 @@ export default function AdminDashboard() {
                             return;
                         }
                     }
+                    else if (importType === 'yearly_competencies') {
+                        let tempPayload = data.map(c => ({
+                            school_id: currentUser.school_id, 
+                            grade_level: c.grade_level?.trim(),
+                            competency_no: parseInt(c.competency_no),
+                            description: c.description?.trim(),
+                            expected_level: c.expected_level?.trim()
+                        }));
+
+                        const { data: existing } = await supabase.from('yearly_competencies').select('grade_level, competency_no').eq('school_id', currentUser.school_id);
+                        const existingSet = new Set((existing || []).map(x => `${x.grade_level}_${x.competency_no}`));
+                        
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.grade_level}_${p.competency_no}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('yearly_competencies').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลตั้งค่าความสามารถ ปพ.๖ ซ้ำกับที่มีอยู่แล้ว', { id: 'csv' });
+                            return;
+                        }
+                    }
+                    else if (importType === 'yearly_behavior_templates') {
+                        let tempPayload = data.map(b => ({
+                            school_id: currentUser.school_id,
+                            grade_level: b.grade_level?.trim(),
+                            competency_no: parseInt(b.competency_no),
+                            competency_level: b.competency_level?.trim(),
+                            behavior_text: b.behavior_text?.trim()
+                        }));
+
+                        const { data: existing } = await supabase.from('yearly_behavior_templates').select('grade_level, competency_no, competency_level').eq('school_id', currentUser.school_id);
+                        const existingSet = new Set((existing || []).map(x => `${x.grade_level}_${x.competency_no}_${x.competency_level}`));
+                        
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.grade_level}_${p.competency_no}_${p.competency_level}`));
+
+                        if (payload.length > 0) {
+                            const { error } = await supabase.from('yearly_behavior_templates').insert(payload);
+                            if (error) throw error;
+                        } else {
+                            toast.error('ข้อมูลพฤติกรรมรายชั้นปี ซ้ำกับที่มีอยู่แล้ว', { id: 'csv' });
+                            return;
+                        }
+                    }
 
                     toast.success(`นำเข้าสำเร็จ ${payload.length} รายการ`, { id: 'csv' });
 
@@ -880,7 +924,9 @@ export default function AdminDashboard() {
                                         { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_id\n2569,1,ค11101,คณิตศาสตร์พื้นฐาน,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,id-ครู' },
                                         { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_id,subject_id,room\nid-นักเรียน,id-วิชา,ป.1/1' },
                                         { id: 'learning_outcomes', title: '5. คลังสมรรถนะ (LO)', desc: 'คำอธิบายรายวิชา (LO) ทั้งหมด', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
-                                        { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' }
+                                        { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
+                                        { id: 'yearly_competencies', title: '7. ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
+                                        { id: 'yearly_behavior_templates', title: '8. คลังพฤติกรรมรายชั้นปี (ปพ.๖)', desc: 'พฤติกรรมเปรียบเทียบในแต่ละระดับแยกตามข้อ', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
                                     ].map(card => (
                                         <div key={card.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-6 hover:shadow-lg transition-all group flex flex-col">
                                             <div className="flex justify-between items-start mb-4">
