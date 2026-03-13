@@ -711,6 +711,18 @@ export default function AdminDashboard() {
                             <p className="text-sm text-slate-500 mt-0.5">รายงานผลการประเมินรายด้านความสามารถของนักเรียนทุกรายวิชาที่ผูกไว้</p>
                         </div>
                     </button>
+                    <button
+                        onClick={() => navigate('/admin/yearly-report')}
+                        className="group flex items-center gap-4 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
+                    >
+                        <div className="w-12 h-12 bg-emerald-100 group-hover:bg-emerald-600 rounded-2xl flex items-center justify-center transition-colors">
+                            <GraduationCap className="w-6 h-6 text-emerald-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div>
+                            <p className="font-extrabold text-slate-800">รายงานผลการเรียนรายบุคคล (ปพ.๖)</p>
+                            <p className="text-sm text-slate-500 mt-0.5">บันทึกผลและพิมพ์แบบรายงานผลการเรียนชั้นปีรายบุคคล</p>
+                        </div>
+                    </button>
                 </div>
             </div>
 
