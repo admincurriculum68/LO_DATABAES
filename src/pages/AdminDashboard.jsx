@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3 } from 'lucide-react';
+import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -11,6 +11,7 @@ import { hashPassword } from '../lib/auth';
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
+    const { academicYear, semester } = useAcademic();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('data');
 
@@ -40,6 +41,17 @@ export default function AdminDashboard() {
     const [enrollRoom, setEnrollRoom] = useState('ป.1/1');
     const [loadingEnrollments, setLoadingEnrollments] = useState(false);
     const [subjectEnrollments, setSubjectEnrollments] = useState([]);
+
+    // Evaluation Progress States
+    const [evalProgress, setEvalProgress] = useState([]);
+    const [loadingProgress, setLoadingProgress] = useState(false);
+
+    // Promotion States
+    const [promoFromRoom, setPromoFromRoom] = useState('');
+    const [promoToGrade, setPromoToGrade] = useState('');
+    const [promoToRoom, setPromoToRoom] = useState('');
+    const [loadingPromo, setLoadingPromo] = useState(false);
+    const [promoStudents, setPromoStudents] = useState([]);
 
     // Load common base data & stats
     useEffect(() => {
@@ -747,7 +759,9 @@ export default function AdminDashboard() {
                             { id: 'data', label: 'จัดการข้อมูลดิบ', icon: Search },
                             { id: 'import', label: 'ฟอร์มนำเข้าข้อมูล', icon: Upload },
                             { id: 'mapping', label: 'ผูกมาตรฐาน (LO)', icon: LinkIcon },
-                            { id: 'enrollment', label: 'จัดผู้เรียนเข้าห้อง', icon: Users }
+                            { id: 'enrollment', label: 'จัดผู้เรียนเข้าห้อง', icon: Users },
+                            { id: 'progress', label: 'สถานะการประเมิน', icon: CheckCircle },
+                            { id: 'promotion', label: 'เลื่อนชั้น/ปรับห้อง', icon: ArrowUpCircle }
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -1147,6 +1161,71 @@ export default function AdminDashboard() {
                                             disabled={!enrollSubject}
                                         />
                                     </div>
+
+                                    {/* 🔥 Bulk Enrollment: เพิ่มทั้งห้อง */}
+                                    <div className="w-full bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <div className="flex items-center gap-3 flex-1">
+                                            <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+                                                <UsersRound className="w-5 h-5 text-emerald-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-extrabold text-sm text-emerald-900">เพิ่มนักเรียนทั้งห้อง (Bulk)</p>
+                                                <p className="text-xs text-emerald-600">เลือกห้อง → เพิ่มนักเรียนทุกคนในห้องนั้นเข้าวิชาที่เลือกทันที</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 items-center w-full sm:w-auto">
+                                            <select
+                                                value={enrollRoom}
+                                                onChange={(e) => setEnrollRoom(e.target.value)}
+                                                disabled={!enrollSubject}
+                                                className="bg-white border border-emerald-200 text-slate-800 py-2.5 px-3 rounded-xl font-bold text-sm focus:ring-2 focus:ring-emerald-400 outline-none shadow-sm disabled:opacity-50"
+                                            >
+                                                {[...new Set(allStudents.map(s => s.current_room).filter(Boolean))].sort().map(room => (
+                                                    <option key={room} value={room}>{room}</option>
+                                                ))}
+                                                {/* Fallback if no current_room set */}
+                                                {allStudents.every(s => !s.current_room) && (
+                                                    <option value={enrollRoom}>{enrollRoom}</option>
+                                                )}
+                                            </select>
+                                            <button
+                                                disabled={!enrollSubject}
+                                                onClick={async () => {
+                                                    if (!enrollSubject) return;
+                                                    const roomStudents = allStudents.filter(s => s.current_room === enrollRoom);
+                                                    if (roomStudents.length === 0) {
+                                                        toast.error(`ไม่พบนักเรียนในห้อง ${enrollRoom}`);
+                                                        return;
+                                                    }
+                                                    const existingIds = new Set(subjectEnrollments.map(e => e.student_id));
+                                                    const newStudents = roomStudents.filter(s => !existingIds.has(s.student_id));
+                                                    if (newStudents.length === 0) {
+                                                        toast.error(`นักเรียนในห้อง ${enrollRoom} ลงทะเบียนในวิชานี้ครบแล้ว`);
+                                                        return;
+                                                    }
+                                                    if (!window.confirm(`ยืนยันเพิ่มนักเรียน ${newStudents.length} คน จากห้อง ${enrollRoom} เข้าวิชานี้?`)) return;
+                                                    toast.loading(`กำลังเพิ่ม ${newStudents.length} คน...`, { id: 'bulk_en' });
+                                                    const payload = newStudents.map(s => ({
+                                                        student_id: s.student_id,
+                                                        subject_id: enrollSubject,
+                                                        room: enrollRoom
+                                                    }));
+                                                    const { error } = await supabase.from('student_enrollments').insert(payload);
+                                                    if (error) {
+                                                        toast.error('เพิ่มไม่สำเร็จ: ' + error.message, { id: 'bulk_en' });
+                                                    } else {
+                                                        toast.success(`เพิ่มสำเร็จ ${newStudents.length} คนจากห้อง ${enrollRoom}`, { id: 'bulk_en' });
+                                                        // Reload enrollments
+                                                        const { data } = await supabase.from('student_enrollments').select('*, users_students(*)').eq('subject_id', enrollSubject);
+                                                        setSubjectEnrollments(data || []);
+                                                    }
+                                                }}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition-all disabled:opacity-50 whitespace-nowrap"
+                                            >
+                                                ⚡ เพิ่มทั้งห้อง
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {loadingEnrollments ? (
@@ -1193,6 +1272,279 @@ export default function AdminDashboard() {
                                 ) : (
                                     <div className="text-center py-32 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                                         โปรดเลือกรายวิชาที่ช่องตัวเลือกด้านบนซ้ายก่อน
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {/* --- TAB 5: EVALUATION PROGRESS --- */}
+                        {activeTab === 'progress' && (
+                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
+                                <div className="mb-6 border-b border-slate-100 pb-6">
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> สถานะการประเมินของครูแต่ละรายวิชา</h2>
+                                    <p className="text-slate-500 font-medium text-sm">ตรวจสอบว่าครูคนไหนประเมินครบแล้ว คนไหนยังไม่ครบ</p>
+                                    <button
+                                        onClick={async () => {
+                                            setLoadingProgress(true);
+                                            try {
+                                                // Load all subjects with teacher info
+                                                const { data: subs } = await supabase
+                                                    .from('subjects')
+                                                    .select('subject_id, subject_name, grade_level, semester, academic_year, teacher_id, users_teachers(prefix, first_name, last_name)')
+                                                    .eq('school_id', currentUser.school_id)
+                                                    .order('academic_year', { ascending: false });
+
+                                                const subjectIds = (subs || []).map(s => s.subject_id);
+                                                if (subjectIds.length === 0) { setEvalProgress([]); setLoadingProgress(false); return; }
+
+                                                // Load enrollments
+                                                const { data: enrolls } = await supabase
+                                                    .from('student_enrollments')
+                                                    .select('enrollment_id, subject_id')
+                                                    .in('subject_id', subjectIds);
+
+                                                // Load LO mappings
+                                                const { data: loMaps } = await supabase
+                                                    .from('subject_lo_mapping')
+                                                    .select('subject_id, lo_id')
+                                                    .in('subject_id', subjectIds);
+
+                                                // Load evaluations
+                                                const enrollIds = (enrolls || []).map(e => e.enrollment_id);
+                                                let evals = [];
+                                                if (enrollIds.length > 0) {
+                                                    const { data } = await supabase
+                                                        .from('lo_evaluations')
+                                                        .select('enrollment_id, lo_id')
+                                                        .in('enrollment_id', enrollIds);
+                                                    evals = data || [];
+                                                }
+
+                                                // Calculate per subject
+                                                const progress = (subs || []).map(sub => {
+                                                    const subEnrolls = (enrolls || []).filter(e => e.subject_id === sub.subject_id);
+                                                    const subLOs = (loMaps || []).filter(m => m.subject_id === sub.subject_id);
+                                                    const totalCells = subEnrolls.length * subLOs.length;
+                                                    const subEnrollIds = subEnrolls.map(e => e.enrollment_id);
+                                                    const subLoIds = subLOs.map(l => l.lo_id);
+                                                    const filled = evals.filter(ev =>
+                                                        subEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id)
+                                                    ).length;
+                                                    const pct = totalCells > 0 ? Math.round((filled / totalCells) * 100) : 0;
+                                                    const teacher = sub.users_teachers;
+                                                    return {
+                                                        ...sub,
+                                                        teacherName: teacher ? `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}` : 'ยังไม่มอบหมาย',
+                                                        studentCount: subEnrolls.length,
+                                                        loCount: subLOs.length,
+                                                        totalCells,
+                                                        filledCells: filled,
+                                                        percent: pct
+                                                    };
+                                                });
+
+                                                setEvalProgress(progress);
+                                            } catch (err) {
+                                                toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
+                                            } finally {
+                                                setLoadingProgress(false);
+                                            }
+                                        }}
+                                        className="mt-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+                                    >
+                                        <CheckCircle className="w-4 h-4" />
+                                        โหลดสถานะการประเมินทั้งหมด
+                                    </button>
+                                </div>
+
+                                {loadingProgress ? (
+                                    <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
+                                ) : evalProgress.length === 0 ? (
+                                    <div className="text-center py-20 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                        กดปุ่ม "โหลดสถานะการประเมินทั้งหมด" ด้านบนเพื่อเริ่มต้น
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {/* Summary bar */}
+                                        <div className="grid grid-cols-3 gap-4 mb-6">
+                                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
+                                                <p className="text-3xl font-extrabold text-emerald-700">{evalProgress.filter(p => p.percent === 100).length}</p>
+                                                <p className="text-xs font-bold text-emerald-600">ประเมินครบแล้ว</p>
+                                            </div>
+                                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                                                <p className="text-3xl font-extrabold text-amber-700">{evalProgress.filter(p => p.percent > 0 && p.percent < 100).length}</p>
+                                                <p className="text-xs font-bold text-amber-600">กำลังดำเนินการ</p>
+                                            </div>
+                                            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
+                                                <p className="text-3xl font-extrabold text-red-700">{evalProgress.filter(p => p.percent === 0).length}</p>
+                                                <p className="text-xs font-bold text-red-600">ยังไม่เริ่ม</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Per-subject cards */}
+                                        {evalProgress.map(p => (
+                                            <div key={p.subject_id} className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 rounded-2xl border transition-all ${
+                                                p.percent === 100 ? 'bg-emerald-50/50 border-emerald-200' :
+                                                p.percent > 0 ? 'bg-amber-50/30 border-amber-200' :
+                                                'bg-red-50/30 border-red-200'
+                                            }`}>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-extrabold text-slate-800 text-sm truncate">{p.subject_name}</p>
+                                                    <p className="text-xs text-slate-500 mt-0.5">
+                                                        ครู: <span className="font-bold text-slate-700">{p.teacherName}</span>
+                                                        &ensp;|&ensp;{p.grade_level} เทอม {p.semester}/{p.academic_year}
+                                                        &ensp;|&ensp;{p.studentCount} คน · {p.loCount} LO
+                                                    </p>
+                                                </div>
+                                                <div className="w-full sm:w-48 shrink-0">
+                                                    <div className="flex justify-between text-xs font-bold mb-1">
+                                                        <span className={p.percent === 100 ? 'text-emerald-600' : p.percent > 0 ? 'text-amber-600' : 'text-red-500'}>
+                                                            {p.filledCells}/{p.totalCells}
+                                                        </span>
+                                                        <span className="text-slate-600">{p.percent}%</span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                                        <div
+                                                            className={`h-full rounded-full transition-all duration-500 ${
+                                                                p.percent === 100 ? 'bg-emerald-500' : p.percent > 50 ? 'bg-indigo-500' : p.percent > 0 ? 'bg-amber-400' : 'bg-red-300'
+                                                            }`}
+                                                            style={{ width: `${Math.max(p.percent, 1)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <span className={`text-xs font-extrabold px-3 py-1.5 rounded-lg border shrink-0 ${
+                                                    p.percent === 100 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                                                    p.percent > 0 ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                                                    'bg-red-100 text-red-600 border-red-300'
+                                                }`}>
+                                                    {p.percent === 100 ? '✅ ครบ' : p.percent > 0 ? `⏳ ${p.percent}%` : '❌ ยังไม่เริ่ม'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* --- TAB 6: STUDENT PROMOTION --- */}
+                        {activeTab === 'promotion' && (
+                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
+                                <div className="mb-6 border-b border-slate-100 pb-6">
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><ArrowUpCircle className="w-6 h-6 mr-3 text-indigo-500" /> เลื่อนชั้นนักเรียน (ปรับชั้น/ปรับห้อง)</h2>
+                                    <p className="text-slate-500 font-medium text-sm">เครื่องมือสำหรับอัปเดตชั้นเรียนและห้องเรียนของนักเรียนจำนวนมากพร้อมกัน (เช่น ปลายปีการศึกษา)</p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                                        <h3 className="font-bold text-slate-700 mb-4 flex items-center"><Search className="w-4 h-4 mr-2"/> 1. ค้นหานักเรียนจากห้องปัจจุบัน</h3>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                placeholder="เช่น ป.1/1"
+                                                className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={promoFromRoom}
+                                                onChange={(e) => setPromoFromRoom(e.target.value)}
+                                            />
+                                            <button 
+                                                onClick={async () => {
+                                                    if (!promoFromRoom.trim()) return toast.error('กรุณาระบุห้อง');
+                                                    setLoadingPromo(true);
+                                                    try {
+                                                        const { data, error } = await supabase
+                                                            .from('users_students')
+                                                            .select('*')
+                                                            .eq('school_id', currentUser.school_id)
+                                                            .eq('current_room', promoFromRoom.trim())
+                                                            .order('student_code');
+                                                        if (error) throw error;
+                                                        if (data.length === 0) toast.error('ไม่พบนักเรียนในห้องนี้');
+                                                        else toast.success(`พบนักเรียน ${data.length} คน`);
+                                                        setPromoStudents(data || []);
+                                                    } catch (err) {
+                                                        toast.error('ข้อผิดพลาด: ' + err.message);
+                                                    } finally {
+                                                        setLoadingPromo(false);
+                                                    }
+                                                }}
+                                                className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold hover:bg-slate-900 transition flex items-center"
+                                            >
+                                                {loadingPromo ? <div className="loader w-4 h-4 mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                                                ค้นหา
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-200">
+                                        <h3 className="font-bold text-indigo-800 mb-4 flex items-center"><ArrowUpCircle className="w-4 h-4 mr-2"/> 2. เลื่อนไปยังชั้น/ห้องใหม่</h3>
+                                        <div className="flex flex-col gap-3">
+                                            <input 
+                                                type="text" 
+                                                placeholder="ชั้นใหม่ (เช่น ป.2)"
+                                                className="w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={promoToGrade}
+                                                onChange={(e) => setPromoToGrade(e.target.value)}
+                                            />
+                                            <input 
+                                                type="text" 
+                                                placeholder="ห้องใหม่ (เช่น ป.2/1)"
+                                                className="w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={promoToRoom}
+                                                onChange={(e) => setPromoToRoom(e.target.value)}
+                                            />
+                                            <button 
+                                                disabled={promoStudents.length === 0 || !promoToGrade || !promoToRoom}
+                                                onClick={async () => {
+                                                    if (!window.confirm(`ยืนยันการเปลี่ยนนักเรียนทั้ง ${promoStudents.length} คน ไปยังชั้น ${promoToGrade} ห้อง ${promoToRoom} หรือไม่?`)) return;
+                                                    try {
+                                                        const { error } = await supabase
+                                                            .from('users_students')
+                                                            .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
+                                                            .in('student_id', promoStudents.map(s => s.student_id));
+                                                        if (error) throw error;
+                                                        toast.success('เลื่อนชั้นสำเร็จ!');
+                                                        setPromoStudents([]);
+                                                        setPromoFromRoom('');
+                                                        setPromoToGrade('');
+                                                        setPromoToRoom('');
+                                                    } catch (err) {
+                                                        toast.error('บันทึกไม่สำเร็จ: ' + err.message);
+                                                    }
+                                                }}
+                                                className="w-full mt-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                ย้ายนักเรียนทั้งห้อง ({promoStudents.length} คน)
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {promoStudents.length > 0 && (
+                                    <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
+                                        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
+                                            <span>รายชื่อนักเรียนที่จะถูกเลื่อนชั้น</span>
+                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-lg">พบ {promoStudents.length} คน</span>
+                                        </div>
+                                        <div className="max-h-80 overflow-y-auto">
+                                            <table className="w-full text-left text-sm whitespace-nowrap">
+                                                <thead className="bg-white sticky top-0 border-b border-slate-100">
+                                                    <tr className="text-slate-500">
+                                                        <th className="px-4 py-2 font-medium w-16 text-center">ลำดับ</th>
+                                                        <th className="px-4 py-2 font-medium w-32">รหัสนักเรียน</th>
+                                                        <th className="px-4 py-2 font-medium">ชื่อ-นามสกุล</th>
+                                                        <th className="px-4 py-2 font-medium">ชั้นปัจจุบัน</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 bg-white">
+                                                    {promoStudents.map((s, i) => (
+                                                        <tr key={s.student_id} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-2 text-center text-slate-400 font-semibold">{i+1}</td>
+                                                            <td className="px-4 py-2 font-mono text-slate-600">{s.student_code}</td>
+                                                            <td className="px-4 py-2 font-bold text-slate-800">{s.prefix||''}{s.first_name} {s.last_name}</td>
+                                                            <td className="px-4 py-2 text-slate-500">{s.current_grade_level} ({s.current_room})</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
                                 )}
                             </div>

@@ -2,8 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
-import { ChevronLeft, Printer, FileBarChart2, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Printer, FileBarChart2, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 // Competency level badge
 const LevelBadge = ({ val }) => {
@@ -130,9 +131,33 @@ export default function AdminReportLO() {
                             ตารางที่ 2 — รายงาน LO ระดับรายผลลัพธ์การเรียนรู้
                         </h1>
                     </div>
-                    <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0">
-                        <Printer className="w-4 h-4 mr-2" /> พิมพ์
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                if (!selectedLO || subjects.length === 0) return toast.error('กรุณาเลือก LO ก่อน');
+                                const headers = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', ...subjects.map(s => `${s.subject_name} (${s.grade_level})`)];
+                                const rows = students.map((st, i) => {
+                                    const row = [i+1, st.student_code, `${st.prefix||''}${st.first_name} ${st.last_name}`];
+                                    subjects.forEach(sub => {
+                                        const key = `${st.student_id}_${sub.subject_id}`;
+                                        row.push(evalLookup[key] || '');
+                                    });
+                                    return row;
+                                });
+                                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, 'LO Report');
+                                XLSX.writeFile(wb, `รายงานLO_${selectedLOData?.lo_code || 'report'}.xlsx`);
+                                toast.success('ส่งออก Excel สำเร็จ!');
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
+                        >
+                            <Download className="w-4 h-4 mr-2" /> Excel
+                        </button>
+                        <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0">
+                            <Printer className="w-4 h-4 mr-2" /> พิมพ์
+                        </button>
+                    </div>
                 </div>
             </header>
 

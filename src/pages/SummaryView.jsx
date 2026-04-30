@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { ChevronLeft, Printer, FileBarChart } from 'lucide-react';
+import { ChevronLeft, Printer, FileBarChart, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 // Color map for competency levels
 const levelStyle = (val) => {
@@ -102,13 +103,39 @@ export default function SummaryView() {
                             <span className="text-indigo-600">{subject ? subject.subject_name : ''}</span>
                         </h1>
                     </div>
-                    <button
-                        onClick={() => window.print()}
-                        className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
-                    >
-                        <Printer className="w-4 h-4 mr-2" />
-                        พิมพ์ตาราง
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                if (!data || enrollments.length === 0) return toast.error('ไม่มีข้อมูลให้ส่งออก');
+                                const headers = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', ...learningOutcomes.map(lo => lo.lo_code || `LO ${lo.ability_no}`)];
+                                const rows = enrollments.map((enroll, i) => {
+                                    const st = enroll.users_students;
+                                    const row = [i + 1, st?.student_code || '', `${st?.prefix || ''}${st?.first_name} ${st?.last_name}`];
+                                    learningOutcomes.forEach(lo => {
+                                        const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
+                                        row.push(ev?.competency_level || '');
+                                    });
+                                    return row;
+                                });
+                                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+                                const wb = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(wb, ws, 'ผลรายวิชา');
+                                XLSX.writeFile(wb, `ผลลัพธ์_${subject?.subject_name || 'report'}.xlsx`);
+                                toast.success('ส่งออก Excel สำเร็จ!');
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
+                        >
+                            <Download className="w-4 h-4 mr-2" />
+                            Excel
+                        </button>
+                        <button
+                            onClick={() => window.print()}
+                            className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
+                        >
+                            <Printer className="w-4 h-4 mr-2" />
+                            พิมพ์ตาราง
+                        </button>
+                    </div>
                 </div>
             </header>
 

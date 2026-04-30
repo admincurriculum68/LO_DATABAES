@@ -13,6 +13,7 @@ import AdminReportLO from './pages/AdminReportLO';
 import AdminReportCompetency from './pages/AdminReportCompetency';
 import YearlyReportAdmin from './pages/YearlyReportAdmin';
 import PhaseReportAdmin from './pages/PhaseReportAdmin';
+import BatchReportView from './pages/BatchReportView';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
@@ -49,6 +50,11 @@ export default function App() {
         <Route path="/homeroom" element={
           <ProtectedRoute allowedRoles={['teacher']}>
             <HomeroomView />
+          </ProtectedRoute>
+        } />
+        <Route path="/batch-report/:room/:academicYear/:semester" element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <BatchReportView />
           </ProtectedRoute>
         } />
 

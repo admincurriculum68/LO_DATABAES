@@ -210,34 +210,14 @@ enrollment_id, room, student_id, subject_id,
                         </select>
                         <button
                             onClick={() => {
-                                // Simulate printing all class. We navigate using a special multi-student route or just alert for now.
-                                // A perfect way is a special BatchReportView. 
-                                // Alternatively, passing all IDs is difficult in URL.
-                                // For now, we'll navigate to the first student and tell them how to print all, OR we create a true batch print route.
-                                // Actually, let's open all student reports in new tabs, or better, navigate to a new route /batch-report.
-                                // Easiest for this task: Alert the user that this feature opens a print dialog for the whole class, 
-                                // then open students in new tabs (or loop window.open)
+                                if (!data || uniqueStudents.length === 0) return;
                                 const repYear = currentContext?.year || new Date().getFullYear() + 543;
                                 const repSem = currentContext?.semester || 1;
-                                const studentUris = uniqueStudents.map(s => `/report/${s.id}/${repYear}/${repSem}`);
-
-                                toast((t) => (
-                                    <div>
-                                        <b>กำลังเตรียมพิมพ์ ปพ.๖ ทั้งห้อง ({studentUris.length} คน)</b>
-                                        <p className="text-sm mt-1">ระบบจะเปิดแท็บใหม่สำหรับนักเรียนแต่ละคน กรุณาอนุญาต Pop-ups บนเบราว์เซอร์ของคุณ</p>
-                                        <div className="mt-3 flex gap-2">
-                                            <button className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => {
-                                                toast.dismiss(t.id);
-                                                studentUris.forEach(uri => window.open(uri, '_blank'));
-                                            }}>เริ่มพิมพ์เลย</button>
-                                            <button className="bg-slate-200 px-3 py-1 rounded text-sm" onClick={() => toast.dismiss(t.id)}>ยกเลิก</button>
-                                        </div>
-                                    </div>
-                                ), { duration: Infinity });
+                                navigate(`/batch-report/${encodeURIComponent(room.trim())}/${repYear}/${repSem}`);
                             }}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center"
                         >
-                            <Printer className="w-4 h-4 mr-2" /> พิมพ์ทั้งห้อง
+                            <Printer className="w-4 h-4 mr-2" /> พิมพ์ทั้งห้อง (หน้าเดียว)
                         </button>
                     </div>
                 </div>

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
+import { useAcademic } from '../AcademicContext';
 import Layout from '../components/Layout';
 import { BarChart3, Users, BookOpenCheck, Activity, Award, GraduationCap, TrendingUp, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ExecutiveDashboard() {
     const { currentUser } = useAuth();
+    const { academicYear, semester } = useAcademic();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
