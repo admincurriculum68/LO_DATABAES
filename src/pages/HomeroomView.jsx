@@ -26,9 +26,13 @@ export default function HomeroomView() {
     useEffect(() => {
         async function fetchRooms() {
             try {
-                // If it's an admin or executive, maybe allow all?
-                // But request says "ควรเป็นห้องตัวเอง เป็นครูประจำชั้นเท่านั้น"
-                if (currentUser && currentUser.homeroom) {
+                if (currentUser?.role === 'admin' || currentUser?.role === 'executive') {
+                    const { data } = await supabase.from('users_students').select('current_room').eq('school_id', currentUser.school_id);
+                    if (data) {
+                        const rooms = [...new Set(data.map(d => d.current_room).filter(Boolean))].sort();
+                        setAvailableRooms(rooms);
+                    }
+                } else if (currentUser && currentUser.homeroom) {
                     setAvailableRooms([currentUser.homeroom]);
                     setRoom(currentUser.homeroom);
                 } else {
@@ -383,18 +387,20 @@ enrollment_id, room, student_id, subject_id,
                 <form onSubmit={searchHomeroom} className="flex gap-4">
                     <div className="flex-1">
                         <label className="block text-sm font-bold text-slate-700 mb-2">เลือกห้องเรียน</label>
-                        <select
+                        <input
+                            type="text"
+                            list="homeroom-list"
+                            placeholder="พิมพ์ชื่อห้องเรียน หรือเลือกจากรายการ"
                             value={room}
                             onChange={(e) => setRoom(e.target.value)}
                             disabled={currentUser?.role !== 'admin' && currentUser?.role !== 'executive'}
-                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 disabled:opacity-75 disabled:cursor-not-allowed focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20 transition-all outline-none appearance-none cursor-pointer"
-                        >
-                            <option value="">-- เลือกห้องเรียน --</option>
-                            {availableRooms.length === 0 && <option value="" disabled>ยังไม่ได้กำหนดให้เป็นครูประจำชั้น</option>}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 disabled:opacity-75 disabled:cursor-not-allowed focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20 transition-all outline-none"
+                        />
+                        <datalist id="homeroom-list">
                             {availableRooms.map(r => (
-                                <option key={r} value={r}>{r}</option>
+                                <option key={r} value={r} />
                             ))}
-                        </select>
+                        </datalist>
                     </div>
                     <div className="flex items-end">
                         <button

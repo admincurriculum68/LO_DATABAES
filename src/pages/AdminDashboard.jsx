@@ -1156,6 +1156,7 @@ export default function AdminDashboard() {
                                         <input
                                             type="text"
                                             placeholder="ห้อง เช่น ป.1/1"
+                                            list="enroll-rooms-list"
                                             value={enrollRoom}
                                             onChange={(e) => setEnrollRoom(e.target.value)}
                                             className="w-32 bg-white border border-slate-200 text-slate-800 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm text-center"
@@ -1175,20 +1176,20 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
                                         <div className="flex gap-2 items-center w-full sm:w-auto">
-                                            <select
+                                            <input
+                                                type="text"
+                                                placeholder="เลือกหรือพิมพ์ชื่อห้อง..."
+                                                list="enroll-rooms-list"
                                                 value={enrollRoom}
                                                 onChange={(e) => setEnrollRoom(e.target.value)}
                                                 disabled={!enrollSubject}
                                                 className="bg-white border border-emerald-200 text-slate-800 py-2.5 px-3 rounded-xl font-bold text-sm focus:ring-2 focus:ring-emerald-400 outline-none shadow-sm disabled:opacity-50"
-                                            >
+                                            />
+                                            <datalist id="enroll-rooms-list">
                                                 {[...new Set(allStudents.map(s => s.current_room).filter(Boolean))].sort().map(room => (
-                                                    <option key={room} value={room}>{room}</option>
+                                                    <option key={room} value={room} />
                                                 ))}
-                                                {/* Fallback if no current_room set */}
-                                                {allStudents.every(s => !s.current_room) && (
-                                                    <option value={enrollRoom}>{enrollRoom}</option>
-                                                )}
-                                            </select>
+                                            </datalist>
                                             <button
                                                 disabled={!enrollSubject}
                                                 onClick={async () => {
@@ -1440,11 +1441,17 @@ export default function AdminDashboard() {
                                         <div className="flex gap-2">
                                             <input 
                                                 type="text" 
-                                                placeholder="เช่น ป.1/1"
+                                                placeholder="เช่น ป.1/1 (พิมพ์หรือเลือกจากรายการ)"
+                                                list="promo-rooms-list"
                                                 className="flex-1 px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                                                 value={promoFromRoom}
                                                 onChange={(e) => setPromoFromRoom(e.target.value)}
                                             />
+                                            <datalist id="promo-rooms-list">
+                                                {[...new Set(allStudents.map(s => s.current_room).filter(Boolean))].sort().map(room => (
+                                                    <option key={room} value={room} />
+                                                ))}
+                                            </datalist>
                                             <button 
                                                 onClick={async () => {
                                                     if (!promoFromRoom.trim()) return toast.error('กรุณาระบุห้อง');
@@ -1479,14 +1486,21 @@ export default function AdminDashboard() {
                                         <div className="flex flex-col gap-3">
                                             <input 
                                                 type="text" 
-                                                placeholder="ชั้นใหม่ (เช่น ป.2)"
+                                                placeholder="ชั้นใหม่ (เช่น ป.2) พิมพ์หรือเลือก"
+                                                list="promo-grades-list"
                                                 className="w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                                                 value={promoToGrade}
                                                 onChange={(e) => setPromoToGrade(e.target.value)}
                                             />
+                                            <datalist id="promo-grades-list">
+                                                {[...new Set(allStudents.map(s => s.current_grade_level).filter(Boolean))].sort().map(grade => (
+                                                    <option key={grade} value={grade} />
+                                                ))}
+                                            </datalist>
                                             <input 
                                                 type="text" 
-                                                placeholder="ห้องใหม่ (เช่น ป.2/1)"
+                                                placeholder="ห้องใหม่ (เช่น ป.2/1) พิมพ์หรือเลือก"
+                                                list="promo-rooms-list"
                                                 className="w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                                                 value={promoToRoom}
                                                 onChange={(e) => setPromoToRoom(e.target.value)}
