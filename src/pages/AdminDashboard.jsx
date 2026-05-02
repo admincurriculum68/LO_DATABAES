@@ -402,12 +402,25 @@ export default function AdminDashboard() {
                         if (error) throw error;
                     }
                     else if (importType === 'subjects') {
-                        let tempPayload = data.map(s => ({
-                            school_id: currentUser.school_id, academic_year: parseInt(s.academic_year) || 2567,
-                            semester: parseInt(s.semester) || 1,
-                            subject_name: s.subject_name?.trim(), grade_level: s.grade_level?.trim(),
-                            subject_group: s.subject_group?.trim() || null, teacher_id: s.teacher_id?.trim() || null
-                        }));
+                        // Create a map to lookup teacher_id from citizen_id
+                        const teacherMap = {};
+                        teachers.forEach(t => teacherMap[t.citizen_id] = t.teacher_id);
+
+                        let tempPayload = data.map(s => {
+                            const tcId = s.teacher_citizen_id ? String(s.teacher_citizen_id).replace(/\D/g, '') : null;
+                            const tId = tcId ? teacherMap[tcId] : null;
+
+                            return {
+                                school_id: currentUser.school_id, 
+                                academic_year: parseInt(s.academic_year) || 2567,
+                                semester: parseInt(s.semester) || 1, 
+                                subject_code: s.subject_code?.trim(),
+                                subject_name: s.subject_name?.trim(), 
+                                grade_level: s.grade_level?.trim(),
+                                subject_group: s.subject_group?.trim() || null, 
+                                teacher_id: tId
+                            };
+                        });
                         
                         // ป้องกันข้อมูลซ้ำ (ชื่อวิชา_ปี_เทอม)
                         const existingSet = new Set(subjects.map(s => `${s.subject_name}_${s.academic_year}_${s.semester}`));
@@ -422,7 +435,36 @@ export default function AdminDashboard() {
                         }
                     }
                     else if (importType === 'enrollments') {
-                        let tempPayload = data.map(e => ({ student_id: e.student_id?.trim(), subject_id: e.subject_id?.trim(), room: e.room?.trim() }));
+                        const studentMap = {};
+                        students.forEach(st => studentMap[st.citizen_id] = st.student_id);
+                        
+                        const subjectMap = {};
+                        subjects.forEach(su => subjectMap[su.subject_name] = su.subject_id);
+
+                        let tempPayload = [];
+                        let missingData = 0;
+
+                        data.forEach(e => {
+                            const cId = e.student_citizen_id ? String(e.student_citizen_id).replace(/\D/g, '') : null;
+                            const sName = e.subject_name?.trim();
+                            const stId = studentMap[cId];
+                            const suId = subjectMap[sName];
+                            
+                            if (stId && suId) {
+                                tempPayload.push({ student_id: stId, subject_id: suId, room: e.room?.trim() });
+                            } else {
+                                missingData++;
+                            }
+                        });
+
+                        if (missingData > 0) {
+                            toast.error(`ข้ามข้อมูล ${missingData} แถว เนื่องจากไม่พบเลข ปชช. นร. หรือ ชื่อวิชา ในระบบ`, { id: 'csv' });
+                        }
+
+                        if (tempPayload.length === 0) {
+                            toast.error('ไม่มีข้อมูลที่ถูกต้องให้เพิ่มเข้าสู่ระบบ', { id: 'csv' });
+                            return;
+                        }
                         
                         // ดึงข้อมูลการลงทะเบียนทั้งหมดมาเทียบ
                         const { data: existingEn } = await supabase.from('student_enrollments').select('student_id, subject_id');
@@ -440,12 +482,13 @@ export default function AdminDashboard() {
                     }
                     else if (importType === 'learning_outcomes') {
                         let tempPayload = data.map(l => ({
+                            school_id: currentUser.school_id,
                             lo_code: l.lo_code?.trim(), ability_no: parseInt(l.ability_no), level_group: l.level_group?.trim(),
                             competency_area: l.competency_area?.trim(), lo_description: l.lo_description?.trim()
                         }));
                         
-                        // เซ็คซ้ำ (lo_code และ ability_no)
-                        const { data: existingLO } = await supabase.from('learning_outcomes').select('lo_code, ability_no');
+                        // เซ็คซ้ำ (lo_code และ ability_no ของโรงเรียนนี้)
+                        const { data: existingLO } = await supabase.from('learning_outcomes').select('lo_code, ability_no').eq('school_id', currentUser.school_id);
                         const existingSet = new Set((existingLO || []).map(l => `${l.lo_code}_${l.ability_no}`));
                         
                         payload = tempPayload.filter(p => !existingSet.has(`${p.lo_code}_${p.ability_no}`));
@@ -960,8 +1003,8 @@ export default function AdminDashboard() {
                                     {[
                                         { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี' },
                                         { id: 'teachers', title: '2. ข้อมูลครู (Teachers)', desc: 'รายชื่อครูและบุคลากรในโรงเรียน', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_id\n2569,1,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,id-ครู' },
-                                        { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_id,subject_id,room\nid-นักเรียน,id-วิชา,ป.1/1' },
+                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ท11101,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,เลขบัตรปชช_ครู_13หลัก' },
+                                        { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
                                         { id: 'learning_outcomes', title: '5. คลังสมรรถนะ (LO)', desc: 'คำอธิบายรายวิชา (LO) ทั้งหมด', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
                                         { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
                                         { id: 'yearly_competencies', title: '7. ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
