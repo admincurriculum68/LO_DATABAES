@@ -1098,8 +1098,9 @@ export default function AdminDashboard() {
                                     <p className="text-slate-500 font-medium text-sm">เลือกลายวิชาเพื่อดูรายชื่อนักเรียน นำเข้า หรือนำออกจากการประเมินในวิชานี้</p>
                                 </div>
 
-                                <div className="flex flex-col lg:flex-row gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <select
+                                <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <div className="flex flex-col lg:flex-row gap-4 w-full">
+                                        <select
                                         value={enrollSubject}
                                         onChange={async (e) => {
                                             setEnrollSubject(e.target.value);
@@ -1162,6 +1163,8 @@ export default function AdminDashboard() {
                                             className="w-32 bg-white border border-slate-200 text-slate-800 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm text-center"
                                             disabled={!enrollSubject}
                                         />
+                                    </div>
+
                                     </div>
 
                                     {/* 🔥 Bulk Enrollment: เพิ่มทั้งห้อง */}
