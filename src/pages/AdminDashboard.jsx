@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
+import { useAcademic } from '../AcademicContext';
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
