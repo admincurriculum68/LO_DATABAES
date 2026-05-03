@@ -20,6 +20,7 @@ export default function EvalView() {
     const [isDirty, setIsDirty] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const [showMissingOnly, setShowMissingOnly] = useState(false);
+    const [selectedRoom, setSelectedRoom] = useState('all');
 
     useEffect(() => {
         async function loadData() {
@@ -214,12 +215,18 @@ export default function EvalView() {
     const filledCells = evaluations.filter(e => e.competency_level && e.competency_level !== '').length;
     const missingCount = totalCells - filledCells;
 
-    const displayedEnrollments = showMissingOnly
+    let displayedEnrollments = showMissingOnly
         ? enrollments.filter(enroll => {
             const studentEvals = evaluations.filter(e => e.enrollment_id === enroll.enrollment_id && e.competency_level && e.competency_level !== '');
             return studentEvals.length < learningOutcomes.length;
         })
         : enrollments;
+
+    if (selectedRoom !== 'all') {
+        displayedEnrollments = displayedEnrollments.filter(e => e.room === selectedRoom);
+    }
+
+    const uniqueRooms = [...new Set(enrollments.map(e => e.room).filter(Boolean))].sort();
 
     // Warn if navigating away with unsaved changes
     const handleBack = () => {
@@ -310,6 +317,19 @@ export default function EvalView() {
                                         <AlertCircle className="w-4 h-4 mr-1.5" />
                                         {showMissingOnly ? 'ดูนักเรียนทั้งหมด' : `ช่องที่ยังไม่ประเมิน (${missingCount})`}
                                     </button>
+                                )}
+                                {uniqueRooms.length > 0 && (
+                                    <select
+                                        value={selectedRoom}
+                                        onChange={(e) => setSelectedRoom(e.target.value)}
+                                        className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                                    >
+                                        <option value="all">แสดงทุกห้อง ({enrollments.length} คน)</option>
+                                        {uniqueRooms.map(room => {
+                                            const count = enrollments.filter(e => e.room === room).length;
+                                            return <option key={room} value={room}>{room} ({count} คน)</option>;
+                                        })}
+                                    </select>
                                 )}
                             </div>
                             <div className="text-xs font-semibold text-slate-500">
