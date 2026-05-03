@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle } from 'lucide-react';
@@ -64,11 +64,13 @@ export default function AdminDashboard() {
                 setStats(prev => ({ ...prev, subjects: data?.length || 0 }));
             });
             
-        supabase.from('users_students').select('*').eq('school_id', currentUser.school_id)
-            .then(({ data }) => {
-                setAllStudents(data || []);
-                setStats(prev => ({ ...prev, students: data?.length || 0 }));
-            });
+        // ใช้ fetchAllRows เพื่อดึงนักเรียนทุกคน (ไม่ติด Supabase 1,000 row limit)
+        fetchAllRows((from, to) =>
+            supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+        ).then(data => {
+            setAllStudents(data || []);
+            setStats(prev => ({ ...prev, students: data?.length || 0 }));
+        }).catch(err => console.error('โหลดนักเรียนไม่สำเร็จ:', err.message));
 
         supabase.from('users_teachers').select('teacher_id', { count: 'exact', head: true })
             .eq('school_id', currentUser.school_id)
@@ -295,7 +297,9 @@ export default function AdminDashboard() {
 
             const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
             if (error) throw error;
-            const { data: updated } = await supabase.from('users_students').select('*').eq('school_id', currentUser.school_id);
+            const updated = await fetchAllRows((from, to) =>
+                supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+            );
             setAllStudents(updated || []);
             setStats(prev => ({ ...prev, students: updated?.length || 0 }));
             toast.success(`นำเข้าจาก DMC สำเร็จ! ${payload.length} คน`, { id: 'dmc' });
@@ -477,8 +481,14 @@ export default function AdminDashboard() {
                             return;
                         }
                         
-                        // ดึงข้อมูลการลงทะเบียนทั้งหมดมาเทียบ
-                        const { data: existingEn } = await supabase.from('student_enrollments').select('student_id, subject_id');
+                        // ดึงข้อมูลการลงทะเบียนทั้งหมดมาเทียบ (paginated, filter by school via subjects)
+                        const { data: schoolSubjects } = await supabase.from('subjects').select('subject_id').eq('school_id', currentUser.school_id);
+                        const schoolSubjectIds = (schoolSubjects || []).map(s => s.subject_id);
+                        const existingEn = schoolSubjectIds.length > 0
+                            ? await fetchAllRows((from, to) =>
+                                supabase.from('student_enrollments').select('student_id, subject_id').in('subject_id', schoolSubjectIds).range(from, to)
+                              )
+                            : [];
                         const existingSet = new Set((existingEn || []).map(e => `${e.student_id}_${e.subject_id}`));
                         
                         payload = tempPayload.filter(p => !existingSet.has(`${p.student_id}_${p.subject_id}`));
@@ -584,7 +594,9 @@ export default function AdminDashboard() {
                         setSubjects(updatedSubjects || []);
                         setStats(prev => ({ ...prev, subjects: updatedSubjects?.length || 0 }));
                     } else if (importType === 'students') {
-                        const { data: updatedStudents } = await supabase.from('users_students').select('*').eq('school_id', currentUser.school_id);
+                        const updatedStudents = await fetchAllRows((from, to) =>
+                            supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+                        );
                         setAllStudents(updatedStudents || []);
                         setStats(prev => ({ ...prev, students: updatedStudents?.length || 0 }));
                     } else if (importType === 'teachers') {

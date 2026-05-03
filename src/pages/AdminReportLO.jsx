@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, FileBarChart2, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -37,9 +37,15 @@ export default function AdminReportLO() {
     useEffect(() => {
         async function loadBase() {
             try {
-                const [{ data: los }, { data: studs }] = await Promise.all([
+                const [{ data: los }, studs] = await Promise.all([
                     supabase.from('learning_outcomes').select('*').order('ability_no', { ascending: true }),
-                    supabase.from('users_students').select('student_id, student_code, prefix, first_name, last_name').eq('school_id', currentUser.school_id).order('student_code', { ascending: true })
+                    fetchAllRows((from, to) =>
+                        supabase.from('users_students')
+                            .select('student_id, student_code, prefix, first_name, last_name')
+                            .eq('school_id', currentUser.school_id)
+                            .order('student_code', { ascending: true })
+                            .range(from, to)
+                    )
                 ]);
                 setAllLOs(los || []);
                 setStudents(studs || []);
