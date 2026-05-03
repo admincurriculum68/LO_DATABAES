@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, fetchAllRows } from '../lib/supabase';
 import { ChevronLeft, Printer, FileBarChart, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -34,13 +34,16 @@ export default function SummaryView() {
                     setSubject(sub);
                 }
 
-                const [{ data: mappedLOs }, { data: enrolls }] = await Promise.all([
+                const [{ data: mappedLOs }, enrolls] = await Promise.all([
                     supabase.from('subject_lo_mapping')
                         .select('learning_outcomes(lo_id, lo_code, ability_no, lo_description, competency_area)')
                         .eq('subject_id', subjectId),
-                    supabase.from('student_enrollments')
-                        .select('enrollment_id, users_students(student_code, prefix, first_name, last_name)')
-                        .eq('subject_id', subjectId)
+                    fetchAllRows((from, to) =>
+                        supabase.from('student_enrollments')
+                            .select('enrollment_id, users_students(student_code, prefix, first_name, last_name)')
+                            .eq('subject_id', subjectId)
+                            .range(from, to)
+                    )
                 ]);
 
                 const formatLOs = mappedLOs?.map(item => item.learning_outcomes)

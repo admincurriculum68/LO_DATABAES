@@ -1286,9 +1286,14 @@ export default function AdminDashboard() {
                                                         toast.error('เพิ่มไม่สำเร็จ: ' + error.message, { id: 'bulk_en' });
                                                     } else {
                                                         toast.success(`เพิ่มสำเร็จ ${newStudents.length} คนจากห้อง ${enrollRoom}`, { id: 'bulk_en' });
-                                                        // Reload enrollments
-                                                        const { data } = await supabase.from('student_enrollments').select('*, users_students(*)').eq('subject_id', enrollSubject);
-                                                        setSubjectEnrollments(data || []);
+                                                        // Reload enrollments (paginated)
+                                                        const reloaded = await fetchAllRows((from, to) =>
+                                                            supabase.from('student_enrollments')
+                                                                .select('*, users_students(*)')
+                                                                .eq('subject_id', enrollSubject)
+                                                                .range(from, to)
+                                                        );
+                                                        setSubjectEnrollments(reloaded || []);
                                                     }
                                                 }}
                                                 className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition-all disabled:opacity-50 whitespace-nowrap"
