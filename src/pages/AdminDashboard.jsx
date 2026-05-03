@@ -42,6 +42,33 @@ export default function AdminDashboard() {
     const [enrollRoom, setEnrollRoom] = useState('ป.1/1');
     const [loadingEnrollments, setLoadingEnrollments] = useState(false);
     const [subjectEnrollments, setSubjectEnrollments] = useState([]);
+    
+    // Auto-complete student search
+    const [studentSearchInput, setStudentSearchInput] = useState('');
+    const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+    const studentSearchRef = useRef(null);
+
+    const filteredEnrollStudents = useMemo(() => {
+        if (!studentSearchInput.trim()) return [];
+        const lower = studentSearchInput.toLowerCase();
+        return allStudents.filter(s => 
+            (s.first_name?.toLowerCase().includes(lower) || 
+             s.last_name?.toLowerCase().includes(lower) || 
+             s.student_code?.toLowerCase().includes(lower) ||
+             s.current_room?.toLowerCase().includes(lower))
+        ).slice(0, 15); // Show only top 15 matches to keep UI fast
+    }, [studentSearchInput, allStudents]);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (studentSearchRef.current && !studentSearchRef.current.contains(event.target)) {
+                setShowStudentDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     // Evaluation Progress States
     const [evalProgress, setEvalProgress] = useState([]);
@@ -1187,38 +1214,57 @@ export default function AdminDashboard() {
                                     </select>
 
                                     <div className="flex flex-1 gap-2 border-l-0 lg:border-l border-slate-200 pl-0 lg:pl-4">
-                                        <select
-                                            disabled={!enrollSubject}
-                                            onChange={async (e) => {
-                                                if (!enrollSubject) return toast.error('กรุณาเลือกวิชาก่อน');
-                                                const studentId = e.target.value;
-                                                if (!studentId) return;
-                                                if (subjectEnrollments.some(en => en.student_id === studentId)) {
-                                                    toast.error('นักเรียนคนนี้อยู่ในวิชานี้แล้ว');
-                                                    e.target.value = '';
-                                                    return;
-                                                }
-
-                                                toast.loading('กำลังเพิ่มนักเรียน...', { id: 'add_en' });
-                                                const { data, error } = await supabase.from('student_enrollments').insert([
-                                                    { student_id: studentId, subject_id: enrollSubject, room: enrollRoom }
-                                                ]).select('*, users_students(*)');
-
-                                                if (error) {
-                                                    toast.error('เพิ่มไม่สำเร็จ ' + error.message, { id: 'add_en' });
-                                                } else {
-                                                    toast.success('เพิ่มนักเรียนสำเร็จ', { id: 'add_en' });
-                                                    setSubjectEnrollments(prev => [...prev, data[0]]);
-                                                }
-                                                e.target.value = "";
-                                            }}
-                                            className="flex-1 bg-white border border-slate-200 text-slate-700 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm disabled:bg-slate-100 disabled:opacity-75"
-                                        >
-                                            <option value="">+ 2. เพิ่มนักเรียนทีละคน...</option>
-                                            {allStudents.map(st => (
-                                                <option key={st.student_id} value={st.student_id}>{st.student_code} : {st.prefix || ''}{st.first_name} {st.last_name}</option>
-                                            ))}
-                                        </select>
+                                        <div className="flex-1 relative" ref={studentSearchRef}>
+                                            <input
+                                                type="text"
+                                                disabled={!enrollSubject}
+                                                placeholder={!enrollSubject ? "เลือกวิชาก่อน..." : "+ 2. พิมพ์ชื่อหรือรหัส เพื่อค้นหาเพิ่มทีละคน..."}
+                                                value={studentSearchInput}
+                                                onChange={(e) => {
+                                                    setStudentSearchInput(e.target.value);
+                                                    setShowStudentDropdown(true);
+                                                }}
+                                                onFocus={() => setShowStudentDropdown(true)}
+                                                className="w-full bg-white border border-slate-200 text-slate-700 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm disabled:bg-slate-100 disabled:opacity-75"
+                                            />
+                                            {showStudentDropdown && enrollSubject && (
+                                                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                                                    {filteredEnrollStudents.length > 0 ? (
+                                                        filteredEnrollStudents.map(st => (
+                                                            <div 
+                                                                key={st.student_id} 
+                                                                className="px-4 py-3 hover:bg-indigo-50 cursor-pointer border-b border-slate-50 last:border-0"
+                                                                onClick={async () => {
+                                                                    setStudentSearchInput('');
+                                                                    setShowStudentDropdown(false);
+                                                                    if (subjectEnrollments.some(en => en.student_id === st.student_id)) {
+                                                                        toast.error('นักเรียนคนนี้อยู่ในวิชานี้แล้ว');
+                                                                        return;
+                                                                    }
+                                                                    toast.loading('กำลังเพิ่มนักเรียน...', { id: 'add_en' });
+                                                                    const { data, error } = await supabase.from('student_enrollments').insert([
+                                                                        { student_id: st.student_id, subject_id: enrollSubject, room: enrollRoom }
+                                                                    ]).select('*, users_students(*)');
+                                                                    if (error) {
+                                                                        toast.error('เพิ่มไม่สำเร็จ ' + error.message, { id: 'add_en' });
+                                                                    } else {
+                                                                        toast.success('เพิ่มนักเรียนสำเร็จ', { id: 'add_en' });
+                                                                        setSubjectEnrollments(prev => [...prev, data[0]]);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <p className="font-bold text-slate-800 text-sm">{st.prefix || ''}{st.first_name} {st.last_name}</p>
+                                                                <p className="text-xs text-slate-500 font-mono mt-0.5">รหัส: {st.student_code} {st.current_room ? `| ${st.current_room}` : ''}</p>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="px-4 py-6 text-center text-sm font-bold text-slate-500">
+                                                            {studentSearchInput ? 'ไม่พบนักเรียน' : 'พิมพ์เพื่อค้นหา (แสดงสูงสุด 15 คน)'}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
 
                                         <input
                                             type="text"

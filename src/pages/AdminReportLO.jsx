@@ -33,6 +33,8 @@ export default function AdminReportLO() {
     const [students, setStudents] = useState([]);     // all students of this school
     const [evalsByLO, setEvalsByLO] = useState([]);  // all evaluations for this LO
     const [enrollmentMap, setEnrollmentMap] = useState({}); // enrollment_id -> {student_id, subject_id}
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 50;
 
     useEffect(() => {
         async function loadBase() {
@@ -60,6 +62,7 @@ export default function AdminReportLO() {
 
     const handleLOChange = async (loId) => {
         setSelectedLO(loId);
+        setCurrentPage(1); // Reset page on LO change
         if (!loId) return;
         setLoading(true);
         try {
@@ -120,6 +123,8 @@ export default function AdminReportLO() {
     }, [evalsByLO, enrollmentMap]);
 
     const selectedLOData = allLOs.find(l => l.lo_id === selectedLO);
+    const totalPages = Math.ceil(students.length / pageSize);
+    const paginatedStudents = students.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans print:bg-white text-slate-800">
@@ -236,10 +241,12 @@ export default function AdminReportLO() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white print:divide-black">
-                                            {students.map((st, idx) => (
+                                            {paginatedStudents.map((st, i) => {
+                                                const globalIdx = (currentPage - 1) * pageSize + i + 1;
+                                                return (
                                                 <tr key={st.student_id} className="hover:bg-slate-50 transition-colors group">
                                                     <td className="px-5 py-3 font-bold text-slate-800 border-r border-slate-100 print:border-black sticky left-0 bg-white group-hover:bg-slate-50">
-                                                        <span className="text-slate-400 font-normal text-xs mr-2">{idx + 1}.</span>
+                                                        <span className="text-slate-400 font-normal text-xs mr-2">{globalIdx}.</span>
                                                         {st.prefix || ''}{st.first_name} {st.last_name}
                                                         <span className="block text-xs text-slate-400 font-mono">{st.student_code}</span>
                                                     </td>
@@ -253,12 +260,38 @@ export default function AdminReportLO() {
                                                         );
                                                     })}
                                                 </tr>
-                                            ))}
+                                            )})}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
-                        )}
+                            
+                            {/* Pagination UI */}
+                            {totalPages > 1 && (
+                                <div className="mt-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden gap-4">
+                                    <p className="text-sm text-slate-500 font-bold">
+                                        แสดงหน้าที่ <span className="text-indigo-600">{currentPage}</span> จากทั้งหมด <span className="text-slate-800">{totalPages}</span> หน้า
+                                        (ทั้งหมด {students.length} คน)
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition"
+                                        >
+                                            หน้าก่อนหน้า
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                                        >
+                                            หน้าถัดไป
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
             </main>
