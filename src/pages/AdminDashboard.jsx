@@ -267,12 +267,17 @@ export default function AdminDashboard() {
                 const lname = String(row[COL.LNAME] || '').trim();
                 const prefix = prefixMap[String(row[COL.PREFIX] || '').trim()] || String(row[COL.PREFIX] || '').trim();
                 const code = String(row[COL.CODE] || '').trim().replace(/\.0+$/, '');
+                // ดึงชั้นและห้องจาก DMC แล้วรวมเป็น current_room เช่น "ป.3/2"
+                const gradeRaw = String(row[COL.GRADE] || '').trim();   // เช่น "ป.3"
+                const roomRaw  = String(row[COL.ROOM]  || '').trim().replace(/\.0+$/, ''); // เช่น "2"
+                const currentRoom       = gradeRaw && roomRaw ? `${gradeRaw}/${roomRaw}` : (gradeRaw || null); // เช่น "ป.3/2"
+                const currentGradeLevel = gradeRaw || null; // เช่น "ป.3" แยกเก็บสำหรับฟีเจอร์เลื่อนชั้น
                 const errs = [];
                 if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
                 if (!dobStr) errs.push(`วันเกิด "${row[COL.DOB]}" ไม่ถูกต้อง`);
                 if (!fname) errs.push('ไม่มีชื่อ');
                 if (errs.length > 0) invalidRows.push({ row: i + 3, name: `${fname} ${lname}`, errors: errs });
-                else validRows.push({ citizen_id: cleanId, dob: dobStr, student_code: code, prefix, first_name: fname, last_name: lname });
+                else validRows.push({ citizen_id: cleanId, dob: dobStr, student_code: code, prefix, first_name: fname, last_name: lname, current_room: currentRoom, current_grade_level: currentGradeLevel });
             }
 
             if (validRows.length === 0) { toast.error(`ไม่มีแถวที่ถูกต้อง (${invalidRows.length} แถวผิด)`, { id: 'dmc' }); return; }
@@ -282,7 +287,10 @@ export default function AdminDashboard() {
                 school_id: currentUser.school_id, citizen_id: r.citizen_id,
                 password_hash: await hashPassword(r.dob),
                 student_code: r.student_code || null, prefix: r.prefix,
-                first_name: r.first_name, last_name: r.last_name, student_status: 'active',
+                first_name: r.first_name, last_name: r.last_name,
+                current_room: r.current_room || null,
+                current_grade_level: r.current_grade_level || null,
+                student_status: 'active',
             })));
 
             const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
@@ -351,6 +359,9 @@ export default function AdminDashboard() {
                             prefix: s.prefix?.trim() || '',
                             first_name: s.first_name?.trim(),
                             last_name: s.last_name?.trim(),
+                            // รองรับ current_room และ current_grade_level จาก CSV (ถ้ามีในไฟล์)
+                            current_room: s.current_room?.trim() || null,
+                            current_grade_level: s.current_grade_level?.trim() || null,
                             student_status: 'active'
                         })));
                         if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
@@ -985,7 +996,7 @@ export default function AdminDashboard() {
                                                 <h3 className="font-extrabold text-xl text-indigo-900">นำเข้านักเรียนจากระบบ DMC โดยตรง</h3>
                                                 <p className="text-sm text-indigo-700 font-medium mt-1 leading-relaxed">รองรับไฟล์ Excel <span className="font-bold">(.xlsx, .xls)</span> ที่ส่งออกจากระบบ DMC <br className="hidden md:block" />โดยระบบจะจัดรูปแบบวันเกิดให้สามารถใช้เป็นรหัสผ่านได้ทันที</p>
                                                 <div className="flex flex-wrap gap-2 mt-3">
-                                                    {['เลขประจำตัว → citizen_id', 'วันเกิดในรูปแบบ พ.ศ. → รหัสผ่าน', 'รหัสนักเรียน', 'ชื่อ/สกุล'].map(t => (
+                                                    {['เลขประจำตัว → citizen_id', 'วันเกิดในรูปแบบ พ.ศ. → รหัสผ่าน', 'รหัสนักเรียน', 'ชื่อ/สกุล', 'ห้องเรียน (current_room)'].map(t => (
                                                         <span key={t} className="text-xs bg-white/70 border border-indigo-200 text-indigo-800 font-bold px-3 py-1.5 rounded-full shadow-sm">✓ {t}</span>
                                                     ))}
                                                 </div>
@@ -1001,7 +1012,7 @@ export default function AdminDashboard() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                                     {[
-                                        { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี' },
+                                        { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
                                         { id: 'teachers', title: '2. ข้อมูลครู (Teachers)', desc: 'รายชื่อครูและบุคลากรในโรงเรียน', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
                                         { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ท11101,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,เลขบัตรปชช_ครู_13หลัก' },
                                         { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
