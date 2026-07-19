@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, FileBarChart2, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import AcademicReportShell from '../components/AcademicReportShell';
 
 // Competency level badge
 const LevelBadge = ({ val }) => {
@@ -129,9 +130,22 @@ export default function AdminReportLO() {
     const paginatedStudents = students.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans print:bg-white text-slate-800">
+        <AcademicReportShell
+            title="รายงานผลรายผลลัพธ์การเรียนรู้ (LO)"
+            description="เปรียบเทียบระดับความสามารถของผู้เรียนจากทุกวิชาที่เชื่อมโยงกับ LO เดียวกัน"
+            wide
+            actions={<>
+                <button onClick={() => {
+                    if (!selectedLO || subjects.length === 0) return toast.error('กรุณาเลือก LO ก่อน');
+                    const headers = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', ...subjects.map(s => `${s.subject_name} (${s.grade_level})`)];
+                    const rows = students.map((st, i) => { const row = [i + 1, st.student_code, `${st.prefix || ''}${st.first_name} ${st.last_name}`]; subjects.forEach(sub => row.push(evalLookup[`${st.student_id}_${sub.subject_id}`] || '')); return row; });
+                    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'ผลราย LO'); XLSX.writeFile(wb, `รายงานLO_${selectedLOData?.lo_code || 'report'}.xlsx`); toast.success('จัดทำไฟล์ Excel แล้ว');
+                }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> ส่งออก Excel</button>
+                <button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
+            </>}
+        >
             {/* Header */}
-            <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 sticky top-0 z-40 print:hidden">
+            <header className="hidden">
                 <div className="max-w-[1800px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
                     <div className="flex items-center space-x-3 min-w-0">
                         <button onClick={() => navigate('/admin')} className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center shrink-0">
@@ -174,17 +188,17 @@ export default function AdminReportLO() {
                 </div>
             </header>
 
-            <main className="flex-grow max-w-[1800px] mx-auto w-full px-4 sm:px-6 py-8 print:p-4">
+            <main className="w-full print:p-4">
                 {/* LO Selector */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
-                    <p className="text-sm font-bold text-slate-500 mb-2">เลือกผลลัพธ์การเรียนรู้ (LO) ที่ต้องการดูภาพรวม:</p>
+                    <p className="text-sm font-bold text-slate-700 mb-2">เลือก LO สำหรับจัดทำรายงาน</p>
                     <div className="relative max-w-xl">
                         <select
                             value={selectedLO}
                             onChange={(e) => handleLOChange(e.target.value)}
                             className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-4 pr-10 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none"
                         >
-                            <option value="">— กรุณาเลือก LO ที่ต้องการ —</option>
+                            <option value="">เลือกผลลัพธ์การเรียนรู้ (LO)</option>
                             {allLOs.map(lo => (
                                 <option key={lo.lo_id} value={lo.lo_id}>
                                     {lo.lo_code ? `[${lo.lo_code}]` : ''} ข้อ {lo.ability_no} — {lo.competency_area} : {lo.lo_description?.substring(0, 60)}{lo.lo_description?.length > 60 ? '...' : ''}
@@ -196,8 +210,8 @@ export default function AdminReportLO() {
                 </div>
 
                 {!selectedLO ? (
-                    <div className="text-center py-32 text-slate-400 font-medium bg-white rounded-2xl border border-dashed border-slate-200">
-                        กรุณาเลือก LO ที่ต้องการจากเมนูด้านบน
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center text-sm font-medium text-slate-600">
+                        เลือก LO ด้านบนเพื่อแสดงผลของนักเรียนจากทุกวิชาที่เชื่อมโยง
                     </div>
                 ) : loading ? (
                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
@@ -205,9 +219,9 @@ export default function AdminReportLO() {
                     <>
                         {/* Print Title */}
                         <div className="mb-6">
-                            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">ตารางที่ 2 รายงานผลลัพธ์การเรียนรู้ระดับรายผลลัพธ์การเรียนกับรายวิชาที่ผูกไว้ทั้งหมด</p>
+                            <p className="text-sm text-slate-600 font-semibold mb-2">ผลการประเมินจากทุกวิชาที่เชื่อมโยงกับ LO นี้</p>
                             <div className="bg-white rounded-2xl border border-indigo-100 p-5 shadow-sm">
-                                <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-1">ผลลัพธ์การเรียนรู้</p>
+                                <p className="text-sm font-bold text-indigo-700 mb-1">ผลลัพธ์การเรียนรู้</p>
                                 <h2 className="text-lg font-extrabold text-slate-800">
                                     {selectedLOData?.lo_code ? `${selectedLOData.lo_code} — ` : ''}ข้อ {selectedLOData?.ability_no}: {selectedLOData?.lo_description}
                                 </h2>
@@ -299,6 +313,6 @@ export default function AdminReportLO() {
                     </>
                 )}
             </main>
-        </div>
+        </AcademicReportShell>
     );
 }

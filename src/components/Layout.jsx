@@ -47,7 +47,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
-            <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-40 backdrop-blur-xl bg-white/90">
+            <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-40 backdrop-blur-xl bg-white/90 print:hidden">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
                     {/* Brand + Title */}
                     <div className="flex items-center gap-3 min-w-0">
@@ -175,7 +175,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
             {/* Mobile action button */}
             {onActionClick && (
-                <div className="sm:hidden px-4 pt-4">
+                <div className="sm:hidden px-4 pt-4 print:hidden">
                     <button
                         onClick={onActionClick}
                         className="w-full flex text-sm bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 px-4 py-3 rounded-xl font-semibold transition-all justify-center items-center gap-2 shadow-sm"
@@ -186,7 +186,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                 </div>
             )}
 
-            <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-400">
+            <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:p-0">
                 {children}
             </main>
         </div>

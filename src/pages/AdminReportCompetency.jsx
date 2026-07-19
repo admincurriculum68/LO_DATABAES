@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, BarChart3, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import AcademicReportShell from '../components/AcademicReportShell';
 
 const LevelBadge = ({ val }) => {
     if (!val || val === '-') return <span className="text-slate-300 text-xs">-</span>;
@@ -184,8 +185,21 @@ export default function AdminReportCompetency() {
     const paginatedStudents = students.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans print:bg-white text-slate-800">
-            <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 sticky top-0 z-40 print:hidden">
+        <AcademicReportShell
+            title="รายงานผลรายด้านความสามารถ"
+            description="ดูผลการประเมินของผู้เรียนในด้านความสามารถเดียวกัน โดยรวบรวมจากทุก LO และทุกวิชาที่เกี่ยวข้อง"
+            wide
+            actions={<>
+                <button onClick={() => {
+                    if (!selectedArea || columns.length === 0) return toast.error('กรุณาเลือกด้านความสามารถก่อน');
+                    const headers = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', ...columns.map(c => `${c.lo.lo_code || `LO${c.lo.ability_no}`} (${c.sub.subject_name})`)];
+                    const rows = students.map((st, i) => { const row = [i + 1, st.student_code, `${st.prefix || ''}${st.first_name} ${st.last_name}`]; columns.forEach(col => row.push(evalLookup[`${col.lo.lo_id}_${col.sub.subject_id}_${st.student_id}`] || '')); return row; });
+                    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, selectedArea.substring(0, 31)); XLSX.writeFile(wb, `รายงานด้าน_${selectedArea}.xlsx`); toast.success('จัดทำไฟล์ Excel แล้ว');
+                }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> ส่งออก Excel</button>
+                <button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
+            </>}
+        >
+            <header className="hidden">
                 <div className="max-w-[1800px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
                     <div className="flex items-center space-x-3 min-w-0">
                         <button onClick={() => navigate('/admin')} className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center shrink-0">
@@ -228,17 +242,17 @@ export default function AdminReportCompetency() {
                 </div>
             </header>
 
-            <main className="flex-grow max-w-[1800px] mx-auto w-full px-4 sm:px-6 py-8 print:p-4">
+            <main className="w-full print:p-4">
                 {/* Area Selector */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
-                    <p className="text-sm font-bold text-slate-500 mb-2">เลือกด้านความสามารถที่ต้องการดูภาพรวม:</p>
+                    <p className="text-sm font-bold text-slate-700 mb-2">เลือกด้านความสามารถสำหรับจัดทำรายงาน</p>
                     <div className="relative max-w-xl">
                         <select
                             value={selectedArea}
                             onChange={(e) => handleAreaChange(e.target.value)}
                             className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-4 pr-10 rounded-xl font-bold focus:ring-2 focus:ring-purple-400 outline-none"
                         >
-                            <option value="">— กรุณาเลือกด้านความสามารถ —</option>
+                            <option value="">เลือกด้านความสามารถ</option>
                             {competencyAreas.map(a => (
                                 <option key={a} value={a}>{a}</option>
                             ))}
@@ -248,17 +262,17 @@ export default function AdminReportCompetency() {
                 </div>
 
                 {!selectedArea ? (
-                    <div className="text-center py-32 text-slate-400 font-medium bg-white rounded-2xl border border-dashed border-slate-200">
-                        กรุณาเลือกด้านความสามารถจากเมนูด้านบน
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center text-sm font-medium text-slate-600">
+                        เลือกด้านความสามารถด้านบนเพื่อรวบรวมผลจากทุก LO และทุกวิชาที่เกี่ยวข้อง
                     </div>
                 ) : loading ? (
                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
                 ) : (
                     <>
                         <div className="mb-6">
-                            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1">ตารางที่ 3 รายงานผลการประเมินรายด้านความสามารถของนักเรียนทุกรายวิชาที่ผูกกับด้านความสามารถนั้น ๆ</p>
+                            <p className="text-sm text-slate-600 font-semibold mb-2">ผลการประเมินจากทุก LO และทุกวิชาที่อยู่ในด้านนี้</p>
                             <div className="bg-white rounded-2xl border border-purple-100 p-5 shadow-sm">
-                                <p className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-1">ด้านความสามารถที่เลือก</p>
+                                <p className="text-sm font-bold text-indigo-700 mb-1">ด้านความสามารถที่เลือก</p>
                                 <h2 className="text-lg font-extrabold text-slate-800">{selectedArea}</h2>
                                 <p className="text-sm text-slate-500 mt-1">
                                     จำนวน LO ในด้านนี้: <span className="font-bold text-slate-700">{losByArea.length} ข้อ</span> |
@@ -359,6 +373,6 @@ export default function AdminReportCompetency() {
                     </>
                 )}
             </main>
-        </div>
+        </AcademicReportShell>
     );
 }

@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
-import Layout from '../components/Layout';
-import { Search, Printer, Save, ChevronLeft, XCircle, Loader, AlertCircle } from 'lucide-react';
+import AcademicReportShell from '../components/AcademicReportShell';
+import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // ─── Competency levels ──────────────────────────────────────────────────────
@@ -56,7 +55,6 @@ const CURRENT_YEAR = new Date().getFullYear() + 543;
 
 export default function PhaseReportAdmin() {
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
 
     // ─── State ──────────────────────────────────────────────────────────────
     const [searchTerm, setSearchTerm] = useState('');
@@ -191,7 +189,14 @@ export default function PhaseReportAdmin() {
     const hasBehaviors = centralBehaviors.length > 0;
 
     return (
-        <Layout title="รายงานผลการเรียนเมื่อจบช่วงชั้น">
+        <AcademicReportShell
+            title="รายงานผลเมื่อจบช่วงชั้น"
+            description="บันทึกระดับความสามารถเมื่อสิ้นสุดช่วงชั้น และจัดพิมพ์รายงานตามรูปแบบมาตรฐาน"
+            actions={<>
+                <button onClick={handleSave} disabled={saving || !selectedStudent} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800 disabled:bg-slate-300">{saving ? <Loader className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? 'กำลังบันทึก' : 'บันทึกผล'}</button>
+                <button onClick={() => { if (!selectedStudent) return toast.error('กรุณาเลือกนักเรียนก่อน'); window.print(); }} disabled={!selectedStudent} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
+            </>}
+        >
             <style>{`
                 @media print {
                     .no-print { display: none !important; }
@@ -201,17 +206,12 @@ export default function PhaseReportAdmin() {
                 @page { margin: 1.5cm; }
             `}</style>
 
-            <div className="max-w-6xl mx-auto px-4 py-8">
+            <div>
 
                 {/* ─── Control Panel ─────────────────────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
-                    <button onClick={() => navigate('/admin')}
-                        className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold transition-colors">
-                        <ChevronLeft className="w-5 h-5" /> กลับหน้าฝ่ายวิชาการ
-                    </button>
-
-                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                        <h2 className="text-xl font-extrabold text-slate-800 mb-5">กำหนดข้อมูลรายงานเมื่อจบช่วงชั้น</h2>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                        <h3 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h3>
 
                         {/* Phase Selector */}
                         <div className="flex gap-3 mb-6">
@@ -235,7 +235,7 @@ export default function PhaseReportAdmin() {
                                 <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                                        placeholder="ชื่อ หรือ รหัส..."
+                                        placeholder="พิมพ์ชื่อหรือรหัสนักเรียน"
                                         className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                                 </div>
                                 {searchTerm && (
@@ -281,7 +281,7 @@ export default function PhaseReportAdmin() {
                                             value={achievedLevels[ab.key] || ''}
                                             onChange={e => setAchievedLevels(prev => ({ ...prev, [ab.key]: e.target.value }))}
                                             className="border border-slate-300 rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                                            <option value="">-- เลือก --</option>
+                                            <option value="">เลือกระดับ</option>
                                             {LEVELS.map(l => <option key={l}>{l}</option>)}
                                         </select>
                                     </div>
@@ -308,12 +308,12 @@ export default function PhaseReportAdmin() {
                         {!hasBehaviors && !loadingBehaviors && (
                             <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-700 font-medium mb-4">
                                 <AlertCircle className="w-4 h-4 shrink-0" />
-                                ยังไม่มีข้อมูลคำอธิบายพฤติกรรม — กรุณานำเข้าข้อมูลจาก สพฐ. ผ่าน SQL เพื่อให้ตารางพฤติกรรมแสดงผล
+                                ยังไม่มีคำบรรยายพฤติกรรมมาตรฐานสำหรับช่วงชั้นนี้ กรุณาติดต่อผู้ดูแลข้อมูลส่วนกลาง
                             </div>
                         )}
 
                         {/* Action buttons */}
-                        <div className="flex gap-3">
+                        <div className="hidden">
                             <button onClick={handleSave} disabled={saving || !selectedStudent}
                                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
                                 {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -329,7 +329,7 @@ export default function PhaseReportAdmin() {
                 </div>
 
                 {/* ─── Print Document ──────────────────────────────────── */}
-                <div className="print-doc bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+                <div className="report-document print-doc rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                     {!selectedStudent ? (
                         <div className="no-print text-center py-24 text-slate-400 font-medium">
                             เลือกนักเรียนเพื่อแสดงตัวอย่างเอกสาร
@@ -447,6 +447,6 @@ export default function PhaseReportAdmin() {
                     )}
                 </div>
             </div>
-        </Layout>
+        </AcademicReportShell>
     );
 }
