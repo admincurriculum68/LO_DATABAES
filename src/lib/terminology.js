@@ -1,7 +1,7 @@
 export const LEARNING_FORMATS = {
     subject: {
-        label: 'รายวิชา',
-        description: 'การจัดการเรียนรู้ตามรายวิชาที่สถานศึกษาเปิดสอน',
+        label: 'วิชา',
+        description: 'การจัดการเรียนรู้ตามวิชาที่สถานศึกษาเปิดสอน',
     },
     learning_unit: {
         label: 'หน่วยการเรียนรู้',

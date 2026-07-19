@@ -58,8 +58,9 @@ CREATE INDEX IF NOT EXISTS idx_assessment_submissions_school_status
     ON assessment_submissions(school_id, academic_year, semester, status);
 
 -- --------------------------------------------------------------------------
--- 3) School learning formats beyond subjects: learning units, projects,
---    and activities. Subjects remain in the subjects table.
+-- 3) Four equal learning formats in the product model: subjects, learning
+--    units, projects, and activities. Subjects remain in their specialized
+--    table because enrollment and teacher-assignment data depend on it.
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS learning_contexts (
     context_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

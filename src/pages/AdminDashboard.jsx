@@ -811,7 +811,7 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                             <p className="text-xl font-extrabold">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</p>
-                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลของผู้เรียน</p>
+                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลของผู้เรียน</p>
                         </div>
                     </div>
                     <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-white px-4 font-extrabold text-indigo-800">ตรวจสอบรายการรอรับรอง</span>
@@ -822,7 +822,7 @@ export default function AdminDashboard() {
                 >
                     <div className="flex items-start gap-4">
                         <div className="rounded-xl bg-violet-100 p-3 text-violet-700" aria-hidden="true"><LinkIcon className="h-6 w-6" /></div>
-                        <div><p className="font-extrabold text-slate-900">รูปแบบการจัดการเรียนรู้</p><p className="mt-1 text-sm leading-6 text-slate-600">กำหนดรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม พร้อมเชื่อมโยงผลลัพธ์การเรียนรู้ที่ต้องการประเมิน</p></div>
+                        <div><p className="font-extrabold text-slate-900">รูปแบบการจัดการเรียนรู้</p><p className="mt-1 text-sm leading-6 text-slate-600">กำหนดวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม พร้อมเชื่อมโยงผลลัพธ์การเรียนรู้ที่ต้องการประเมิน</p></div>
                     </div>
                     <span className="font-extrabold text-indigo-700">จัดการรูปแบบการเรียนรู้</span>
                 </button>

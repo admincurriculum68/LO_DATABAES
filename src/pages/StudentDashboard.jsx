@@ -171,7 +171,7 @@ export default function StudentDashboard() {
                     <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="rounded-2xl bg-emerald-600 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
-                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลลัพธ์การเรียนรู้ที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลการประเมินที่ผ่านการพิจารณาหลักฐานจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม</p></div>
+                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลลัพธ์การเรียนรู้ที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลการประเมินที่ผ่านการพิจารณาหลักฐานจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม</p></div>
                         </div>
                         <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
                     </div>

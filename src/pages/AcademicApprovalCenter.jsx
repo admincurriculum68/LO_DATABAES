@@ -308,7 +308,7 @@ export default function AcademicApprovalCenter() {
                     </button>
                 <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</h2>
                     <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">
-                        รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อให้ฝ่ายวิชาการพิจารณาหลักฐานก่อนรับรองผลของผู้เรียน
+                        รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อให้ฝ่ายวิชาการพิจารณาหลักฐานก่อนรับรองผลของผู้เรียน
                     </p>
                 </div>
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm text-indigo-950">
