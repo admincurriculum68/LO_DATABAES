@@ -161,7 +161,7 @@ export default function YearlyReportAdmin() {
                 );
             }
 
-            toast.success('บันทึกผลการเรียนสำเร็จ!');
+            toast.success('บันทึกผลการเรียนแล้ว');
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
         } finally {
@@ -208,11 +208,11 @@ export default function YearlyReportAdmin() {
                 {/* ─── Control Panel (no-print) ─────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
                     <button onClick={() => navigate('/admin')} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold transition-colors">
-                        <ChevronLeft className="w-5 h-5" /> กลับหน้า Admin
+                        <ChevronLeft className="w-5 h-5" /> กลับหน้าฝ่ายวิชาการ
                     </button>
 
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                        <h2 className="text-xl font-extrabold text-slate-800 mb-5">⚙️ ตั้งค่ารายงาน</h2>
+                        <h2 className="text-xl font-extrabold text-slate-800 mb-5">กำหนดข้อมูลรายงาน</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {/* Student Search */}
                             <div className="md:col-span-1">
@@ -297,7 +297,7 @@ export default function YearlyReportAdmin() {
                             <div className="flex justify-center py-8"><Loader className="w-6 h-6 animate-spin text-indigo-500" /></div>
                         ) : competencies.length === 0 ? (
                             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-700 font-medium">
-                                ⚠️ ยังไม่มีข้อมูลความสามารถชั้นปีสำหรับ <strong>{selectedGrade}</strong> — กรุณานำเข้าข้อมูลในแท็บ "นำเข้าข้อมูล" ก่อนครับ
+                                ยังไม่มีข้อมูลความสามารถชั้นปีสำหรับ <strong>{selectedGrade}</strong> กรุณานำเข้าข้อมูลในเมนู “นำเข้าข้อมูล” ก่อนดำเนินการ
                             </div>
                         ) : (
                             <div>

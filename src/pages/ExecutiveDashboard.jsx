@@ -57,7 +57,7 @@ export default function ExecutiveDashboard() {
                 });
 
             } catch (err) {
-                toast.error('ดึงข้อมูลผู้บริหารไม่สำเร็จ: ' + err.message);
+                toast.error('ไม่สามารถโหลดข้อมูลสารสนเทศสำหรับผู้บริหารได้: ' + err.message);
             } finally {
                 setLoading(false);
             }
@@ -85,7 +85,7 @@ export default function ExecutiveDashboard() {
     );
 
     return (
-        <Layout title="ระบบสำหรับผู้บริหาร (Executive Dashboard)">
+        <Layout title="สารสนเทศเพื่อการบริหารสถานศึกษา">
             {/* Hero / Header Section */}
             <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8 relative">
                 <div className="flex items-center">
@@ -95,10 +95,10 @@ export default function ExecutiveDashboard() {
                     </div>
                     <div>
                         <h2 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                            ข้อมูลภาพรวมระดับองค์กร <Sparkles className="w-6 h-6 text-amber-500 hidden sm:block" />
+                            ข้อมูลภาพรวมของสถานศึกษา <Sparkles className="w-6 h-6 text-amber-500 hidden sm:block" />
                         </h2>
                         <p className="text-slate-500 font-medium text-lg mt-2 tracking-wide">
-                            ยินดีต้อนรับท่าน <span className="font-bold text-slate-700">{currentUser?.full_name}</span> | ติดตามสถิติและผลการประเมิน
+                            <span className="font-bold text-slate-700">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
                         </p>
                     </div>
                 </div>
@@ -108,8 +108,8 @@ export default function ExecutiveDashboard() {
                         <Award className="w-7 h-7 text-amber-400" />
                     </div>
                     <div className="text-right">
-                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-0.5">ปีการศึกษาปัจจุบัน</div>
-                        <div className="text-sm font-extrabold tracking-wider">กำลังสรุปผล LO</div>
+                        <div className="mb-0.5 text-xs font-bold text-slate-300">รอบข้อมูลที่แสดง</div>
+                        <div className="text-sm font-extrabold tracking-wider">ภาคเรียนที่ {semester}/{academicYear}</div>
                     </div>
                 </div>
             </div>
@@ -124,7 +124,7 @@ export default function ExecutiveDashboard() {
                     {/* Top Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <StatCard
-                            title="บุคลากรครู"
+                            title="ครูและบุคลากร"
                             value={data.total_teachers}
                             icon={Users}
                             colorClass="bg-gradient-to-br from-blue-500 to-indigo-600"
@@ -159,8 +159,8 @@ export default function ExecutiveDashboard() {
                                     <TrendingUp className="w-7 h-7 text-amber-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-white tracking-wide">สถิติผลการประเมินภาพรวมระดับโรงเรียน</h3>
-                                    <p className="text-slate-400 font-medium text-sm mt-1 tracking-wide">School-Wide Learning Outcomes Assessment Overview</p>
+                                    <h3 className="text-2xl font-black text-white tracking-wide">ผลการประเมินภาพรวมระดับสถานศึกษา</h3>
+                                    <p className="text-slate-300 font-medium text-sm mt-1">จำแนกตามระดับความสามารถของผู้เรียนในภาคเรียนที่เลือก</p>
                                 </div>
                             </div>
                             <div className="hidden md:block text-right relative z-10">

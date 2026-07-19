@@ -58,13 +58,14 @@ CREATE INDEX IF NOT EXISTS idx_assessment_submissions_school_status
     ON assessment_submissions(school_id, academic_year, semester, status);
 
 -- --------------------------------------------------------------------------
--- 3) School learning contexts beyond subjects.
+-- 3) School learning formats beyond subjects: learning units, projects,
+--    and activities. Subjects remain in the subjects table.
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS learning_contexts (
     context_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     school_id UUID NOT NULL REFERENCES schools(school_id) ON DELETE CASCADE,
     context_type TEXT NOT NULL
-        CHECK (context_type IN ('project', 'activity', 'integrated_unit', 'learning_unit')),
+        CHECK (context_type IN ('learning_unit', 'project', 'activity')),
     context_code TEXT,
     context_name TEXT NOT NULL,
     description TEXT,
@@ -77,6 +78,17 @@ CREATE TABLE IF NOT EXISTS learning_contexts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(school_id, academic_year, semester, context_type, context_code)
 );
+
+-- Convert the former integrated-unit label to the canonical learning-unit type.
+UPDATE learning_contexts
+SET context_type = 'learning_unit'
+WHERE context_type = 'integrated_unit';
+
+ALTER TABLE learning_contexts
+    DROP CONSTRAINT IF EXISTS learning_contexts_context_type_check;
+ALTER TABLE learning_contexts
+    ADD CONSTRAINT learning_contexts_context_type_check
+    CHECK (context_type IN ('learning_unit', 'project', 'activity'));
 
 CREATE TABLE IF NOT EXISTS learning_context_lo_mappings (
     mapping_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

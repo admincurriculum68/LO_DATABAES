@@ -108,8 +108,8 @@ export default function TeacherDashboard() {
 
     return (
         <Layout
-            title="พื้นที่จัดการข้อมูลครูผู้สอน"
-            actionText="ดูข้อมูลประเมินในห้องประจำชั้น (Homeroom)"
+            title="งานประเมินผลสำหรับครูผู้สอน"
+            actionText="ประเมินกิจกรรมและคุณลักษณะประจำชั้น"
             actionIcon={GraduationCap}
             onActionClick={() => navigate('/homeroom')}
         >
@@ -135,7 +135,7 @@ export default function TeacherDashboard() {
                         <BookOpen className="w-7 h-7" />
                     </div>
                     <div>
-                        <p className="font-bold text-slate-500 text-sm mb-1">รายวิชาในเทอมนี้</p>
+                        <p className="font-bold text-slate-500 text-sm mb-1">รายวิชาในภาคเรียนนี้</p>
                         <h4 className="text-3xl font-extrabold text-slate-800 leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-normal text-slate-500 ml-1">วิชา</span></h4>
                     </div>
                 </div>
@@ -169,16 +169,16 @@ export default function TeacherDashboard() {
             {loading ? (
                 <div className="py-24 flex flex-col items-center justify-center space-y-4">
                     <div className="loader scale-150 border-4 border-indigo-200 border-t-indigo-600"></div>
-                    <p className="text-slate-400 font-medium">กำลังโหลดรายวิชาของคุณ...</p>
+                    <p className="text-slate-500 font-medium">กำลังโหลดรายวิชาที่ได้รับมอบหมาย...</p>
                 </div>
             ) : subjects.length === 0 ? (
                 <div className="text-center bg-slate-50/50 rounded-3xl p-16 border-2 border-dashed border-slate-200 flex flex-col items-center">
                     <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm border border-slate-100">
                         <BookMarked className="w-12 h-12 text-slate-300" />
                     </div>
-                    <h3 className="text-2xl font-extrabold text-slate-700 mb-2">ไม่พบรายวิชาในเทอม {semester}/{academicYear}</h3>
+                    <h3 className="text-2xl font-extrabold text-slate-700 mb-2">ยังไม่มีรายวิชาที่ได้รับมอบหมายในภาคเรียนที่ {semester}/{academicYear}</h3>
                     <p className="text-slate-500 max-w-sm leading-relaxed text-lg">
-                        คุณยังไม่มีการถูกมอบหมายให้สอนในภาคเรียนนี้ กรุณาติดต่อแอดมินหรือฝ่ายวิชาการ
+                        กรุณาติดต่อฝ่ายวิชาการเพื่อตรวจสอบการมอบหมายรายวิชา
                     </p>
                 </div>
             ) : (
@@ -236,8 +236,8 @@ export default function TeacherDashboard() {
                                     {hasStudents && (
                                         <div className="mb-6">
                                             <div className="flex justify-between text-xs font-bold text-slate-500 mb-1.5">
-                                                <span>{progress.studentCount} คน · {progress.loCount} LO</span>
-                                                <span>{progress.filledCells}/{progress.totalCells} ช่อง</span>
+                                                <span>{progress.studentCount} คน · {progress.loCount} ผลลัพธ์การเรียนรู้</span>
+                                                <span>ประเมินแล้ว {progress.filledCells}/{progress.totalCells} รายการ</span>
                                             </div>
                                             <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                                                 <div
@@ -252,7 +252,7 @@ export default function TeacherDashboard() {
 
                                     <div className="inline-flex items-center px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl group-hover:bg-indigo-600 transition-colors shadow-sm w-full justify-center">
                                         <Activity className="w-4 h-4 mr-2" />
-                                        เข้าไปประเมินผลผู้เรียน
+                                        บันทึกผลการประเมินผู้เรียน
                                         <ArrowRight className="w-4 h-4 ml-2 opacity-70 group-hover:translate-x-1 group-hover:opacity-100 transition-all" />
                                     </div>
                                 </div>
@@ -263,7 +263,7 @@ export default function TeacherDashboard() {
                                         onClick={() => navigate(`/summary/${sub.subject_id}`, { state: { subject: sub } })}
                                         className="text-sm bg-white text-indigo-700 hover:bg-indigo-600 hover:text-white font-extrabold transition-colors px-4 py-2 border border-slate-200 group-hover:border-indigo-200 rounded-xl shadow-sm"
                                     >
-                                        เปิดหน้ารวม
+                                        ดูสรุปผลรายวิชา
                                     </button>
                                 </div>
                             </div>

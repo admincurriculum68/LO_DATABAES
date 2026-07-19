@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
+    BookOpen,
     CheckCircle2,
     ClipboardList,
     FolderKanban,
-    Layers3,
     Link2,
     Plus,
     Save,
@@ -12,18 +12,23 @@ import {
     Sparkles,
     Users,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
+import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
 
 const TYPE_META = {
-    project: { label: 'โครงงาน', icon: FolderKanban, className: 'bg-blue-50 text-blue-800 border-blue-200' },
-    activity: { label: 'กิจกรรม', icon: Users, className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-    integrated_unit: { label: 'หน่วยบูรณาการ', icon: Layers3, className: 'bg-violet-50 text-violet-800 border-violet-200' },
-    learning_unit: { label: 'หน่วยการเรียนรู้', icon: ClipboardList, className: 'bg-amber-50 text-amber-800 border-amber-200' },
+    subject: { label: LEARNING_FORMATS.subject.label, icon: BookOpen, className: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+    learning_unit: { label: LEARNING_FORMATS.learning_unit.label, icon: ClipboardList, className: 'bg-amber-50 text-amber-800 border-amber-200' },
+    project: { label: LEARNING_FORMATS.project.label, icon: FolderKanban, className: 'bg-blue-50 text-blue-800 border-blue-200' },
+    activity: { label: LEARNING_FORMATS.activity.label, icon: Users, className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    integrated_unit: { label: LEARNING_FORMATS.learning_unit.label, icon: ClipboardList, className: 'bg-amber-50 text-amber-800 border-amber-200' },
 };
+
+const CONTEXT_TYPES = ['learning_unit', 'project', 'activity'];
 
 const EMPTY_FORM = {
     context_type: 'project',
@@ -37,6 +42,7 @@ const EMPTY_FORM = {
 export default function LearningContextManager() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
+    const navigate = useNavigate();
     const [contexts, setContexts] = useState([]);
     const [teachers, setTeachers] = useState([]);
     const [los, setLos] = useState([]);
@@ -85,8 +91,8 @@ export default function LearningContextManager() {
         } catch (error) {
             const message = error.message || 'ไม่สามารถโหลดข้อมูลได้';
             setErrorMessage(message.includes('does not exist') || message.includes('schema cache')
-                ? 'ยังไม่ได้ติดตั้งตารางบริบทการเรียนรู้ กรุณารัน cbe_track_demo_upgrade.sql ก่อน'
-                : message);
+                ? 'ระบบยังไม่มีโครงสร้างข้อมูลสำหรับรูปแบบการจัดการเรียนรู้ กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบการติดตั้งฐานข้อมูล'
+                : `ไม่สามารถโหลดข้อมูลรูปแบบการจัดการเรียนรู้ได้: ${message}`);
         } finally {
             setLoading(false);
         }
@@ -113,7 +119,7 @@ export default function LearningContextManager() {
     const createContext = async (event) => {
         event.preventDefault();
         if (!form.context_name.trim()) {
-            toast.error('กรุณาระบุชื่อบริบทการเรียนรู้');
+            toast.error(`กรุณาระบุชื่อ${learningFormatLabel(form.context_type)}`);
             return;
         }
         setSaving(true);
@@ -141,11 +147,11 @@ export default function LearningContextManager() {
                 detail: { context_type: data.context_type, context_name: data.context_name },
             });
             setForm(EMPTY_FORM);
-            toast.success('สร้างบริบทการเรียนรู้แล้ว ขั้นต่อไปเลือก LO ที่ต้องการประเมิน');
+            toast.success(`เพิ่ม${learningFormatLabel(data.context_type)}แล้ว กรุณาเลือกผลลัพธ์การเรียนรู้ที่ต้องการประเมิน`);
             await loadData();
             setSelectedContextId(data.context_id);
         } catch (error) {
-            toast.error('สร้างข้อมูลไม่สำเร็จ: ' + error.message);
+            toast.error('ไม่สามารถเพิ่มรูปแบบการจัดการเรียนรู้ได้: ' + error.message);
         } finally {
             setSaving(false);
         }
@@ -176,9 +182,9 @@ export default function LearningContextManager() {
                 detail: { lo_ids: selectedLOs },
             });
             setMappedByContext(prev => ({ ...prev, [selectedContextId]: selectedLOs }));
-            toast.success(`บันทึก LO ${selectedLOs.length} ข้อแล้ว`);
+            toast.success(`บันทึกผลลัพธ์การเรียนรู้ที่เชื่อมโยงแล้ว ${selectedLOs.length} ข้อ`);
         } catch (error) {
-            toast.error('บันทึกการผูก LO ไม่สำเร็จ: ' + error.message);
+            toast.error('ไม่สามารถบันทึกการเชื่อมโยงผลลัพธ์การเรียนรู้ได้: ' + error.message);
         } finally {
             setMappingSaving(false);
         }
@@ -189,29 +195,50 @@ export default function LearningContextManager() {
             const { error } = await supabase.from('learning_contexts').update({ is_active: !context.is_active, updated_at: new Date().toISOString() }).eq('context_id', context.context_id);
             if (error) throw error;
             setContexts(prev => prev.map(item => item.context_id === context.context_id ? { ...item, is_active: !item.is_active } : item));
-            toast.success(context.is_active ? 'พักการใช้งานบริบทนี้แล้ว' : 'เปิดใช้งานบริบทนี้แล้ว');
+            toast.success(context.is_active ? 'ระงับการใช้งานรายการนี้แล้ว' : 'เปิดใช้งานรายการนี้แล้ว');
         } catch (error) {
             toast.error('เปลี่ยนสถานะไม่สำเร็จ: ' + error.message);
         }
     };
 
     return (
-        <Layout title="บริบทการเรียนรู้และการผูก LO">
+        <Layout title="รูปแบบการจัดการเรียนรู้และผลลัพธ์การเรียนรู้">
             <header className="mb-7 max-w-4xl">
-                <button onClick={() => history.back()} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับหน้าฝ่ายวิชาการ</button>
-                <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">บริบทการเรียนรู้และการผูก LO</h2>
-                <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">สร้างโครงงาน กิจกรรม หน่วยบูรณาการ หรือหน่วยการเรียนรู้ แล้วเลือก LO เดียวกับที่ใช้ในรายวิชาได้</p>
+                <button onClick={() => navigate('/admin')} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับหน้าฝ่ายวิชาการ</button>
+                <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">จัดการรูปแบบการจัดการเรียนรู้</h2>
+                <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">สถานศึกษาสามารถจัดการเรียนรู้ได้ 4 รูปแบบ ได้แก่ รายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม โดยผลลัพธ์การเรียนรู้ (LO) เดียวกันสามารถเชื่อมโยงและประเมินซ้ำได้ในหลายรูปแบบ</p>
             </header>
 
+            <section className="mb-7" aria-labelledby="learning-format-heading">
+                <h3 id="learning-format-heading" className="mb-3 text-sm font-extrabold text-slate-700">รูปแบบการจัดการเรียนรู้ 4 รูปแบบ</h3>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {LEARNING_FORMAT_ORDER.map(type => {
+                        const meta = TYPE_META[type];
+                        const Icon = meta.icon;
+                        return (
+                            <button
+                                key={type}
+                                type="button"
+                                onClick={() => type === 'subject' ? navigate('/admin?tab=mapping') : setForm(prev => ({ ...prev, context_type: type }))}
+                                className={`flex min-h-28 items-start gap-3 rounded-2xl border p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${form.context_type === type ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white'}`}
+                            >
+                                <span className={`rounded-xl border p-2 ${meta.className}`}><Icon className="h-5 w-5" /></span>
+                                <span><strong className="block text-slate-900">{meta.label}</strong><span className="mt-1 block text-sm leading-5 text-slate-600">{LEARNING_FORMATS[type].description}</span></span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </section>
+
             {errorMessage ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900" role="alert"><strong>เปิดหน้านี้ไม่ได้:</strong> {errorMessage}</div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900" role="alert"><strong>ไม่สามารถแสดงข้อมูลได้:</strong> {errorMessage}</div>
             ) : (
                 <div className="grid gap-7 xl:grid-cols-[380px_minmax(0,1fr)]">
                     <div className="space-y-6">
                         <form onSubmit={createContext} className="rounded-2xl border border-slate-200 bg-white p-5">
-                            <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><Plus className="h-5 w-5" /></div><div><h3 className="font-extrabold text-slate-900">เพิ่มบริบทการเรียนรู้</h3><p className="text-sm text-slate-600">ภาคเรียนที่ {semester}/{academicYear}</p></div></div>
+                            <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><Plus className="h-5 w-5" /></div><div><h3 className="font-extrabold text-slate-900">เพิ่มหน่วยการเรียนรู้ โครงงาน หรือกิจกรรม</h3><p className="text-sm text-slate-600">ภาคเรียนที่ {semester}/{academicYear}</p></div></div>
                             <div className="space-y-4">
-                                <label className="block"><span className="mb-1.5 block text-sm font-bold text-slate-700">ประเภท</span><select value={form.context_type} onChange={event => updateForm('context_type', event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">{Object.entries(TYPE_META).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</select></label>
+                                <label className="block"><span className="mb-1.5 block text-sm font-bold text-slate-700">รูปแบบการจัดการเรียนรู้</span><select value={form.context_type} onChange={event => updateForm('context_type', event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">{CONTEXT_TYPES.map(value => <option key={value} value={value}>{TYPE_META[value].label}</option>)}</select></label>
                                 <div className="grid grid-cols-[120px_1fr] gap-3">
                                     <label><span className="mb-1.5 block text-sm font-bold text-slate-700">รหัส</span><input value={form.context_code} onChange={event => updateForm('context_code', event.target.value)} placeholder="PRJ-01" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
                                     <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ชื่อ</span><input required value={form.context_name} onChange={event => updateForm('context_name', event.target.value)} placeholder="เช่น ตลาดนัดพอเพียง" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
@@ -221,23 +248,23 @@ export default function LearningContextManager() {
                                     <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ระดับชั้น</span><input value={form.grade_level} onChange={event => updateForm('grade_level', event.target.value)} placeholder="ป.1" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
                                     <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ผู้รับผิดชอบ</span><select value={form.responsible_teacher_id} onChange={event => updateForm('responsible_teacher_id', event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"><option value="">ยังไม่กำหนด</option>{teachers.map(teacher => <option key={teacher.teacher_id} value={teacher.teacher_id}>{teacher.prefix || ''}{teacher.first_name} {teacher.last_name}</option>)}</select></label>
                                 </div>
-                                <button disabled={saving} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-4 w-4" />} สร้างและไปผูก LO</button>
+                                <button disabled={saving} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-4 w-4" />} เพิ่มรายการและเชื่อมโยง LO</button>
                             </div>
                         </form>
 
-                        <section aria-label="รายการบริบทการเรียนรู้">
-                            <h3 className="mb-3 text-sm font-extrabold text-slate-700">บริบทที่เปิดในภาคเรียนนี้ ({contexts.length})</h3>
-                            {loading ? <div className="h-36 animate-pulse rounded-2xl bg-slate-200" /> : contexts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-7 text-center text-slate-600">ยังไม่มีโครงงานหรือกิจกรรม เริ่มสร้างจากแบบฟอร์มด้านบน</div> : <div className="space-y-2">{contexts.map(context => { const meta = TYPE_META[context.context_type] || TYPE_META.project; const Icon = meta.icon; return <button key={context.context_id} onClick={() => setSelectedContextId(context.context_id)} className={`w-full rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedContextId === context.context_id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'} ${!context.is_active ? 'opacity-60' : ''}`}><div className="flex items-start gap-3"><div className={`rounded-xl border p-2 ${meta.className}`}><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="truncate font-extrabold text-slate-900">{context.context_name}</p><p className="mt-1 text-sm text-slate-600">{meta.label} · {context.grade_level || 'ทุกระดับ'} · {(mappedByContext[context.context_id] || []).length} LO</p></div></div></button>; })}</div>}
+                        <section aria-label="รายการรูปแบบการจัดการเรียนรู้">
+                            <h3 className="mb-3 text-sm font-extrabold text-slate-700">หน่วยการเรียนรู้ โครงงาน และกิจกรรมในภาคเรียนนี้ ({contexts.length})</h3>
+                            {loading ? <div className="h-36 animate-pulse rounded-2xl bg-slate-200" /> : contexts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-7 text-center text-slate-600">ยังไม่มีรายการสำหรับภาคเรียนนี้ กรุณาเพิ่มหน่วยการเรียนรู้ โครงงาน หรือกิจกรรมจากแบบฟอร์มด้านบน</div> : <div className="space-y-2">{contexts.map(context => { const meta = TYPE_META[context.context_type] || TYPE_META.project; const Icon = meta.icon; return <button key={context.context_id} onClick={() => setSelectedContextId(context.context_id)} className={`w-full rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedContextId === context.context_id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'} ${!context.is_active ? 'opacity-60' : ''}`}><div className="flex items-start gap-3"><div className={`rounded-xl border p-2 ${meta.className}`}><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="truncate font-extrabold text-slate-900">{context.context_name}</p><p className="mt-1 text-sm text-slate-600">{meta.label} · {context.grade_level || 'ทุกระดับชั้น'} · {(mappedByContext[context.context_id] || []).length} LO</p></div></div></button>; })}</div>}
                         </section>
                     </div>
 
                     <section className="rounded-2xl border border-slate-200 bg-white">
-                        {!selectedContext ? <div className="flex min-h-[620px] items-center justify-center p-8 text-center text-slate-600">สร้างหรือเลือกบริบทการเรียนรู้เพื่อผูก LO</div> : <>
+                        {!selectedContext ? <div className="flex min-h-[620px] items-center justify-center p-8 text-center text-slate-600">เพิ่มหรือเลือกรายการเพื่อเชื่อมโยงผลลัพธ์การเรียนรู้</div> : <>
                             <header className="border-b border-slate-200 p-6">
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><Sparkles className="h-4 w-4" /> {TYPE_META[selectedContext.context_type]?.label}</div><h3 className="mt-1 text-2xl font-extrabold text-slate-900">{selectedContext.context_name}</h3><p className="mt-2 max-w-[70ch] leading-6 text-slate-600">{selectedContext.description || 'ยังไม่มีคำอธิบาย'}</p></div><button onClick={() => toggleContextActive(selectedContext)} className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">{selectedContext.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}</button></div>
                             </header>
                             <div className="p-6">
-                                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="flex items-center gap-2 font-extrabold text-slate-900"><Link2 className="h-5 w-5 text-indigo-600" /> เลือก LO ที่ประเมินในบริบทนี้</h4><p className="mt-1 text-sm text-slate-600">LO เดียวกันสามารถเลือกใช้ซ้ำกับรายวิชาและบริบทอื่นได้</p></div><button onClick={saveMapping} disabled={mappingSaving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{mappingSaving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} บันทึก {selectedLOs.length} LO</button></div>
+                                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="flex items-center gap-2 font-extrabold text-slate-900"><Link2 className="h-5 w-5 text-indigo-600" /> ผลลัพธ์การเรียนรู้ที่ใช้ประเมิน</h4><p className="mt-1 text-sm text-slate-600">ผลลัพธ์การเรียนรู้เดียวกันสามารถเชื่อมโยงกับรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรมได้มากกว่าหนึ่งรายการ</p></div><button onClick={saveMapping} disabled={mappingSaving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{mappingSaving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} บันทึกการเชื่อมโยง {selectedLOs.length} ข้อ</button></div>
                                 <label className="relative mb-4 block"><span className="sr-only">ค้นหา LO</span><Search className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-500" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหารหัส LO ด้านความสามารถ หรือคำอธิบาย" className="min-h-12 w-full rounded-xl border border-slate-300 pl-11 pr-4 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
                                 {filteredLOs.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-600">ไม่พบ LO ที่ตรงกับคำค้นหา</div> : <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200">{filteredLOs.map(lo => { const checked = selectedLOs.includes(lo.lo_id); return <label key={lo.lo_id} className={`flex cursor-pointer gap-4 p-4 transition hover:bg-slate-50 ${checked ? 'bg-indigo-50/60' : 'bg-white'}`}><input type="checkbox" checked={checked} onChange={() => toggleLO(lo.lo_id)} className="sr-only" /><span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white'}`}>{checked && <CheckCircle2 className="h-4 w-4" />}</span><span><span className="font-extrabold text-slate-900">{lo.lo_code || `LO ${lo.ability_no}`} <span className="font-semibold text-indigo-700">· {lo.competency_area || 'ทั่วไป'}</span></span><span className="mt-1 block max-w-[75ch] text-sm leading-6 text-slate-600">{lo.lo_description}</span></span></label>; })}</div>}
                             </div>

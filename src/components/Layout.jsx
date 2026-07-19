@@ -11,7 +11,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
     const [showTermPicker, setShowTermPicker] = useState(false);
 
     const handleLogout = () => {
-        if (window.confirm('ต้องการออกจากระบบใช่ไหม?')) {
+        if (window.confirm('ยืนยันการออกจากระบบ CBE Track')) {
             logoutUser();
             navigate('/login');
         }
@@ -19,7 +19,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
     // Role badge
     const roleMeta = {
-        admin:     { label: 'ครูวิชาการ', color: 'bg-violet-100 text-violet-700 border-violet-200' },
+        admin:     { label: 'ฝ่ายวิชาการ', color: 'bg-violet-100 text-violet-700 border-violet-200' },
         teacher:   { label: 'ครูผู้สอน',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
         executive: { label: 'ผู้บริหาร',  color: 'bg-amber-100 text-amber-700 border-amber-200' },
         student:   { label: 'นักเรียน',   color: 'bg-green-100 text-green-700 border-green-200' },
@@ -86,7 +86,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                     className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 transition-all shadow-sm"
                                 >
                                     <Calendar className="w-3.5 h-3.5" />
-                                    <span className="hidden sm:inline">เทอม</span> {semester}/{academicYear}
+                                    <span className="hidden sm:inline">ภาคเรียนที่</span> {semester}/{academicYear}
                                     <ChevronDown className={`w-3 h-3 transition-transform ${showTermPicker ? 'rotate-180' : ''}`} />
                                 </button>
 
@@ -95,8 +95,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                         {/* Backdrop */}
                                         <div className="fixed inset-0 z-30" onClick={() => setShowTermPicker(false)} />
                                         <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-40 w-64 animate-in fade-in slide-in-from-top-2 duration-200">
-                                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
-                                                {isAdmin ? '⚙️ ตั้งค่าภาคเรียนทั้งระบบ' : 'เลือกภาคเรียนที่ต้องการดู'}
+                                            <p className="mb-3 text-xs font-bold text-slate-600">
+                                                {isAdmin ? 'กำหนดปีการศึกษาและภาคเรียนของระบบ' : 'เลือกปีการศึกษาและภาคเรียน'}
                                             </p>
                                             <div className="space-y-3">
                                                 <div>
@@ -124,14 +124,14 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
                                                                 }`}
                                                             >
-                                                                เทอม {s}
+                                                                ภาคเรียนที่ {s}
                                                             </button>
                                                         ))}
                                                     </div>
                                                 </div>
                                                 {isAdmin && (
-                                                    <p className="text-[10px] text-amber-600 font-medium bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-                                                        ⚠️ การเปลี่ยนภาคเรียนจะมีผลกับผู้ใช้ทุกคนในระบบ
+                                                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                                                        การเปลี่ยนค่านี้มีผลต่อปีการศึกษาและภาคเรียนเริ่มต้นของผู้ใช้ทุกบทบาท
                                                     </p>
                                                 )}
                                             </div>

@@ -20,7 +20,7 @@ export default function Login() {
             return;
         }
         if (dob.length !== 8) {
-            toast.error('กรุณากรอกวันเดือนปีเกิด 8 หลัก (DDMMYYYY)');
+            toast.error('กรุณากรอกรหัสผ่าน 8 หลักในรูปแบบวันเดือนปีเกิด');
             return;
         }
         setLoading(true);
@@ -39,7 +39,7 @@ export default function Login() {
                 toast.error(res.message);
             }
         } catch (err) {
-            toast.error('ข้อผิดพลาดระบบ: ' + err.message);
+            toast.error('ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง: ' + err.message);
         } finally {
             setLoading(false);
         }
@@ -70,7 +70,7 @@ export default function Login() {
                     <form onSubmit={handleLogin} className="space-y-5">
                         {/* Citizen ID */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">เลขประจำตัวประชาชน</label>
+                            <label className="text-xs font-bold text-slate-300 ml-1">เลขประจำตัวประชาชน 13 หลัก</label>
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
                                     <User className="h-4 w-4" />
@@ -83,7 +83,7 @@ export default function Login() {
                                     value={citizenId}
                                     onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
                                     className="block w-full pl-11 pr-4 py-3.5 bg-slate-900/60 border border-slate-600/80 rounded-xl text-white placeholder-slate-600 focus:bg-slate-900/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none text-sm font-medium"
-                                    placeholder="1 3 หลัก"
+                                    placeholder="กรอกเลขประจำตัวประชาชน"
                                 />
                                 {/* Character counter */}
                                 {citizenId.length > 0 && (
@@ -96,7 +96,7 @@ export default function Login() {
 
                         {/* Password / DOB */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-400 ml-1 uppercase tracking-wider">รหัสผ่าน (วันเดือนปีเกิด)</label>
+                            <label className="text-xs font-bold text-slate-300 ml-1">รหัสผ่าน</label>
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
                                     <Lock className="h-4 w-4" />
@@ -109,7 +109,7 @@ export default function Login() {
                                     value={dob}
                                     onChange={(e) => setDob(e.target.value.replace(/\D/g, ''))}
                                     className="block w-full pl-11 pr-12 py-3.5 bg-slate-900/60 border border-slate-600/80 rounded-xl text-white placeholder-slate-600 focus:bg-slate-900/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none text-sm font-medium tracking-widest"
-                                    placeholder="DDMMYYYY"
+                                    placeholder="วันเดือนปีเกิด 8 หลัก"
                                 />
                                 {/* Toggle show/hide */}
                                 <button
@@ -121,7 +121,7 @@ export default function Login() {
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
-                            <p className="text-[11px] text-slate-500 ml-1">ตัวอย่าง: เกิดวันที่ 5 ม.ค. 2555 → <span className="font-mono text-slate-400">05012555</span></p>
+                            <p className="text-xs text-slate-400 ml-1">บัญชีที่ยังไม่ได้เปลี่ยนรหัสผ่าน ใช้วันเดือนปีเกิด เช่น 5 มกราคม 2555 กรอก <span className="font-mono text-slate-300">05012555</span></p>
                         </div>
 
                         {/* Submit */}
@@ -136,7 +136,7 @@ export default function Login() {
                                 {loading ? (
                                     <>
                                         <Loader2 className="animate-spin w-5 h-5 mr-2" />
-                                        กำลังตรวจสอบ...
+                                        กำลังตรวจสอบข้อมูล...
                                     </>
                                 ) : 'เข้าสู่ระบบ'}
                             </span>

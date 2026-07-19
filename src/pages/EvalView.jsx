@@ -215,7 +215,7 @@ export default function EvalView() {
 
             setIsDirty(false);
             setLastSaved(new Date());
-            if (showSuccessToast) toast.success('บันทึกผลการประเมิน เวลาเรียน และหลักฐานสำเร็จ');
+            if (showSuccessToast) toast.success('บันทึกผลการประเมิน เวลาเรียน และหลักฐานแล้ว');
             return true;
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
@@ -260,7 +260,7 @@ export default function EvalView() {
 
     const submitForReview = async () => {
         if (missingCount > 0) {
-            toast.error(`ยังส่งตรวจไม่ได้: เหลือ ${missingCount} ช่องที่ยังไม่ประเมิน`);
+            toast.error(`ยังไม่สามารถส่งให้ฝ่ายวิชาการตรวจสอบได้ เนื่องจากมี ${missingCount} รายการที่ยังไม่ประเมิน`);
             return;
         }
         const missingEvidence = evaluations.filter(e => e.competency_level && e.competency_level !== 'N/A' && !e.evidence_note?.trim()).length;
@@ -399,16 +399,16 @@ export default function EvalView() {
                             } disabled:opacity-50`}
                         >
                             {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                            {saving ? 'กำลังบันทึก...' : 'บันทึกผล'}
+                            {saving ? 'กำลังบันทึกผล...' : 'บันทึกผลการประเมิน'}
                         </button>
                         <button
                             onClick={submitForReview}
                             disabled={submitting || loading || missingCount > 0 || submissionStatus === 'approved'}
                             className="hidden min-h-10 items-center rounded-xl bg-blue-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 sm:inline-flex"
-                            title={missingCount > 0 ? `เหลือ ${missingCount} ช่องที่ยังไม่ประเมิน` : 'ส่งผลให้ฝ่ายวิชาการตรวจสอบ'}
+                            title={missingCount > 0 ? `มี ${missingCount} รายการที่ยังไม่ประเมิน` : 'ส่งผลการประเมินให้ฝ่ายวิชาการตรวจสอบ'}
                         >
                             {submitting ? <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="mr-2 h-4 w-4" />}
-                            ส่งตรวจ
+                            ส่งให้ฝ่ายวิชาการตรวจสอบ
                         </button>
                     </div>
                 </div>
@@ -423,7 +423,7 @@ export default function EvalView() {
                             <FileText className="w-8 h-8 text-slate-400" />
                         </div>
                         <p className="text-xl font-bold text-slate-700">ไม่มีนักเรียนในรายวิชานี้</p>
-                        <p className="text-slate-500 mt-2">โปรดแจ้งฝ่ายวิชาการเพื่อเพิ่มรายชื่อนักเรียนก่อนประเมิน LO</p>
+                        <p className="text-slate-500 mt-2">กรุณาแจ้งฝ่ายวิชาการเพื่อจัดนักเรียนเข้ารายวิชาก่อนเริ่มประเมินผลลัพธ์การเรียนรู้</p>
                     </div>
                 ) : (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -443,7 +443,7 @@ export default function EvalView() {
                                         }`}
                                     >
                                         <AlertCircle className="w-4 h-4 mr-1.5" />
-                                        {showMissingOnly ? 'ดูนักเรียนทั้งหมด' : `ช่องที่ยังไม่ประเมิน (${missingCount})`}
+                                        {showMissingOnly ? 'แสดงนักเรียนทั้งหมด' : `รายการที่ยังไม่ประเมิน (${missingCount})`}
                                     </button>
                                 )}
                                 {uniqueRooms.length > 0 && (
@@ -517,7 +517,7 @@ export default function EvalView() {
                                                                 <option value="พัฒนา">พัฒนา</option>
                                                                 <option value="ชำนาญ">ชำนาญ</option>
                                                                 <option value="เชี่ยวชาญ">เชี่ยวชาญ</option>
-                                                                <option value="N/A">N/A (ข้าม)</option>
+                                                                <option value="N/A">ไม่อยู่ในขอบเขตการประเมิน</option>
                                                             </select>
                                                             <label className="mt-2 block text-left">
                                                                 <span className="sr-only">หลักฐานเชิงคุณภาพ {lo.lo_code || `LO ${lo.ability_no}`} ของ {st.first_name}</span>
@@ -528,7 +528,7 @@ export default function EvalView() {
                                                                         value={ev?.evidence_note || ''}
                                                                         onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
                                                                         disabled={submissionStatus === 'approved'}
-                                                                        placeholder="หลักฐาน/ข้อสังเกต"
+                                                                        placeholder="บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน"
                                                                         className="w-full resize-y rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                                                                     />
                                                                 </div>
@@ -541,8 +541,8 @@ export default function EvalView() {
                                                         const res = getSubjectResult(enroll.enrollment_id);
                                                         if (!res) return null;
                                                         if (res.status === 'pending') return <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">{res.text}</span>;
-                                                        if (res.status === 'pass') return <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-200" title={`ผ่านเกณฑ์ ${res.percent.toFixed(0)}%`}>✅ {res.text}</span>;
-                                                        if (res.status === 'fail') return <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-md border border-red-200" title={`ได้ ${res.percent.toFixed(0)}% (ไม่ถึง 80%)`}>❌ {res.text}</span>;
+                                                        if (res.status === 'pass') return <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md border border-emerald-200" title={`ผ่านเกณฑ์ ${res.percent.toFixed(0)}%`}>{res.text}</span>;
+                                                        if (res.status === 'fail') return <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-md border border-red-200" title={`ได้ ${res.percent.toFixed(0)}% (ไม่ถึง 80%)`}>{res.text}</span>;
                                                     })()}
                                                 </td>
                                             </tr>

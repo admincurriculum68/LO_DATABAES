@@ -124,7 +124,7 @@ export default function SummaryView() {
                                 const wb = XLSX.utils.book_new();
                                 XLSX.utils.book_append_sheet(wb, ws, 'ผลรายวิชา');
                                 XLSX.writeFile(wb, `ผลลัพธ์_${subject?.subject_name || 'report'}.xlsx`);
-                                toast.success('ส่งออก Excel สำเร็จ!');
+                                toast.success('จัดทำไฟล์ Excel แล้ว');
                             }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
                         >

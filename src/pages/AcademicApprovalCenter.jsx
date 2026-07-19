@@ -20,6 +20,7 @@ import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
+import { formalLevelLabel, learningFormatLabel } from '../lib/terminology';
 
 const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ', 'N/A'];
 const LEVEL_ORDER = { เริ่มต้น: 1, พัฒนา: 2, ชำนาญ: 3, เชี่ยวชาญ: 4, 'N/A': 0 };
@@ -49,12 +50,7 @@ function recommendedLevel(sources) {
 
 function sourceLabel(source) {
     if (source.source_type === 'subject') return source.source_name || 'รายวิชา';
-    const type = {
-        project: 'โครงงาน',
-        activity: 'กิจกรรม',
-        integrated_unit: 'หน่วยบูรณาการ',
-        learning_unit: 'หน่วยการเรียนรู้',
-    }[source.context_type] || 'บริบทการเรียนรู้';
+    const type = learningFormatLabel(source.context_type);
     return `${type}: ${source.source_name || '-'}`;
 }
 
@@ -304,15 +300,15 @@ export default function AcademicApprovalCenter() {
     };
 
     return (
-        <Layout title="ศูนย์ตรวจสอบและรับรองผล LO">
+        <Layout title="การตรวจสอบและรับรองผลลัพธ์การเรียนรู้">
             <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
                     <button onClick={() => history.back()} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         <ArrowLeft className="h-4 w-4" /> กลับหน้าฝ่ายวิชาการ
                     </button>
-                    <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">ศูนย์ตรวจสอบและรับรองผล LO</h2>
+                <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</h2>
                     <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">
-                        รวมผล LO เดียวกันจากรายวิชา โครงงาน และกิจกรรม เพื่อให้ฝ่ายวิชาการพิจารณาหลักฐานก่อนรับรองผลสุดท้ายของผู้เรียน
+                        รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อให้ฝ่ายวิชาการพิจารณาหลักฐานก่อนรับรองผลของผู้เรียน
                     </p>
                 </div>
                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm text-indigo-950">
@@ -421,8 +417,8 @@ export default function AcademicApprovalCenter() {
 
                                     <div className="p-6">
                                         <div className="mb-4 flex items-center justify-between gap-3">
-                                            <h4 className="font-extrabold text-slate-900">หลักฐานจากทุกบริบท</h4>
-                                            <span className="text-sm font-bold text-slate-600">ระบบแนะนำ: <strong className="text-indigo-700">{selected.recommended_level || 'ยังไม่มีข้อมูลพอ'}</strong></span>
+                                            <h4 className="font-extrabold text-slate-900">หลักฐานจากรูปแบบการจัดการเรียนรู้ทั้งหมด</h4>
+                                            <span className="text-sm font-bold text-slate-600">ระดับที่สรุปจากหลักฐาน: <strong className="text-indigo-700">{selected.recommended_level || 'ข้อมูลยังไม่เพียงพอ'}</strong></span>
                                         </div>
                                         <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200">
                                             {selected.sources.map((source, index) => (
@@ -435,7 +431,7 @@ export default function AcademicApprovalCenter() {
                                                                 <p className="mt-1 max-w-[58ch] text-sm leading-6 text-slate-600">{source.evidence_note || 'ครูยังไม่ได้บันทึกหลักฐานเชิงคุณภาพ'}</p>
                                                             </div>
                                                         </div>
-                                                        <span className="w-fit rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-extrabold text-slate-800">{source.competency_level || 'ยังไม่ประเมิน'}</span>
+                                                        <span className="w-fit rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-extrabold text-slate-800">{source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}</span>
                                                     </div>
                                                 </article>
                                             ))}
@@ -446,7 +442,7 @@ export default function AcademicApprovalCenter() {
                                                 <span className="mb-2 block text-sm font-extrabold text-slate-800">ระดับความสามารถสุดท้าย</span>
                                                 <select value={decisionLevel} onChange={event => setDecisionLevel(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
                                                     <option value="">เลือกระดับ</option>
-                                                    {LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                                                    {LEVELS.map(level => <option key={level} value={level}>{formalLevelLabel(level)}</option>)}
                                                 </select>
                                             </label>
                                             <label>
@@ -457,7 +453,7 @@ export default function AcademicApprovalCenter() {
 
                                         <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                                             <button onClick={() => saveDecision('returned')} disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-5 font-extrabold text-rose-800 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-600 disabled:opacity-50"><RotateCcw className="h-4 w-4" /> ส่งกลับให้ครูแก้ไข</button>
-                                            <button onClick={() => saveDecision('approved')} disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} รับรองผลสุดท้าย</button>
+                                            <button onClick={() => saveDecision('approved')} disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} รับรองผลการประเมิน</button>
                                         </div>
                                         <p className="mt-4 flex items-center justify-end gap-2 text-xs text-slate-500"><History className="h-4 w-4" /> การรับรองและการส่งกลับจะถูกบันทึกในประวัติการใช้งาน</p>
                                     </div>

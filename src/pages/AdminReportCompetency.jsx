@@ -215,7 +215,7 @@ export default function AdminReportCompetency() {
                                 const wb = XLSX.utils.book_new();
                                 XLSX.utils.book_append_sheet(wb, ws, selectedArea.substring(0,31));
                                 XLSX.writeFile(wb, `รายงานด้าน_${selectedArea}.xlsx`);
-                                toast.success('ส่งออก Excel สำเร็จ!');
+                                toast.success('จัดทำไฟล์ Excel แล้ว');
                             }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
                         >
@@ -268,7 +268,7 @@ export default function AdminReportCompetency() {
                         </div>
 
                         {columns.length === 0 ? (
-                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ไม่มีรายวิชาใดที่ผูก LO ในด้านนี้ไว้</div>
+                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้ในด้านนี้</div>
                         ) : (
                             <>
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
@@ -298,7 +298,7 @@ export default function AdminReportCompetency() {
                                             <tr className="bg-purple-50 print:bg-transparent">
                                                 {columns.map((col, i) => (
                                                     <th key={i} className="px-3 py-2 text-center border-r border-purple-100 print:border-black text-[11px] font-bold text-purple-600">
-                                                        {col.sub.grade_level} | เทอม {col.sub.semester}/{col.sub.academic_year}
+                                                        {col.sub.grade_level} | ภาคเรียนที่ {col.sub.semester}/{col.sub.academic_year}
                                                     </th>
                                                 ))}
                                             </tr>

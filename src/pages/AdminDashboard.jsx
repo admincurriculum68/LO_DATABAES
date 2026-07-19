@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
@@ -14,7 +14,9 @@ export default function AdminDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('data');
+    const [searchParams] = useSearchParams();
+    const requestedTab = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState(['data', 'import', 'mapping', 'enrollment', 'progress', 'promotion'].includes(requestedTab) ? requestedTab : 'data');
 
     // Stats for Dashboard Overview
     const [stats, setStats] = useState({ students: 0, teachers: 0, subjects: 0 });
@@ -144,7 +146,7 @@ export default function AdminDashboard() {
     };
 
     const handleDelete = async (idValue, idCol) => {
-        if (!window.confirm('ยืนยันระบบลบข้อมูลนี้ทิ้ง? (หากมีคะแนนประเมินผูกอยู่จะไม่สามารถลบได้)')) return;
+        if (!window.confirm('ยืนยันการลบข้อมูลรายการนี้ หากมีผลการประเมินเชื่อมโยงอยู่ ระบบจะไม่อนุญาตให้ลบ')) return;
         try {
             const { error } = await supabase.from(selectedTable).delete().eq(idCol, idValue);
             if (error) throw error;
@@ -310,7 +312,7 @@ export default function AdminDashboard() {
             }
 
             if (validRows.length === 0) { toast.error(`ไม่มีแถวที่ถูกต้อง (${invalidRows.length} แถวผิด)`, { id: 'dmc' }); return; }
-            if (invalidRows.length > 0) { toast.error(`⚠️ ข้ามแถวผิด ${invalidRows.length} แถว`); console.warn('[DMC Invalid]', invalidRows); }
+            if (invalidRows.length > 0) { toast.error(`ไม่นำเข้าข้อมูลที่ไม่ถูกต้อง ${invalidRows.length} แถว`); console.warn('[DMC Invalid]', invalidRows); }
 
             const payload = await Promise.all(validRows.map(async r => ({
                 school_id: currentUser.school_id, citizen_id: r.citizen_id,
@@ -329,7 +331,7 @@ export default function AdminDashboard() {
             );
             setAllStudents(updated || []);
             setStats(prev => ({ ...prev, students: updated?.length || 0 }));
-            toast.success(`นำเข้าจาก DMC สำเร็จ! ${payload.length} คน`, { id: 'dmc' });
+            toast.success(`นำเข้าข้อมูลนักเรียนจาก DMC แล้ว ${payload.length} คน`, { id: 'dmc' });
             if (selectedTable === 'users_students') loadTableData('users_students');
         } catch (err) {
             toast.error('นำเข้าผิดพลาด: ' + err.message, { id: 'dmc' });
@@ -378,7 +380,7 @@ export default function AdminDashboard() {
                                 return;
                             }
                             // Partial import: warn but continue with valid rows
-                            toast.error(`⚠️ ข้ามแถวที่ไม่ถูกต้อง ${invalidRows.length} แถว (ดูรายละเอียดใน Console)`);
+                            toast.error(`ไม่นำเข้าข้อมูลที่ไม่ถูกต้อง ${invalidRows.length} แถว กรุณาตรวจสอบรูปแบบไฟล์`);
                             console.warn('[CSV Import] Invalid rows:', invalidRows);
                         }
 
@@ -425,7 +427,7 @@ export default function AdminDashboard() {
                                 toast.error(msg);
                                 return;
                             }
-                            toast.error(`⚠️ ข้ามแถวที่ไม่ถูกต้อง ${invalidRows.length} แถว (ดูรายละเอียดใน Console)`);
+                            toast.error(`ไม่นำเข้าข้อมูลที่ไม่ถูกต้อง ${invalidRows.length} แถว กรุณาตรวจสอบรูปแบบไฟล์`);
                             console.warn('[CSV Import] Invalid rows:', invalidRows);
                         }
 
@@ -551,7 +553,7 @@ export default function AdminDashboard() {
                             const { error } = await supabase.from('learning_outcomes').insert(payload);
                             if (error) throw error;
                         } else {
-                            toast.error('ข้อมูลสมรรถนะ (LO) ซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            toast.error('ผลลัพธ์การเรียนรู้ (LO) ในไฟล์ซ้ำกับข้อมูลที่มีอยู่ทั้งหมด', { id: 'csv' });
                             return;
                         }
                     }
@@ -677,7 +679,7 @@ export default function AdminDashboard() {
             setAllLOs(los || []);
             setMappedLOs((mapped || []).map(m => m.lo_id));
         } catch (err) {
-            toast.error('ดึงข้อมูล LO ไม่สำเร็จ: ' + err.message);
+            toast.error('ไม่สามารถโหลดข้อมูลผลลัพธ์การเรียนรู้ได้: ' + err.message);
         } finally {
             setLoadingMapping(false);
         }
@@ -696,7 +698,7 @@ export default function AdminDashboard() {
                 const { error } = await supabase.from('subject_lo_mapping').insert(payload);
                 if (error) throw error;
             }
-            toast.success('บันทึกการผูก LO สำเร็จ');
+            toast.success('บันทึกการเชื่อมโยงผลลัพธ์การเรียนรู้แล้ว');
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
         } finally {
@@ -705,7 +707,7 @@ export default function AdminDashboard() {
     };
 
     return (
-        <Layout title="ระบบจัดการฐานข้อมูล (Admin Dashboard)">
+        <Layout title="ระบบบริหารจัดการข้อมูลวิชาการ">
             {/* Overview Stats Dashboard */}
             <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
@@ -717,7 +719,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
                     <div>
-                        <p className="text-blue-100 font-medium mb-1">บุคลากรครู</p>
+                        <p className="text-blue-100 font-medium mb-1">ครูและบุคลากร</p>
                         <h3 className="text-4xl font-extrabold">{stats.teachers.toLocaleString()} <span className="text-lg font-normal">คน</span></h3>
                     </div>
                     <div className="bg-white/20 p-4 rounded-2xl"><GraduationCap className="w-8 h-8" /></div>
@@ -735,10 +737,10 @@ export default function AdminDashboard() {
             {(stats.teachers === 0 || stats.students === 0 || stats.subjects === 0) && (
                 <div className="mb-8 bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden">
                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100 flex items-center gap-3">
-                        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 text-base font-extrabold shrink-0">🚀</div>
+                        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0"><Settings className="h-4 w-4" /></div>
                         <div>
-                            <p className="font-extrabold text-amber-900 text-sm">เริ่มต้นใช้งาน CBE Track</p>
-                            <p className="text-xs text-amber-600 font-medium">ทำตามขั้นตอนด้านล่างให้ครบเพื่อเริ่มระบบประเมินผล</p>
+                            <p className="font-extrabold text-amber-900 text-sm">การเตรียมข้อมูลก่อนเริ่มประเมินผล</p>
+                            <p className="text-xs text-amber-700 font-medium">ดำเนินการตามขั้นตอนให้ครบเพื่อให้โครงสร้างการประเมินพร้อมใช้งาน</p>
                         </div>
                     </div>
                     <div className="p-6">
@@ -747,34 +749,34 @@ export default function AdminDashboard() {
                                 {
                                     step: 1,
                                     done: stats.teachers > 0,
-                                    label: 'นำเข้าข้อมูลครู',
-                                    desc: `${stats.teachers > 0 ? `มีครูในระบบ ${stats.teachers} คนแล้ว` : 'ยังไม่มีครูในระบบ'}`,
+                                    label: 'นำเข้าข้อมูลครูและบุคลากร',
+                                    desc: `${stats.teachers > 0 ? `มีข้อมูลครูและบุคลากร ${stats.teachers} คน` : 'ยังไม่มีข้อมูลครูและบุคลากร'}`,
                                     action: () => setActiveTab('import'),
-                                    actionLabel: 'ไปนำเข้าครู →'
+                                    actionLabel: 'นำเข้าข้อมูลครู'
                                 },
                                 {
                                     step: 2,
                                     done: stats.students > 0,
                                     label: 'นำเข้าข้อมูลนักเรียน',
-                                    desc: `${stats.students > 0 ? `มีนักเรียนในระบบ ${stats.students} คนแล้ว` : 'ยังไม่มีนักเรียนในระบบ'}`,
+                                    desc: `${stats.students > 0 ? `มีข้อมูลนักเรียน ${stats.students} คน` : 'ยังไม่มีข้อมูลนักเรียน'}`,
                                     action: () => setActiveTab('import'),
-                                    actionLabel: 'ไปนำเข้านักเรียน →'
+                                    actionLabel: 'นำเข้าข้อมูลนักเรียน'
                                 },
                                 {
                                     step: 3,
                                     done: stats.subjects > 0,
-                                    label: 'สร้างรายวิชาและผูก LO',
-                                    desc: `${stats.subjects > 0 ? `มีรายวิชา ${stats.subjects} วิชาแล้ว` : 'ยังไม่มีรายวิชาในระบบ'}`,
+                                    label: 'กำหนดรายวิชาและเชื่อมโยงผลลัพธ์การเรียนรู้',
+                                    desc: `${stats.subjects > 0 ? `มีรายวิชาที่เปิดสอน ${stats.subjects} วิชา` : 'ยังไม่มีข้อมูลรายวิชาที่เปิดสอน'}`,
                                     action: () => setActiveTab('import'),
-                                    actionLabel: 'ไปสร้างรายวิชา →'
+                                    actionLabel: 'กำหนดรายวิชา'
                                 },
                                 {
                                     step: 4,
                                     done: stats.subjects > 0 && stats.students > 0,
-                                    label: 'จัดนักเรียนเข้าห้องเรียน/รายวิชา',
-                                    desc: 'เชื่อมนักเรียนเข้ากับรายวิชาที่ต้องการ',
+                                    label: 'จัดนักเรียนเข้าชั้นเรียนและรายวิชา',
+                                    desc: 'กำหนดห้องเรียนและรายวิชาที่นักเรียนลงทะเบียน',
                                     action: () => setActiveTab('enrollment'),
-                                    actionLabel: 'ไปจัดนักเรียน →'
+                                    actionLabel: 'จัดนักเรียนเข้ารายวิชา'
                                 },
                             ].map(item => (
                                 <div key={item.step} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${item.done ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'}`}>
@@ -808,11 +810,11 @@ export default function AdminDashboard() {
                             <ShieldCheck className="h-7 w-7" />
                         </div>
                         <div>
-                            <p className="text-xl font-extrabold">ศูนย์ตรวจสอบและรับรองผล LO</p>
-                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวมผล LO เดียวกันจากหลายรายวิชา โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลสุดท้ายของผู้เรียน</p>
+                            <p className="text-xl font-extrabold">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</p>
+                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลของผู้เรียน</p>
                         </div>
                     </div>
-                    <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-white px-4 font-extrabold text-indigo-800">เปิดคิวรับรองผล</span>
+                    <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-white px-4 font-extrabold text-indigo-800">ตรวจสอบรายการรอรับรอง</span>
                 </button>
                 <button
                     onClick={() => navigate('/admin/learning-contexts')}
@@ -820,11 +822,11 @@ export default function AdminDashboard() {
                 >
                     <div className="flex items-start gap-4">
                         <div className="rounded-xl bg-violet-100 p-3 text-violet-700" aria-hidden="true"><LinkIcon className="h-6 w-6" /></div>
-                        <div><p className="font-extrabold text-slate-900">โครงงาน กิจกรรม และหน่วยบูรณาการ</p><p className="mt-1 text-sm leading-6 text-slate-600">สร้างบริบทการเรียนรู้และผูก LO เดียวกันกับหลายวิชาหรือหลายกิจกรรม</p></div>
+                        <div><p className="font-extrabold text-slate-900">รูปแบบการจัดการเรียนรู้</p><p className="mt-1 text-sm leading-6 text-slate-600">กำหนดรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม พร้อมเชื่อมโยงผลลัพธ์การเรียนรู้ที่ต้องการประเมิน</p></div>
                     </div>
-                    <span className="font-extrabold text-indigo-700">จัดการบริบทการเรียนรู้ →</span>
+                    <span className="font-extrabold text-indigo-700">จัดการรูปแบบการเรียนรู้</span>
                 </button>
-                <h3 className="mb-4 text-sm font-extrabold text-slate-600">รายงานภาพรวมวิชาการสำหรับฝ่ายวิชาการ</h3>
+                <h3 className="mb-4 text-sm font-extrabold text-slate-600">รายงานสารสนเทศทางวิชาการ</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button
                         onClick={() => navigate('/admin/report-lo')}
@@ -834,8 +836,8 @@ export default function AdminDashboard() {
                             <FileBarChart2 className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
                         </div>
                         <div>
-                            <p className="font-extrabold text-slate-800">ตารางที่ 2 — ภาพรวม LO รายผลลัพธ์</p>
-                            <p className="text-sm text-slate-500 mt-0.5">รายงานผลลัพธ์การเรียนรู้ระดับรายผลลัพธ์การเรียนกับรายวิชาที่ผูกไว้ทั้งหมด</p>
+                            <p className="font-extrabold text-slate-800">ตารางที่ 2 — ผลการประเมินรายผลลัพธ์การเรียนรู้</p>
+                            <p className="text-sm text-slate-500 mt-0.5">สรุปผลการประเมินแต่ละผลลัพธ์การเรียนรู้ จำแนกตามรายวิชาที่เชื่อมโยง</p>
                         </div>
                     </button>
                     <button
@@ -846,8 +848,8 @@ export default function AdminDashboard() {
                             <BarChart3 className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
                         </div>
                         <div>
-                            <p className="font-extrabold text-slate-800">ตารางที่ 3 — ภาพรวมรายด้านความสามารถ</p>
-                            <p className="text-sm text-slate-500 mt-0.5">รายงานผลการประเมินรายด้านความสามารถของนักเรียนทุกรายวิชาที่ผูกไว้</p>
+                            <p className="font-extrabold text-slate-800">ตารางที่ 3 — ผลการประเมินรายด้านความสามารถ</p>
+                            <p className="text-sm text-slate-500 mt-0.5">สรุปผลการประเมินผู้เรียนตามด้านความสามารถจากรายวิชาที่เชื่อมโยง</p>
                         </div>
                     </button>
                     <button
@@ -866,8 +868,8 @@ export default function AdminDashboard() {
                         onClick={() => navigate('/admin/phase-report')}
                         className="group flex items-center gap-4 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
                     >
-                        <div className="w-12 h-12 bg-teal-100 group-hover:bg-teal-600 rounded-2xl flex items-center justify-center transition-colors text-xl">
-                            🎓
+                        <div className="w-12 h-12 bg-teal-100 group-hover:bg-teal-600 rounded-2xl flex items-center justify-center transition-colors">
+                            <GraduationCap className="h-6 w-6 text-teal-700 group-hover:text-white" />
                         </div>
                         <div>
                             <p className="font-extrabold text-slate-800">รายงานผลการเรียนจบช่วงชั้น</p>
@@ -883,12 +885,12 @@ export default function AdminDashboard() {
                 <div className="w-full lg:w-64 flex-shrink-0 mb-6 lg:mb-0">
                     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-3 flex flex-row lg:flex-col overflow-x-auto gap-2 lg:sticky lg:top-24">
                         {[
-                            { id: 'data', label: 'จัดการข้อมูลดิบ', icon: Search },
-                            { id: 'import', label: 'ฟอร์มนำเข้าข้อมูล', icon: Upload },
-                            { id: 'mapping', label: 'ผูกมาตรฐาน (LO)', icon: LinkIcon },
-                            { id: 'enrollment', label: 'จัดผู้เรียนเข้าห้อง', icon: Users },
-                            { id: 'progress', label: 'สถานะการประเมิน', icon: CheckCircle },
-                            { id: 'promotion', label: 'เลื่อนชั้น/ปรับห้อง', icon: ArrowUpCircle }
+                            { id: 'data', label: 'ข้อมูลพื้นฐานสถานศึกษา', icon: Search },
+                            { id: 'import', label: 'นำเข้าข้อมูล', icon: Upload },
+                            { id: 'mapping', label: 'เชื่อมโยงรายวิชากับ LO', icon: LinkIcon },
+                            { id: 'enrollment', label: 'จัดนักเรียนเข้ารายวิชา', icon: Users },
+                            { id: 'progress', label: 'ติดตามการประเมิน', icon: CheckCircle },
+                            { id: 'promotion', label: 'เลื่อนชั้นและจัดห้องเรียน', icon: ArrowUpCircle }
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -913,7 +915,7 @@ export default function AdminDashboard() {
                         {/* --- TAB 1: DATA TABLE --- */}
                         {activeTab === 'data' && (
                             <div className="bg-white p-1 sm:p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                <h2 className="text-xl font-extrabold text-slate-800 mb-6 flex items-center px-4 sm:px-0"><Search className="w-5 h-5 mr-3 text-indigo-500" /> ตารางฐานข้อมูลในระบบ (Database Tables)</h2>
+                                <h2 className="text-xl font-extrabold text-slate-800 mb-6 flex items-center px-4 sm:px-0"><Search className="w-5 h-5 mr-3 text-indigo-500" /> ข้อมูลพื้นฐานของสถานศึกษา</h2>
                                 
                                 <div className="flex flex-col md:flex-row gap-4 mb-6 px-4 sm:px-0">
                                     <select
@@ -921,12 +923,12 @@ export default function AdminDashboard() {
                                         onChange={(e) => loadTableData(e.target.value)}
                                         className="w-full md:w-64 bg-slate-50 border border-slate-200 text-slate-700 py-3.5 px-4 rounded-2xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-inner"
                                     >
-                                        <option value="" disabled>- เลือกตาราง -</option>
-                                        <option value="users_students">👨‍🎓 นักเรียน (Students)</option>
-                                        <option value="users_teachers">👩‍🏫 ครู (Teachers)</option>
-                                        <option value="subjects">📚 รายวิชา (Subjects)</option>
-                                        <option value="learning_outcomes">🎯 สมรรถนะ (Learning Outcomes)</option>
-                                        <option value="behavior_templates">💬 คำอธิบายพฤติกรรม</option>
+                                        <option value="" disabled>เลือกประเภทข้อมูล</option>
+                                        <option value="users_students">ข้อมูลนักเรียน</option>
+                                        <option value="users_teachers">ข้อมูลครูและบุคลากร</option>
+                                        <option value="subjects">ข้อมูลรายวิชา</option>
+                                        <option value="learning_outcomes">ผลลัพธ์การเรียนรู้ (LO)</option>
+                                        <option value="behavior_templates">คำบรรยายระดับความสามารถ</option>
                                     </select>
                                     
                                     <div className="relative flex-1">
@@ -944,7 +946,7 @@ export default function AdminDashboard() {
                                     </div>
 
                                     <button onClick={() => loadTableData(selectedTable)} disabled={!selectedTable || loadingData} className="bg-indigo-50 text-indigo-600 px-6 py-3.5 rounded-2xl font-bold border border-indigo-100 hover:bg-indigo-100 flex items-center justify-center min-w-[120px] transition-colors">
-                                        {loadingData ? <div className="loader w-5 h-5 !border-2 !border-indigo-600 !border-t-transparent" /> : 'รีเฟรช'}
+                                        {loadingData ? <div className="loader w-5 h-5 !border-2 !border-indigo-600 !border-t-transparent" /> : 'โหลดข้อมูลใหม่'}
                                     </button>
                                 </div>
 
@@ -971,7 +973,7 @@ export default function AdminDashboard() {
                                                     {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k)).map(key => (
                                                         <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{key}</th>
                                                     ))}
-                                                    <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">✏️ จัดการ</th>
+                                                    <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">การดำเนินการ</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 bg-white">
@@ -1055,8 +1057,8 @@ export default function AdminDashboard() {
                         {activeTab === 'import' && (
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                 <div className="mb-8">
-                                    <h2 className="text-xl font-extrabold text-slate-800 mb-2 flex items-center"><Upload className="w-6 h-6 mr-3 text-indigo-500" /> นำเข้าข้อมูลแบบรวดเร็ว (Bulk Upload)</h2>
-                                    <p className="text-slate-500 font-medium">ดาวน์โหลดแม่แบบ Excel ไปกรอกข้อมูล แล้วนำกลับมาอัปโหลดที่นี่</p>
+                                    <h2 className="text-xl font-extrabold text-slate-800 mb-2 flex items-center"><Upload className="w-6 h-6 mr-3 text-indigo-500" /> นำเข้าข้อมูลสถานศึกษา</h2>
+                                    <p className="text-slate-500 font-medium">ดาวน์โหลดไฟล์แม่แบบ บันทึกข้อมูลให้ครบถ้วน แล้วนำไฟล์กลับเข้าสู่ระบบ</p>
                                 </div>
 
                                 {/* 🏫 DMC Import Card (Prominent) */}
@@ -1084,11 +1086,11 @@ export default function AdminDashboard() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                                     {[
-                                        { id: 'students', title: '1. ข้อมูลนักเรียน (Students)', desc: 'รายชื่อนักเรียนทั้งหมดในโรงเรียน', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
-                                        { id: 'teachers', title: '2. ข้อมูลครู (Teachers)', desc: 'รายชื่อครูและบุคลากรในโรงเรียน', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา (Subjects)', desc: 'รายวิชาที่เปิดสอนเพื่อออก ปพ.๖', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ท11101,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,เลขบัตรปชช_ครู_13หลัก' },
-                                        { id: 'enrollments', title: '4. จัดประชากรเข้าห้องเรียน (Enrollments)', desc: 'ระบบจะนำนักเรียนไปอยู่ในวิชาที่เลือก', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
-                                        { id: 'learning_outcomes', title: '5. คลังสมรรถนะ (LO)', desc: 'คำอธิบายรายวิชา (LO) ทั้งหมด', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
+                                        { id: 'students', title: '1. ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
+                                        { id: 'teachers', title: '2. ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
+                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา', desc: 'รายวิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ท11101,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,เลขบัตรปชช_ครู_13หลัก' },
+                                        { id: 'enrollments', title: '4. การลงทะเบียนรายวิชา', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและรายวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
+                                        { id: 'learning_outcomes', title: '5. ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
                                         { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
                                         { id: 'yearly_competencies', title: '7. ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
                                         { id: 'yearly_behavior_templates', title: '8. คลังพฤติกรรมรายชั้นปี (ปพ.๖)', desc: 'พฤติกรรมเปรียบเทียบในแต่ละระดับแยกตามข้อ', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
@@ -1146,8 +1148,8 @@ export default function AdminDashboard() {
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                 <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> ผูกโครงสร้างรายวิชาและสมรรถนะ (Mapping)</h2>
-                                        <p className="text-slate-500 font-medium mt-1 text-sm">เลือกรายวิชาแล้วติ๊กเลือกสมรรถนะที่ต้องการจัดการประเมินในเทอมนี้</p>
+                                        <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> เชื่อมโยงรายวิชากับผลลัพธ์การเรียนรู้</h2>
+                                        <p className="text-slate-500 font-medium mt-1 text-sm">เลือกรายวิชาและผลลัพธ์การเรียนรู้ (LO) ที่ครูผู้สอนต้องประเมินในภาคเรียนนี้</p>
                                     </div>
                                     <div className="w-full md:w-1/3">
                                         <select
@@ -1155,8 +1157,8 @@ export default function AdminDashboard() {
                                             onChange={(e) => loadMappingData(e.target.value)}
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-extrabold outline-none"
                                         >
-                                            <option value="" disabled>- โปรดเลือกรายวิชาเพื่อจัดการ -</option>
-                                            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) เทอม {s.semester}</option>)}
+                                            <option value="" disabled>เลือกรายวิชา</option>
+                                            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) ภาคเรียนที่ {s.semester}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -1170,7 +1172,7 @@ export default function AdminDashboard() {
                                             กรุณาเลือกรายวิชาที่ช่องตัวเลือกด้านบนขวา
                                         </div>
                                     ) : allLOs.length === 0 ? (
-                                        <div className="text-center py-10 text-red-500 bg-red-50 rounded-2xl border border-red-100 font-bold">ไม่พบคลัง LO ในระบบ กรุณานำเข้าก่อน</div>
+                                        <div className="text-center py-10 text-red-700 bg-red-50 rounded-2xl border border-red-100 font-bold">ยังไม่มีข้อมูลผลลัพธ์การเรียนรู้ กรุณานำเข้าข้อมูล LO ก่อนดำเนินการ</div>
                                     ) : (
                                         <>
                                             <div className="flex justify-between items-center mb-6 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
@@ -1226,7 +1228,7 @@ export default function AdminDashboard() {
                         {activeTab === 'enrollment' && (
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดผู้เรียนเข้าห้องสอบ/รายวิชา (Enrollments)</h2>
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดนักเรียนเข้าชั้นเรียนและรายวิชา</h2>
                                     <p className="text-slate-500 font-medium text-sm">เลือกรายวิชาเพื่อดูรายชื่อนักเรียน นำเข้า หรือนำออกจากการประเมินในวิชานี้</p>
                                 </div>
 
@@ -1248,7 +1250,7 @@ export default function AdminDashboard() {
                                     >
                                         <option value="" disabled>- 1. เลือกรายวิชาต้นทาง -</option>
                                         {subjects.map(s => (
-                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) เทอม {s.semester}</option>
+                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) ภาคเรียนที่ {s.semester}</option>
                                         ))}
                                     </select>
 
@@ -1325,7 +1327,7 @@ export default function AdminDashboard() {
                                                 <UsersRound className="w-5 h-5 text-emerald-600" />
                                             </div>
                                             <div>
-                                                <p className="font-extrabold text-sm text-emerald-900">เพิ่มนักเรียนทั้งห้อง (Bulk)</p>
+                                                <p className="font-extrabold text-sm text-emerald-900">จัดนักเรียนเข้ารายวิชาทั้งห้อง</p>
                                                 <p className="text-xs text-emerald-600">เลือกห้อง → เพิ่มนักเรียนทุกคนในห้องนั้นเข้าวิชาที่เลือกทันที</p>
                                             </div>
                                         </div>
@@ -1370,7 +1372,7 @@ export default function AdminDashboard() {
                                                     if (error) {
                                                         toast.error('เพิ่มไม่สำเร็จ: ' + error.message, { id: 'bulk_en' });
                                                     } else {
-                                                        toast.success(`เพิ่มสำเร็จ ${newStudents.length} คนจากห้อง ${enrollRoom}`, { id: 'bulk_en' });
+                                                        toast.success(`จัดนักเรียนเข้ารายวิชาแล้ว ${newStudents.length} คน จากห้อง ${enrollRoom}`, { id: 'bulk_en' });
                                                         // Reload enrollments (paginated)
                                                         const reloaded = await fetchAllRows((from, to) =>
                                                             supabase.from('student_enrollments')
@@ -1419,7 +1421,7 @@ export default function AdminDashboard() {
                                                                 if (error) toast.error('ลบไม่สำเร็จ: ' + error.message);
                                                                 else {
                                                                     setSubjectEnrollments(prev => prev.filter(p => p.enrollment_id !== en.enrollment_id));
-                                                                    toast.success('ลบนักเรียนออกสำเร็จ');
+                                                                    toast.success('นำรายชื่อนักเรียนออกจากรายวิชาแล้ว');
                                                                 }
                                                             }} className="text-red-500 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2 rounded-xl font-bold transition-all w-full shadow-sm">
                                                                 นำออก
@@ -1441,8 +1443,8 @@ export default function AdminDashboard() {
                         {activeTab === 'progress' && (
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> สถานะการประเมินของครูแต่ละรายวิชา</h2>
-                                    <p className="text-slate-500 font-medium text-sm">ตรวจสอบว่าครูคนไหนประเมินครบแล้ว คนไหนยังไม่ครบ</p>
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> ความก้าวหน้าการประเมินผลรายวิชา</h2>
+                                    <p className="text-slate-500 font-medium text-sm">ติดตามความครบถ้วนของการประเมิน จำแนกตามครูผู้สอนและรายวิชา</p>
                                     <button
                                         onClick={async () => {
                                             setLoadingProgress(true);
@@ -1513,7 +1515,7 @@ export default function AdminDashboard() {
                                         className="mt-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
                                     >
                                         <CheckCircle className="w-4 h-4" />
-                                        โหลดสถานะการประเมินทั้งหมด
+                                        โหลดข้อมูลความก้าวหน้าการประเมิน
                                     </button>
                                 </div>
 
@@ -1521,7 +1523,7 @@ export default function AdminDashboard() {
                                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
                                 ) : evalProgress.length === 0 ? (
                                     <div className="text-center py-20 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                        กดปุ่ม "โหลดสถานะการประเมินทั้งหมด" ด้านบนเพื่อเริ่มต้น
+                                        เลือก “โหลดข้อมูลความก้าวหน้าการประเมิน” เพื่อแสดงสถานะล่าสุด
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -1552,8 +1554,8 @@ export default function AdminDashboard() {
                                                     <p className="font-extrabold text-slate-800 text-sm truncate">{p.subject_name}</p>
                                                     <p className="text-xs text-slate-500 mt-0.5">
                                                         ครู: <span className="font-bold text-slate-700">{p.teacherName}</span>
-                                                        &ensp;|&ensp;{p.grade_level} เทอม {p.semester}/{p.academic_year}
-                                                        &ensp;|&ensp;{p.studentCount} คน · {p.loCount} LO
+                                                        &ensp;|&ensp;{p.grade_level} ภาคเรียนที่ {p.semester}/{p.academic_year}
+                                                        &ensp;|&ensp;{p.studentCount} คน · {p.loCount} ผลลัพธ์การเรียนรู้
                                                     </p>
                                                 </div>
                                                 <div className="w-full sm:w-48 shrink-0">
@@ -1577,7 +1579,7 @@ export default function AdminDashboard() {
                                                     p.percent > 0 ? 'bg-amber-100 text-amber-700 border-amber-300' :
                                                     'bg-red-100 text-red-600 border-red-300'
                                                 }`}>
-                                                    {p.percent === 100 ? '✅ ครบ' : p.percent > 0 ? `⏳ ${p.percent}%` : '❌ ยังไม่เริ่ม'}
+                                                    {p.percent === 100 ? 'ประเมินครบ' : p.percent > 0 ? `ดำเนินการแล้ว ${p.percent}%` : 'ยังไม่เริ่มประเมิน'}
                                                 </span>
                                             </div>
                                         ))}
@@ -1590,8 +1592,8 @@ export default function AdminDashboard() {
                         {activeTab === 'promotion' && (
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><ArrowUpCircle className="w-6 h-6 mr-3 text-indigo-500" /> เลื่อนชั้นนักเรียน (ปรับชั้น/ปรับห้อง)</h2>
-                                    <p className="text-slate-500 font-medium text-sm">เครื่องมือสำหรับอัปเดตชั้นเรียนและห้องเรียนของนักเรียนจำนวนมากพร้อมกัน (เช่น ปลายปีการศึกษา)</p>
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><ArrowUpCircle className="w-6 h-6 mr-3 text-indigo-500" /> เลื่อนชั้นและจัดห้องเรียนสำหรับปีการศึกษาถัดไป</h2>
+                                    <p className="text-slate-500 font-medium text-sm">ปรับระดับชั้นและห้องเรียนของนักเรียนเป็นกลุ่มเมื่อสิ้นสุดปีการศึกษา</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
@@ -1641,7 +1643,7 @@ export default function AdminDashboard() {
                                     </div>
 
                                     <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-200">
-                                        <h3 className="font-bold text-indigo-800 mb-4 flex items-center"><ArrowUpCircle className="w-4 h-4 mr-2"/> 2. เลื่อนไปยังชั้น/ห้องใหม่</h3>
+                                        <h3 className="font-bold text-indigo-800 mb-4 flex items-center"><ArrowUpCircle className="w-4 h-4 mr-2"/> 2. กำหนดระดับชั้นและห้องเรียนใหม่</h3>
                                         <div className="flex flex-col gap-3">
                                             <input 
                                                 type="text" 
@@ -1674,7 +1676,7 @@ export default function AdminDashboard() {
                                                             .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
                                                             .in('student_id', promoStudents.map(s => s.student_id));
                                                         if (error) throw error;
-                                                        toast.success('เลื่อนชั้นสำเร็จ!');
+                                                        toast.success('บันทึกการเลื่อนชั้นและจัดห้องเรียนแล้ว');
                                                         setPromoStudents([]);
                                                         setPromoFromRoom('');
                                                         setPromoToGrade('');
@@ -1685,7 +1687,7 @@ export default function AdminDashboard() {
                                                 }}
                                                 className="w-full mt-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                ย้ายนักเรียนทั้งห้อง ({promoStudents.length} คน)
+                                                บันทึกการเลื่อนชั้น ({promoStudents.length} คน)
                                             </button>
                                         </div>
                                     </div>
@@ -1694,7 +1696,7 @@ export default function AdminDashboard() {
                                 {promoStudents.length > 0 && (
                                     <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
                                         <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
-                                            <span>รายชื่อนักเรียนที่จะถูกเลื่อนชั้น</span>
+                                            <span>รายชื่อนักเรียนที่กำหนดให้เลื่อนชั้น</span>
                                             <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-lg">พบ {promoStudents.length} คน</span>
                                         </div>
                                         <div className="max-h-80 overflow-y-auto">

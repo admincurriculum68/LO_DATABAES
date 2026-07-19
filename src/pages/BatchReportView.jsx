@@ -233,7 +233,7 @@ export default function BatchReportView() {
                 </button>
                 <div className="flex items-center gap-3">
                     <span className="bg-indigo-50 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold text-indigo-700">
-                        🖨️ {reports.length} คน | ห้อง {decodeURIComponent(room)} | เทอม {semester}/{academicYear}
+                        รายงานจำนวน {reports.length} คน · ห้อง {decodeURIComponent(room)} · ภาคเรียนที่ {semester}/{academicYear}
                     </span>
                     <button
                         onClick={() => window.print()}

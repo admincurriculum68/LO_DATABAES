@@ -167,7 +167,7 @@ export default function PhaseReportAdmin() {
                 if (error) throw error;
                 setExistingResultId(data.result_id);
             }
-            toast.success('บันทึกผลจบช่วงชั้นสำเร็จ!');
+            toast.success('บันทึกผลการประเมินเมื่อจบช่วงชั้นแล้ว');
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
         } finally {
@@ -207,11 +207,11 @@ export default function PhaseReportAdmin() {
                 <div className="no-print space-y-6 mb-8">
                     <button onClick={() => navigate('/admin')}
                         className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold transition-colors">
-                        <ChevronLeft className="w-5 h-5" /> กลับหน้า Admin
+                        <ChevronLeft className="w-5 h-5" /> กลับหน้าฝ่ายวิชาการ
                     </button>
 
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
-                        <h2 className="text-xl font-extrabold text-slate-800 mb-5">⚙️ ตั้งค่ารายงานจบช่วงชั้น</h2>
+                        <h2 className="text-xl font-extrabold text-slate-800 mb-5">กำหนดข้อมูลรายงานเมื่อจบช่วงชั้น</h2>
 
                         {/* Phase Selector */}
                         <div className="flex gap-3 mb-6">

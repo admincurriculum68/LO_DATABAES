@@ -161,7 +161,7 @@ export default function AdminReportLO() {
                                 const wb = XLSX.utils.book_new();
                                 XLSX.utils.book_append_sheet(wb, ws, 'LO Report');
                                 XLSX.writeFile(wb, `รายงานLO_${selectedLOData?.lo_code || 'report'}.xlsx`);
-                                toast.success('ส่งออก Excel สำเร็จ!');
+                                toast.success('จัดทำไฟล์ Excel แล้ว');
                             }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
                         >
@@ -216,7 +216,7 @@ export default function AdminReportLO() {
                         </div>
 
                         {subjects.length === 0 ? (
-                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ไม่มีรายวิชาใดที่ผูก LO นี้ไว้</div>
+                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้นี้</div>
                         ) : (
                             <>
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
@@ -231,7 +231,7 @@ export default function AdminReportLO() {
                                                 {subjects.map(sub => (
                                                     <th key={sub.subject_id} className="px-4 py-3 text-center font-bold border-r border-indigo-500 print:border-black min-w-[120px] text-xs">
                                                         <span className="block font-normal text-indigo-200 print:text-slate-500 mt-0.5 whitespace-normal leading-tight max-w-[120px]">{sub.subject_name}</span>
-                                                        <span className="block text-[11px] font-normal text-indigo-300 print:text-slate-400">{sub.grade_level} | เทอม {sub.semester}/{sub.academic_year}</span>
+                                                        <span className="block text-[11px] font-normal text-indigo-300 print:text-slate-400">{sub.grade_level} | ภาคเรียนที่ {sub.semester}/{sub.academic_year}</span>
                                                     </th>
                                                 ))}
                                             </tr>

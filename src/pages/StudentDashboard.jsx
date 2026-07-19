@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { GraduationCap, BookOpen, UserCheck, Compass, CheckCircle2, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formalLevelLabel } from '../lib/terminology';
 
 export default function StudentDashboard() {
     const { currentUser } = useAuth();
@@ -82,7 +83,7 @@ export default function StudentDashboard() {
                 setData(dashboardData);
 
             } catch (err) {
-                toast.error('ดึงข้อมูลไม่สำเร็จ: ' + err.message);
+                toast.error('ไม่สามารถโหลดข้อมูลผลการเรียนรู้ได้: ' + err.message);
             } finally {
                 setLoading(false);
             }
@@ -103,7 +104,7 @@ export default function StudentDashboard() {
     });
 
     return (
-        <Layout title="ระบบสำหรับผู้เรียน (Student Portal)">
+        <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">
             {/* Hero / Header Section */}
             <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
                 <div className="flex items-center">
@@ -111,9 +112,9 @@ export default function StudentDashboard() {
                         <GraduationCap className="w-10 h-10 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-4xl font-black text-emerald-800 tracking-tight">ห้องเรียนของฉัน</h2>
+                        <h2 className="text-4xl font-black text-emerald-800 tracking-tight">ผลการเรียนรู้ของฉัน</h2>
                         <p className="text-slate-500 font-medium text-lg mt-2">
-                            ยินดีต้อนรับ, <span className="font-bold text-slate-700">{currentUser?.full_name}</span> | ติดตามผลลัพธ์การเรียนรู้ (LO)
+                            <span className="font-bold text-slate-700">{currentUser?.full_name}</span> · ข้อมูลผลการประเมินและผลลัพธ์การเรียนรู้ (LO)
                         </p>
                     </div>
                 </div>
@@ -123,8 +124,8 @@ export default function StudentDashboard() {
                         <UserCircle2 className="w-8 h-8 text-emerald-600" />
                     </div>
                     <div>
-                        <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-0.5">สถานะนักเรียน</div>
-                        <div className="text-sm text-slate-600 font-extrabold font-mono">{currentUser.student_id?.split('-')[0] || 'ID: N/A'}</div>
+                        <div className="mb-0.5 text-xs font-bold text-emerald-700">รหัสนักเรียน</div>
+                        <div className="text-sm text-slate-700 font-extrabold font-mono">{currentUser.student_code || currentUser.student_id?.split('-')[0] || 'ไม่ระบุ'}</div>
                     </div>
                 </div>
             </div>
@@ -137,7 +138,7 @@ export default function StudentDashboard() {
                         <BookOpen className="w-7 h-7" />
                     </div>
                     <div className="z-10">
-                        <p className="font-bold text-slate-400 text-sm mb-1 uppercase tracking-wider">วิชาที่ลงทะเบียน</p>
+                        <p className="font-bold text-slate-600 text-sm mb-1">รายวิชาที่ลงทะเบียน</p>
                         <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-medium text-slate-500 ml-1">วิชา</span></h4>
                     </div>
                 </div>
@@ -148,7 +149,7 @@ export default function StudentDashboard() {
                         <Compass className="w-7 h-7" />
                     </div>
                     <div className="z-10">
-                        <p className="font-bold text-slate-400 text-sm mb-1 uppercase tracking-wider">LO ที่ประเมินแล้ว</p>
+                        <p className="font-bold text-slate-600 text-sm mb-1">ผลลัพธ์การเรียนรู้ที่ประเมินแล้ว</p>
                         <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></h4>
                     </div>
                 </div>
@@ -159,7 +160,7 @@ export default function StudentDashboard() {
                         <UserCheck className="w-7 h-7" />
                     </div>
                     <div className="z-10">
-                        <p className="font-bold text-slate-400 text-sm mb-1 uppercase tracking-wider">LO ที่ผ่านเกณฑ์</p>
+                        <p className="font-bold text-slate-600 text-sm mb-1">ผลลัพธ์การเรียนรู้ที่ผ่านเกณฑ์</p>
                         <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></h4>
                     </div>
                 </div>
@@ -170,7 +171,7 @@ export default function StudentDashboard() {
                     <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="rounded-2xl bg-emerald-600 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
-                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผล LO ที่ฝ่ายวิชาการรับรองแล้ว</h3><p className="text-sm text-emerald-800">ผลอย่างเป็นทางการหลังพิจารณาหลักฐานจากทุกวิชาและกิจกรรม</p></div>
+                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลลัพธ์การเรียนรู้ที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลการประเมินที่ผ่านการพิจารณาหลักฐานจากรายวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม</p></div>
                         </div>
                         <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
                     </div>
@@ -179,9 +180,9 @@ export default function StudentDashboard() {
                             const lo = result.learning_outcomes;
                             return (
                                 <article key={result.decision_id} className="grid gap-3 px-6 py-5 md:grid-cols-[150px_minmax(0,1fr)_140px] md:items-center">
-                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{lo?.lo_code || `LO ${lo?.ability_no || '-'}`}</span><p className="mt-2 text-xs font-semibold text-slate-500">เทอม {result.semester}/{result.academic_year}</p></div>
+                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{lo?.lo_code || `LO ${lo?.ability_no || '-'}`}</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
                                     <div><p className="font-bold leading-6 text-slate-900">{lo?.lo_description || 'ผลลัพธ์การเรียนรู้'}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
-                                    <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-extrabold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{result.final_level}</span></div>
+                                    <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-extrabold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{formalLevelLabel(result.final_level)}</span></div>
                                 </article>
                             );
                         })}
@@ -193,7 +194,7 @@ export default function StudentDashboard() {
             {loading ? (
                 <div className="py-24 flex flex-col items-center justify-center space-y-4">
                     <div className="loader scale-150 border-4 border-emerald-100 border-t-emerald-600"></div>
-                    <p className="text-slate-400 font-medium animate-pulse">กำลังโหลดข้อมูลการเรียนของคุณ...</p>
+                    <p className="text-slate-500 font-medium animate-pulse">กำลังโหลดข้อมูลผลการเรียนรู้...</p>
                 </div>
             ) : data.length === 0 ? (
                 <div className="text-center bg-white rounded-3xl p-16 border-2 border-dashed border-slate-200 shadow-sm flex flex-col items-center">
@@ -202,7 +203,7 @@ export default function StudentDashboard() {
                     </div>
                     <h3 className="text-2xl font-extrabold text-slate-700 mb-2">ยังไม่มีข้อมูลการลงทะเบียนเรียน</h3>
                     <p className="text-slate-500 text-lg max-w-md mx-auto">
-                        กรุณารอครูประจํารายวิชาหรือฝ่ายวิชาการลงทะเบียนวิชาเรียนของคุณเข้าสู่ระบบ
+                        กรุณาติดต่อครูผู้สอนหรือฝ่ายวิชาการเพื่อตรวจสอบการลงทะเบียนรายวิชา
                     </p>
                 </div>
             ) : (
@@ -238,15 +239,15 @@ export default function StudentDashboard() {
                                             <thead className="bg-slate-100 text-slate-500 border-b border-slate-200 uppercase text-xs tracking-wider font-extrabold">
                                                 <tr>
                                                     <th className="py-4 px-5 w-20 text-center">ข้อที่</th>
-                                                    <th className="py-4 px-5">ผลลัพธ์การเรียนรู้ (Learning Outcomes)</th>
-                                                    <th className="py-4 px-5 w-36 text-center">ระดับที่ได้</th>
+                                                    <th className="py-4 px-5">ผลลัพธ์การเรียนรู้ (LO)</th>
+                                                    <th className="py-4 px-5 w-36 text-center">ระดับความสามารถ</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {sub.evaluations.length === 0 ? (
                                                     <tr>
                                                         <td colSpan="3" className="py-12 text-center text-slate-400 font-medium">
-                                                            ยังไม่พบข้อสอบ/เกณฑ์การประเมินในวิชานี้
+                                                            รายวิชานี้ยังไม่ได้กำหนดผลลัพธ์การเรียนรู้สำหรับการประเมิน
                                                         </td>
                                                     </tr>
                                                 ) : (
