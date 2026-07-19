@@ -1,321 +1,200 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase, fetchAllRows } from '../lib/supabase';
-import { ChevronLeft, Printer, FileBarChart, Download } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+    AlertCircle,
+    ArrowLeft,
+    BookOpen,
+    CheckCircle2,
+    ClipboardCheck,
+    Download,
+    FileBarChart2,
+    Filter,
+    Printer,
+    Search,
+    UsersRound,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import Layout from '../components/Layout';
+import { useAuth } from '../AuthContext';
+import { supabase, fetchAllRows } from '../lib/supabase';
+import { formalLevelLabel } from '../lib/terminology';
 
-// Color map for competency levels
-const levelStyle = (val) => {
-    if (!val || val === '-') return { cell: 'text-slate-300', badge: '' };
-    const map = {
-        'เริ่มต้น': { cell: 'text-red-600 font-bold', badge: 'bg-red-50 text-red-600 border-red-200' },
-        'พัฒนา':   { cell: 'text-orange-500 font-bold', badge: 'bg-orange-50 text-orange-600 border-orange-200' },
-        'ชำนาญ':  { cell: 'text-blue-600 font-bold', badge: 'bg-blue-50 text-blue-600 border-blue-200' },
-        'เชี่ยวชาญ': { cell: 'text-green-600 font-bold', badge: 'bg-green-50 text-green-600 border-green-200' },
-    };
-    return map[val] || { cell: 'text-slate-500', badge: '' };
+const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
+const levelMeta = {
+    เริ่มต้น: { badge: 'border-rose-200 bg-rose-50 text-rose-800', bar: 'bg-rose-500' },
+    พัฒนา: { badge: 'border-amber-200 bg-amber-50 text-amber-800', bar: 'bg-amber-500' },
+    ชำนาญ: { badge: 'border-blue-200 bg-blue-50 text-blue-800', bar: 'bg-blue-600' },
+    เชี่ยวชาญ: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', bar: 'bg-emerald-600' },
+    ยังไม่ประเมิน: { badge: 'border-slate-200 bg-slate-50 text-slate-600', bar: 'bg-slate-300' },
 };
+
+const studentName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
 export default function SummaryView() {
     const { subjectId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
+    const { currentUser } = useAuth();
     const [subject, setSubject] = useState(location.state?.subject || null);
-
-    const [data, setData] = useState(null);
+    const [data, setData] = useState({ enrollments: [], learningOutcomes: [], evaluations: [] });
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [query, setQuery] = useState('');
+    const [roomFilter, setRoomFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [distributionLo, setDistributionLo] = useState('');
 
     useEffect(() => {
         async function loadSummary() {
+            if (!currentUser?.school_id || !currentUser?.teacher_id) return;
+            setLoading(true);
+            setLoadError('');
             try {
-                if (!subject) {
-                    const { data: sub } = await supabase.from('subjects').select('*').eq('subject_id', subjectId).single();
-                    setSubject(sub);
-                }
+                const { data: subjectData, error: subjectError } = await supabase
+                    .from('subjects')
+                    .select('*')
+                    .eq('subject_id', subjectId)
+                    .eq('school_id', currentUser.school_id)
+                    .eq('teacher_id', currentUser.teacher_id)
+                    .single();
+                if (subjectError) throw subjectError;
+                setSubject(subjectData);
 
-                const [{ data: mappedLOs }, enrolls] = await Promise.all([
+                const [mappingResult, enrollments] = await Promise.all([
                     supabase.from('subject_lo_mapping')
                         .select('learning_outcomes(lo_id, lo_code, ability_no, lo_description, competency_area)')
                         .eq('subject_id', subjectId),
-                    fetchAllRows((from, to) =>
-                        supabase.from('student_enrollments')
-                            .select('enrollment_id, users_students(student_code, prefix, first_name, last_name)')
-                            .eq('subject_id', subjectId)
-                            .range(from, to)
-                    )
+                    fetchAllRows((from, to) => supabase.from('student_enrollments')
+                        .select('enrollment_id, room, users_students!inner(student_code, prefix, first_name, last_name, school_id)')
+                        .eq('subject_id', subjectId)
+                        .eq('users_students.school_id', currentUser.school_id)
+                        .range(from, to)),
                 ]);
+                if (mappingResult.error) throw mappingResult.error;
 
-                const formatLOs = mappedLOs?.map(item => item.learning_outcomes)
+                const learningOutcomes = (mappingResult.data || [])
+                    .map(item => item.learning_outcomes)
                     .filter(Boolean)
-                    .sort((a, b) => a.ability_no - b.ability_no) || [];
-                const formatEnrolls = (enrolls || []).sort((a, b) =>
-                    (a.users_students?.student_code || '').localeCompare(b.users_students?.student_code || '')
+                    .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0) || (a.lo_code || '').localeCompare(b.lo_code || '', 'th'));
+                const sortedEnrollments = (enrollments || []).sort((a, b) =>
+                    (a.users_students?.student_code || '').localeCompare(b.users_students?.student_code || '', 'th')
                 );
-
-                const enrollIds = formatEnrolls.map(e => e.enrollment_id);
-                let evals = [];
-                if (enrollIds.length > 0) {
-                    const { data: evalsData } = await supabase
+                const enrollmentIds = sortedEnrollments.map(item => item.enrollment_id);
+                let evaluations = [];
+                if (enrollmentIds.length) {
+                    const { data: evaluationData, error: evaluationError } = await supabase
                         .from('lo_evaluations')
                         .select('lo_id, enrollment_id, competency_level')
-                        .in('enrollment_id', enrollIds);
-                    evals = evalsData || [];
+                        .in('enrollment_id', enrollmentIds);
+                    if (evaluationError) throw evaluationError;
+                    evaluations = evaluationData || [];
                 }
 
-                setData({ enrollments: formatEnrolls, learningOutcomes: formatLOs, evaluations: evals });
-            } catch (err) {
-                toast.error('โหลดสรุปไม่สำเร็จ: ' + err.message);
+                setData({ enrollments: sortedEnrollments, learningOutcomes, evaluations });
+                setDistributionLo(current => learningOutcomes.some(lo => lo.lo_id === current) ? current : learningOutcomes[0]?.lo_id || '');
+            } catch (error) {
+                setLoadError(error.message || 'ไม่สามารถโหลดรายงานรายวิชาได้');
             } finally {
                 setLoading(false);
             }
         }
         loadSummary();
-    }, [subjectId, subject]);
+    }, [currentUser?.school_id, currentUser?.teacher_id, subjectId]);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="loader scale-150"></div>
-                    <p className="text-slate-400 font-medium">กำลังโหลดข้อมูล...</p>
-                </div>
-            </div>
-        );
-    }
+    const evaluationMap = useMemo(() => new Map(data.evaluations.map(item => [`${item.enrollment_id}:${item.lo_id}`, item.competency_level])), [data.evaluations]);
+    const rooms = useMemo(() => [...new Set(data.enrollments.map(item => item.room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [data.enrollments]);
+    const totalExpected = data.enrollments.length * data.learningOutcomes.length;
+    const totalEvaluated = data.enrollments.reduce((total, enrollment) => total + data.learningOutcomes.filter(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)).length, 0);
+    const missingCount = Math.max(0, totalExpected - totalEvaluated);
+    const percent = totalExpected ? Math.round((totalEvaluated / totalExpected) * 100) : 0;
 
-    const { enrollments, learningOutcomes, evaluations } = data;
+    const filteredEnrollments = useMemo(() => {
+        const normalized = query.trim().toLowerCase();
+        return data.enrollments.filter(enrollment => {
+            const student = enrollment.users_students;
+            const evaluated = data.learningOutcomes.filter(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)).length;
+            const complete = data.learningOutcomes.length > 0 && evaluated === data.learningOutcomes.length;
+            const matchesQuery = !normalized || `${student?.student_code || ''} ${studentName(student)}`.toLowerCase().includes(normalized);
+            const matchesRoom = roomFilter === 'all' || enrollment.room === roomFilter;
+            const matchesStatus = statusFilter === 'all' || (statusFilter === 'complete' ? complete : !complete);
+            return matchesQuery && matchesRoom && matchesStatus;
+        });
+    }, [data.enrollments, data.learningOutcomes, evaluationMap, query, roomFilter, statusFilter]);
+
+    const distribution = useMemo(() => {
+        const counts = Object.fromEntries([...LEVELS, 'ยังไม่ประเมิน'].map(level => [level, 0]));
+        data.enrollments.forEach(enrollment => {
+            const value = evaluationMap.get(`${enrollment.enrollment_id}:${distributionLo}`);
+            if (value && counts[value] !== undefined) counts[value] += 1;
+            else counts['ยังไม่ประเมิน'] += 1;
+        });
+        return counts;
+    }, [data.enrollments, distributionLo, evaluationMap]);
+
+    const exportExcel = () => {
+        if (!data.enrollments.length) return toast.error('ไม่มีข้อมูลให้ส่งออก');
+        const headers = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ห้อง', ...data.learningOutcomes.map(lo => lo.lo_code || `LO ${lo.ability_no}`), 'ประเมินแล้ว'];
+        const rows = data.enrollments.map((enrollment, index) => {
+            const student = enrollment.users_students;
+            const values = data.learningOutcomes.map(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`) || '');
+            const completed = values.filter(Boolean).length;
+            return [index + 1, student?.student_code || '', studentName(student), enrollment.room || '', ...values, `${completed}/${data.learningOutcomes.length}`];
+        });
+        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        worksheet['!cols'] = headers.map((header, index) => ({ wch: index === 2 ? 28 : Math.max(12, header.length + 2) }));
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'ผลรายวิชา');
+        XLSX.writeFile(workbook, `ผลลัพธ์_${subject?.subject_name || 'รายวิชา'}.xlsx`);
+        toast.success('จัดทำไฟล์ Excel เรียบร้อยแล้ว');
+    };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans print:bg-white text-slate-800">
-            {/* Top Navigation Bar */}
-            <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 sticky top-0 z-40 print:hidden">
-                <div className="max-w-[1800px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-                    <div className="flex items-center space-x-3 min-w-0">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center shrink-0"
-                        >
-                            <ChevronLeft className="w-5 h-5 mr-1" />
-                            <span className="font-semibold text-sm">กลับ</span>
-                        </button>
-                        <div className="hidden sm:block w-px h-6 bg-slate-300 shrink-0"></div>
-                        <h1 className="font-bold text-base text-slate-800 truncate flex items-center">
-                            <FileBarChart className="w-5 h-5 mr-2 text-indigo-500 shrink-0" />
-                            ตารางที่ 1 — รายงานผลลัพธ์ฯ รายวิชา:&nbsp;
-                            <span className="text-indigo-600">{subject ? subject.subject_name : ''}</span>
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                if (!data || enrollments.length === 0) return toast.error('ไม่มีข้อมูลให้ส่งออก');
-                                const headers = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', ...learningOutcomes.map(lo => lo.lo_code || `LO ${lo.ability_no}`)];
-                                const rows = enrollments.map((enroll, i) => {
-                                    const st = enroll.users_students;
-                                    const row = [i + 1, st?.student_code || '', `${st?.prefix || ''}${st?.first_name} ${st?.last_name}`];
-                                    learningOutcomes.forEach(lo => {
-                                        const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
-                                        row.push(ev?.competency_level || '');
-                                    });
-                                    return row;
-                                });
-                                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                                const wb = XLSX.utils.book_new();
-                                XLSX.utils.book_append_sheet(wb, ws, 'ผลรายวิชา');
-                                XLSX.writeFile(wb, `ผลลัพธ์_${subject?.subject_name || 'report'}.xlsx`);
-                                toast.success('จัดทำไฟล์ Excel แล้ว');
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
-                        >
-                            <Download className="w-4 h-4 mr-2" />
-                            Excel
-                        </button>
-                        <button
-                            onClick={() => window.print()}
-                            className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
-                        >
-                            <Printer className="w-4 h-4 mr-2" />
-                            พิมพ์ตาราง
-                        </button>
-                    </div>
-                </div>
-            </header>
+        <Layout title="สรุปผลรายวิชา">
+            <style>{`
+                @media print {
+                    .summary-controls { display: none !important; }
+                    .summary-document { border: 0 !important; box-shadow: none !important; }
+                    .summary-table { font-size: 10px !important; }
+                    body { background: white !important; }
+                }
+            `}</style>
+            <div className="mx-auto w-full max-w-[1800px]">
+                <header className="summary-controls mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div><button onClick={() => navigate('/')} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับ Dashboard ครู</button><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><FileBarChart2 className="h-4 w-4" /> รายงานผลรายวิชา</div><h2 className="mt-1 text-2xl font-extrabold text-slate-950">{subject?.subject_name || 'กำลังโหลดรายวิชา'}</h2><p className="mt-1 text-sm text-slate-600">ตารางที่ 1 · ผลลัพธ์การเรียนรู้ระดับรายวิชา · ชั้น {subject?.grade_level || '-'} · ภาคเรียนที่ {subject?.semester || '-'}/{subject?.academic_year || '-'}</p></div>
+                    <div className="flex flex-wrap gap-2"><button onClick={() => navigate(`/eval/${subjectId}`, { state: { subject } })} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-extrabold text-white hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"><ClipboardCheck className="h-4 w-4" /> กลับไปประเมินผล</button><button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><Download className="h-4 w-4" /> Excel</button><button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><Printer className="h-4 w-4" /> พิมพ์ตาราง</button></div>
+                </header>
 
-            <main className="flex-grow max-w-[1800px] mx-auto w-full px-4 sm:px-6 py-8 print:p-4">
+                {loadError ? (
+                    <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="alert"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-700" /><div><h3 className="font-extrabold text-rose-950">เปิดรายงานไม่สำเร็จ</h3><p className="mt-1 text-sm text-rose-800">{loadError}</p></div></div></section>
+                ) : loading ? (
+                    <div className="space-y-5"><div className="h-24 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>
+                ) : (
+                    <>
+                        <div className="hidden print:block mb-5"><h1 className="text-base font-bold">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</h1><p className="mt-1 text-sm">รายวิชา {subject?.subject_name} · ชั้น {subject?.grade_level} · ภาคเรียนที่ {subject?.semester}/{subject?.academic_year}</p></div>
 
-                {/* Print-only title block */}
-                <div className="hidden print:block mb-6">
-                    <p className="font-extrabold text-base mb-1">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</p>
-                    <p className="text-sm">รายวิชา {subject?.subject_name}&emsp;
-                       ระดับชั้น {subject?.grade_level}&emsp;
-                       ภาคเรียน {subject?.semester}/{subject?.academic_year}</p>
-                </div>
+                        <section className="summary-controls mb-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-2 xl:grid-cols-4" aria-label="ภาพรวมรายวิชา">
+                            {[
+                                { label: 'นักเรียนในรายวิชา', value: data.enrollments.length, unit: 'คน', icon: UsersRound, tone: 'bg-indigo-50 text-indigo-700' },
+                                { label: 'ผลลัพธ์การเรียนรู้', value: data.learningOutcomes.length, unit: 'LO', icon: BookOpen, tone: 'bg-blue-50 text-blue-700' },
+                                { label: 'รายการที่ประเมินแล้ว', value: totalEvaluated, unit: `จาก ${totalExpected}`, icon: ClipboardCheck, tone: 'bg-violet-50 text-violet-700' },
+                                { label: 'ความก้าวหน้ารวม', value: percent, unit: '%', icon: CheckCircle2, tone: percent === 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800' },
+                            ].map((metric, index) => <div key={metric.label} className={`flex items-center gap-3 border-b border-slate-200 p-4 sm:p-5 ${index % 2 === 0 ? 'sm:border-r' : ''} ${index < 2 ? 'xl:border-b-0' : 'sm:border-b-0'} ${index < 3 ? 'xl:border-r' : ''}`}><span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${metric.tone}`}><metric.icon className="h-5 w-5" /></span><div><p className="text-sm font-semibold text-slate-600">{metric.label}</p><p className="mt-0.5 text-2xl font-extrabold tabular-nums text-slate-950">{metric.value} <span className="text-sm font-semibold text-slate-500">{metric.unit}</span></p></div></div>)}
+                        </section>
 
-                {/* Subject Info Card */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div>
-                            <p className="text-xs text-indigo-500 font-extrabold uppercase tracking-widest mb-1">ตารางที่ 1 — รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</p>
-                            <h2 className="text-lg font-extrabold text-slate-800">
-                                {subject?.subject_name}
-                            </h2>
-                            <p className="text-sm text-slate-500 mt-1">
-                                ระดับชั้น <span className="font-bold text-slate-700">{subject?.grade_level}</span>
-                                &ensp;|&ensp; ภาคเรียน <span className="font-bold text-slate-700">{subject?.semester}/{subject?.academic_year}</span>
-                                &ensp;|&ensp; LO ที่ผูกไว้ <span className="font-bold text-slate-700">{learningOutcomes.length} รายการ</span>
-                                &ensp;|&ensp; นักเรียน <span className="font-bold text-slate-700">{enrollments.length} คน</span>
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                        {missingCount > 0 && <section className="summary-controls mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-800" /><div><h3 className="text-sm font-extrabold text-amber-950">ยังมี {missingCount} รายการที่ไม่ได้ประเมิน</h3><p className="mt-0.5 text-sm text-amber-900">กรองเฉพาะผู้เรียนที่ผลยังไม่ครบ หรือลงผลต่อในหน้าประเมิน</p></div></div><button onClick={() => setStatusFilter('pending')} className="min-h-10 rounded-xl border border-amber-300 bg-white px-4 text-sm font-extrabold text-amber-900 hover:bg-amber-100">แสดงเฉพาะผลที่ยังไม่ครบ</button></section>}
 
-                {/* Legend */}
-                <div className="flex flex-wrap gap-3 mb-4 print:hidden">
-                    {[
-                        { label: 'เริ่มต้น', bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
-                        { label: 'พัฒนา', bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
-                        { label: 'ชำนาญ', bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
-                        { label: 'เชี่ยวชาญ', bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
-                    ].map(l => (
-                        <span key={l.label} className={`inline-flex items-center px-3 py-1 rounded-lg border text-xs font-bold ${l.bg} ${l.text} ${l.border}`}>
-                            {l.label}
-                        </span>
-                    ))}
-                    <span className="text-xs text-slate-400 font-medium self-center ml-1">← ระดับผลลัพธ์การเรียนรู้</span>
-                </div>
+                        <section className="summary-controls mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="ค้นหาและกรองรายงาน"><div className="flex flex-col gap-3 lg:flex-row"><label className="relative flex-1"><span className="sr-only">ค้นหานักเรียน</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อหรือรหัสนักเรียน" className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label><label className="relative lg:w-56"><span className="sr-only">กรองตามห้องเรียน</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" /><select value={roomFilter} onChange={event => setRoomFilter(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-8 text-sm font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"><option value="all">ทุกห้องเรียน</option>{rooms.map(room => <option key={room} value={room}>{room}</option>)}</select></label><select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 lg:w-52"><option value="all">ทุกสถานะ</option><option value="pending">ผลยังไม่ครบ</option><option value="complete">ประเมินครบแล้ว</option></select></div><p className="mt-2 text-xs font-semibold text-slate-500">แสดง {filteredEnrollments.length} จาก {data.enrollments.length} คน</p></section>
 
-                {/* Main Table */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-none print:shadow-none print:rounded-none">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
-                            <thead>
-                                <tr>
-                                    {/* Sticky fixed columns */}
-                                    <th className="px-4 py-4 text-center text-xs font-extrabold uppercase tracking-wider w-12 border-r border-slate-200 print:border-black bg-slate-100 sticky left-0 z-20">
-                                        เลขที่
-                                    </th>
-                                    <th className="px-5 py-4 text-left text-xs font-extrabold uppercase tracking-wider min-w-[200px] border-r border-slate-200 print:border-black bg-slate-100 sticky left-[48px] z-20">
-                                        รายชื่อนักเรียน
-                                    </th>
-                                    {/* One column per LO */}
-                                    {learningOutcomes.map(lo => (
-                                        <th
-                                            key={lo.lo_id}
-                                            className="px-3 py-3 text-center text-xs font-extrabold uppercase min-w-[110px] border-r border-slate-200 print:border-black bg-indigo-600 text-white print:bg-transparent print:text-black"
-                                            title={lo.lo_description}
-                                        >
-                                            <span className="block">{lo.lo_code || `LO ${lo.ability_no}`}</span>
-                                            {lo.lo_code && <span className="block text-[10px] text-indigo-200 print:text-slate-500 font-normal mt-0.5">ข้อ {lo.ability_no}</span>}
-                                            {lo.competency_area && (
-                                                <span className="block text-[10px] text-indigo-100 print:text-slate-400 font-normal leading-tight whitespace-normal max-w-[100px] mx-auto">{lo.competency_area}</span>
-                                            )}
-                                        </th>
-                                    ))}
-                                </tr>
-                                {/* Sub-header with LO description */}
-                                {learningOutcomes.some(lo => lo.lo_description) && (
-                                    <tr className="bg-indigo-50 print:bg-transparent">
-                                        <td className="border-r border-slate-200 print:border-black sticky left-0 bg-indigo-50 z-20"></td>
-                                        <td className="px-5 py-2 text-xs text-slate-500 font-medium border-r border-slate-200 print:border-black sticky left-[48px] bg-indigo-50 z-20">
-                                            คำอธิบาย LO
-                                        </td>
-                                        {learningOutcomes.map(lo => (
-                                            <td key={lo.lo_id} className="px-3 py-2 text-center text-[11px] text-indigo-700 font-medium border-r border-indigo-100 print:border-black max-w-[120px]">
-                                                <span className="block whitespace-normal leading-tight">{lo.lo_description}</span>
-                                            </td>
-                                        ))}
-                                    </tr>
-                                )}
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white print:divide-black">
-                                {enrollments.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={2 + learningOutcomes.length} className="px-4 py-12 text-center text-slate-400 font-medium">
-                                            ไม่พบรายชื่อนักเรียนในวิชานี้
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    enrollments.map((enroll, i) => {
-                                        const st = enroll.users_students;
-                                        return (
-                                            <tr key={enroll.enrollment_id} className="hover:bg-slate-50/80 transition-colors group">
-                                                <td className="px-4 py-3 text-center text-sm font-semibold text-slate-400 border-r border-slate-100 print:border-black sticky left-0 bg-white group-hover:bg-slate-50/80">
-                                                    {i + 1}
-                                                </td>
-                                                <td className="px-5 py-3 text-sm font-bold text-slate-800 border-r border-slate-100 print:border-black sticky left-[48px] bg-white group-hover:bg-slate-50/80">
-                                                    {st?.prefix || ''}{st?.first_name} {st?.last_name}
-                                                    <span className="block text-xs text-slate-400 font-mono font-normal">{st?.student_code}</span>
-                                                </td>
-                                                {learningOutcomes.map(lo => {
-                                                    const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
-                                                    const val = ev?.competency_level || '-';
-                                                    const style = levelStyle(val);
-                                                    return (
-                                                        <td key={lo.lo_id} className="px-3 py-3 text-center text-sm border-r border-slate-100 print:border-black">
-                                                            {val !== '-' ? (
-                                                                <span className={`inline-block px-2 py-0.5 rounded-md border text-xs font-bold print:border-none print:p-0 ${style.badge}`}>
-                                                                    {val}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-slate-200 text-xs print:text-slate-400">—</span>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                        <section className="summary-document overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div className="summary-controls border-b border-slate-200 p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-extrabold text-slate-950">ผลการประเมินรายบุคคล</h3><p className="mt-1 text-sm text-slate-600">ระดับที่ครูบันทึกในแต่ละ LO และจำนวนรายการที่ประเมินครบ</p></div><div className="flex flex-wrap gap-1.5">{[...LEVELS, 'ยังไม่ประเมิน'].map(level => <span key={level} className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${levelMeta[level].badge}`}>{level}</span>)}</div></div></div>
+                            <div className="overflow-x-auto"><table className="summary-table w-full min-w-[780px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="sticky left-0 z-20 w-16 border-r border-slate-200 bg-slate-100 px-4 py-3 text-center">เลขที่</th><th className="sticky left-16 z-20 min-w-56 border-r border-slate-200 bg-slate-100 px-4 py-3">ผู้เรียน</th><th className="w-24 px-3 py-3 text-center">ห้อง</th>{data.learningOutcomes.map(lo => <th key={lo.lo_id} className="min-w-40 border-l border-slate-200 px-3 py-3 text-center"><span className="block text-indigo-800">{lo.lo_code || `LO ${lo.ability_no}`}</span><span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-600">{lo.competency_area || 'ไม่ระบุด้าน'}</span><span className="mt-1 block max-w-48 whitespace-normal text-[10px] font-normal leading-4 text-slate-500">{lo.lo_description}</span></th>)}<th className="sticky right-0 z-20 w-32 border-l border-slate-200 bg-slate-100 px-4 py-3 text-center">ความครบถ้วน</th></tr></thead><tbody className="divide-y divide-slate-200">{filteredEnrollments.map(enrollment => { const student = enrollment.users_students; const values = data.learningOutcomes.map(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)); const completed = values.filter(Boolean).length; const complete = data.learningOutcomes.length > 0 && completed === data.learningOutcomes.length; return <tr key={enrollment.enrollment_id} className="group hover:bg-slate-50"><td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-4 py-3 text-center font-semibold text-slate-500 group-hover:bg-slate-50">{data.enrollments.indexOf(enrollment) + 1}</td><td className="sticky left-16 z-10 border-r border-slate-200 bg-white px-4 py-3 group-hover:bg-slate-50"><strong className="block text-slate-900">{studentName(student)}</strong><span className="mt-0.5 block text-xs text-slate-500">{student?.student_code}</span></td><td className="px-3 py-3 text-center font-semibold text-slate-600">{enrollment.room || '-'}</td>{data.learningOutcomes.map((lo, loIndex) => { const value = values[loIndex]; return <td key={lo.lo_id} className="border-l border-slate-100 px-3 py-3 text-center">{value ? <span className={`inline-flex rounded-lg border px-2.5 py-1.5 text-xs font-extrabold ${levelMeta[value]?.badge || levelMeta['ยังไม่ประเมิน'].badge}`}>{formalLevelLabel(value)}</span> : <span className={`inline-flex rounded-lg border px-2.5 py-1.5 text-xs font-bold ${levelMeta['ยังไม่ประเมิน'].badge}`}>ยังไม่ประเมิน</span>}</td>; })}<td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-4 py-3 text-center group-hover:bg-slate-50"><span className={`inline-flex rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${complete ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{complete ? 'ครบแล้ว' : `${completed}/${data.learningOutcomes.length}`}</span></td></tr>; })}{filteredEnrollments.length === 0 && <tr><td colSpan={4 + data.learningOutcomes.length} className="px-6 py-14 text-center text-sm text-slate-600">ไม่พบผู้เรียนที่ตรงกับคำค้นหาหรือตัวกรอง</td></tr>}</tbody></table></div>
+                        </section>
 
-                {/* Summary Stats */}
-                {enrollments.length > 0 && learningOutcomes.length > 0 && (
-                    <div className="mt-6 print:hidden">
-                        <h3 className="text-sm font-extrabold text-slate-500 uppercase tracking-widest mb-3">สรุปจำนวนนักเรียนแต่ละระดับต่อ LO</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                            {learningOutcomes.map(lo => {
-                                const counts = { 'เริ่มต้น': 0, 'พัฒนา': 0, 'ชำนาญ': 0, 'เชี่ยวชาญ': 0, 'ยังไม่ประเมิน': 0 };
-                                enrollments.forEach(enroll => {
-                                    const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
-                                    const val = ev?.competency_level;
-                                    if (val && counts[val] !== undefined) counts[val]++;
-                                    else counts['ยังไม่ประเมิน']++;
-                                });
-                                return (
-                                    <div key={lo.lo_id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-                                        <p className="text-xs font-extrabold text-indigo-600 mb-2">{lo.lo_code || `LO ข้อ ${lo.ability_no}`}</p>
-                                        <div className="space-y-1.5">
-                                            {[
-                                                { k: 'เชี่ยวชาญ', color: 'bg-green-500' },
-                                                { k: 'ชำนาญ', color: 'bg-blue-500' },
-                                                { k: 'พัฒนา', color: 'bg-orange-400' },
-                                                { k: 'เริ่มต้น', color: 'bg-red-400' },
-                                                { k: 'ยังไม่ประเมิน', color: 'bg-slate-300' },
-                                            ].map(({ k, color }) => (
-                                                <div key={k} className="flex items-center gap-2">
-                                                    <div className={`w-2 h-2 rounded-full shrink-0 ${color}`}></div>
-                                                    <span className="text-xs text-slate-600 flex-1">{k}</span>
-                                                    <span className="text-xs font-extrabold text-slate-800">{counts[k]}</span>
-                                                    <div className="w-20 bg-slate-100 rounded-full h-1.5">
-                                                        <div
-                                                            className={`${color} h-1.5 rounded-full`}
-                                                            style={{ width: `${enrollments.length ? (counts[k] / enrollments.length) * 100 : 0}%` }}
-                                                        ></div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                        {data.enrollments.length > 0 && data.learningOutcomes.length > 0 && <section className="summary-controls mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ภาพรวมระดับความสามารถราย LO</h3><p className="mt-1 text-sm text-slate-600">เลือก LO เพื่อดูการกระจายระดับของนักเรียนทั้งรายวิชา</p></div><label><span className="mb-1 block text-xs font-bold text-slate-600">เลือก LO</span><select value={distributionLo} onChange={event => setDistributionLo(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-72">{data.learningOutcomes.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} · {lo.competency_area || 'ไม่ระบุด้าน'}</option>)}</select></label></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[...LEVELS].reverse().concat('ยังไม่ประเมิน').map(level => { const count = distribution[level]; const levelPercent = data.enrollments.length ? Math.round((count / data.enrollments.length) * 100) : 0; return <div key={level} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-bold text-slate-700">{level}</span><strong className="text-slate-950">{count} คน</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${levelMeta[level].bar}`} style={{ width: `${levelPercent}%` }} /></div><p className="mt-1.5 text-right text-xs font-semibold text-slate-500">{levelPercent}%</p></div>; })}</div></section>}
+                    </>
                 )}
-            </main>
-        </div>
+            </div>
+        </Layout>
     );
 }
