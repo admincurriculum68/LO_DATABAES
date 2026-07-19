@@ -188,83 +188,82 @@ COMMENT ON TABLE user_identities IS
     'Identity-provider link only. Do not store Thai ID access tokens or citizen data returned by the provider here.';
 
 -- --------------------------------------------------------------------------
--- 6) Presentation scenario: the same LO is used by two subjects and a project.
---    All statements are scoped to the deterministic sandbox school.
+-- 6) Formal annual and phase-completion reporting structures.
+--    Central phase descriptors are not tenant-owned; annual expectations are
+--    scoped to each school's curriculum.
 -- --------------------------------------------------------------------------
-INSERT INTO subject_lo_mapping (mapping_id, subject_id, lo_id)
-SELECT gen_random_uuid(),
-       'c2222222-2222-2222-2222-222222222222'::UUID,
-       'e1111111-1111-1111-1111-111111111111'::UUID
-WHERE EXISTS (SELECT 1 FROM subjects WHERE subject_id = 'c2222222-2222-2222-2222-222222222222')
-  AND EXISTS (SELECT 1 FROM learning_outcomes WHERE lo_id = 'e1111111-1111-1111-1111-111111111111')
-  AND NOT EXISTS (
-      SELECT 1 FROM subject_lo_mapping
-      WHERE subject_id = 'c2222222-2222-2222-2222-222222222222'
-        AND lo_id = 'e1111111-1111-1111-1111-111111111111'
-  );
-
-INSERT INTO learning_contexts (
-    context_id, school_id, context_type, context_code, context_name, description,
-    academic_year, semester, grade_level, responsible_teacher_id
-)
-SELECT
-    '91111111-1111-1111-1111-111111111111'::UUID,
-    '11111111-1111-1111-1111-111111111111'::UUID,
-    'project', 'PRJ-P1-01', 'โครงงานตลาดนัดพอเพียง',
-    'บูรณาการการอ่าน การสื่อสาร และการคำนวณจากสถานการณ์จริง',
-    2569, 1, 'ป.1', 'a2222222-2222-2222-2222-222222222222'::UUID
-WHERE EXISTS (SELECT 1 FROM schools WHERE school_id = '11111111-1111-1111-1111-111111111111')
-ON CONFLICT (context_id) DO UPDATE SET
-    context_name = EXCLUDED.context_name,
-    description = EXCLUDED.description,
-    updated_at = NOW();
-
-INSERT INTO learning_context_lo_mappings (context_id, lo_id)
-SELECT '91111111-1111-1111-1111-111111111111'::UUID,
-       'e1111111-1111-1111-1111-111111111111'::UUID
-WHERE EXISTS (SELECT 1 FROM learning_contexts WHERE context_id = '91111111-1111-1111-1111-111111111111')
-  AND EXISTS (SELECT 1 FROM learning_outcomes WHERE lo_id = 'e1111111-1111-1111-1111-111111111111')
-ON CONFLICT (context_id, lo_id) DO NOTHING;
-
-INSERT INTO learning_context_evaluations (
-    school_id, context_id, student_id, lo_id, competency_level,
-    evidence_note, evaluated_by, workflow_status, submitted_at
-)
-SELECT
-    '11111111-1111-1111-1111-111111111111'::UUID,
-    '91111111-1111-1111-1111-111111111111'::UUID,
-    'b1111111-1111-1111-1111-111111111111'::UUID,
-    'e1111111-1111-1111-1111-111111111111'::UUID,
-    'ชำนาญ',
-    'อ่านป้ายรายการสินค้า อธิบายข้อมูล และสื่อสารกับเพื่อนในสถานการณ์จำลองได้ชัดเจน',
-    'a2222222-2222-2222-2222-222222222222'::UUID,
-    'submitted', NOW()
-WHERE EXISTS (SELECT 1 FROM users_students WHERE student_id = 'b1111111-1111-1111-1111-111111111111')
-ON CONFLICT (context_id, student_id, lo_id) DO UPDATE SET
-    competency_level = EXCLUDED.competency_level,
-    evidence_note = EXCLUDED.evidence_note,
-    workflow_status = 'submitted',
-    submitted_at = NOW(),
-    updated_at = NOW();
-
-UPDATE lo_evaluations
-SET workflow_status = 'submitted',
-    submitted_at = COALESCE(submitted_at, NOW()),
-    evidence_note = COALESCE(
-        evidence_note,
-        CASE
-            WHEN competency_level = 'เชี่ยวชาญ' THEN 'ปฏิบัติได้คล่อง อธิบายเหตุผลและช่วยเพื่อนได้'
-            WHEN competency_level = 'ชำนาญ' THEN 'ปฏิบัติได้ด้วยตนเองและอธิบายขั้นตอนได้'
-            WHEN competency_level = 'พัฒนา' THEN 'ปฏิบัติได้เมื่อมีคำชี้แนะบางส่วน'
-            ELSE 'อยู่ระหว่างรวบรวมหลักฐานเพิ่มเติม'
-        END
-    ),
-    updated_at = NOW()
-WHERE enrollment_id IN (
-    'd1111111-1111-1111-1111-111111111111'::UUID,
-    'd2222222-2222-2222-2222-222222222222'::UUID,
-    'd3333333-3333-3333-3333-333333333333'::UUID
+CREATE TABLE IF NOT EXISTS yearly_competencies (
+    competency_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school_id UUID NOT NULL REFERENCES schools(school_id) ON DELETE CASCADE,
+    grade_level TEXT NOT NULL,
+    competency_no INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    expected_level TEXT NOT NULL CHECK (expected_level IN ('เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(school_id, grade_level, competency_no)
 );
+
+CREATE TABLE IF NOT EXISTS yearly_behavior_templates (
+    template_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school_id UUID NOT NULL REFERENCES schools(school_id) ON DELETE CASCADE,
+    grade_level TEXT NOT NULL,
+    competency_no INTEGER NOT NULL,
+    competency_level TEXT NOT NULL CHECK (competency_level IN ('เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ')),
+    behavior_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(school_id, grade_level, competency_no, competency_level)
+);
+
+CREATE TABLE IF NOT EXISTS student_yearly_results (
+    result_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school_id UUID NOT NULL REFERENCES schools(school_id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES users_students(student_id) ON DELETE CASCADE,
+    academic_year INTEGER NOT NULL,
+    grade_level TEXT NOT NULL,
+    attendance_percent NUMERIC(5,2),
+    learner_activities TEXT NOT NULL DEFAULT 'ผ่าน' CHECK (learner_activities IN ('ผ่าน', 'ไม่ผ่าน')),
+    desirable_chars TEXT NOT NULL DEFAULT 'ผ่าน' CHECK (desirable_chars IN ('ผ่าน', 'ไม่ผ่าน')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(student_id, academic_year, grade_level)
+);
+
+CREATE TABLE IF NOT EXISTS student_yearly_competency_evaluations (
+    evaluation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    result_id UUID NOT NULL REFERENCES student_yearly_results(result_id) ON DELETE CASCADE,
+    competency_id UUID NOT NULL REFERENCES yearly_competencies(competency_id) ON DELETE CASCADE,
+    achieved_level TEXT NOT NULL CHECK (achieved_level IN ('เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(result_id, competency_id)
+);
+
+CREATE TABLE IF NOT EXISTS central_phase_behaviors (
+    behavior_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phase TEXT NOT NULL CHECK (phase IN ('ตอนต้น', 'ตอนปลาย')),
+    ability_key TEXT NOT NULL,
+    competency_level TEXT NOT NULL CHECK (competency_level IN ('เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ')),
+    behavior_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(phase, ability_key, competency_level)
+);
+
+CREATE TABLE IF NOT EXISTS phase_completion_results (
+    result_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school_id UUID NOT NULL REFERENCES schools(school_id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES users_students(student_id) ON DELETE CASCADE,
+    academic_year INTEGER NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('ตอนต้น', 'ตอนปลาย')),
+    ability_levels JSONB NOT NULL DEFAULT '{}'::JSONB,
+    learner_activities TEXT NOT NULL DEFAULT 'ผ่าน' CHECK (learner_activities IN ('ผ่าน', 'ไม่ผ่าน')),
+    desirable_chars TEXT NOT NULL DEFAULT 'ผ่าน' CHECK (desirable_chars IN ('ผ่าน', 'ไม่ผ่าน')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(student_id, academic_year, phase)
+);
+
+-- Academic mock data belongs in presentation_mockup.sql. Keeping schema and
+-- seed separate prevents a migration from silently restoring obsolete terms.
 
 -- --------------------------------------------------------------------------
 -- Security note

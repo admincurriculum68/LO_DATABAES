@@ -4,47 +4,20 @@ import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568 } from '../constants/curriculum2568';
 
 // ─── Competency levels ──────────────────────────────────────────────────────
-const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
+const LEVELS = CBE_LEVELS_2568;
 
 // ─── Fixed Phase Structure (curriculum-defined) ───────────────────────────────
 const PHASE_CONFIG = {
     'ตอนต้น': {
         label: 'ประถมศึกษาตอนต้น (ป.1 – ป.3)',
-        groups: [
-            {
-                groupName: 'ความสามารถพื้นฐานด้านการเรียนรู้',
-                abilities: [
-                    { key: 'reading', name: 'การอ่าน', expected: 'ชำนาญ' },
-                    { key: 'writing', name: 'การเขียน', expected: 'ชำนาญ' },
-                    { key: 'math', name: 'การคิดคำนวณ', expected: 'ชำนาญ' },
-                ]
-            },
-            {
-                groupName: null,
-                abilities: [
-                    { key: 'applied', name: 'ความสามารถในการประยุกต์ใช้ในชีวิตประจำวัน', expected: 'พัฒนา' },
-                ]
-            },
-        ]
+        groups: PHASE_END_CAPABILITY_GROUPS_2568,
     },
     'ตอนปลาย': {
         label: 'ประถมศึกษาตอนปลาย (ป.4 – ป.6)',
-        groups: [
-            {
-                groupName: null,
-                abilities: [
-                    { key: 'language', name: 'ความสามารถด้านภาษาและการสื่อสาร', expected: 'ชำนาญ' },
-                    { key: 'math', name: 'ความสามารถด้านคณิตศาสตร์', expected: 'ชำนาญ' },
-                    { key: 'science', name: 'ความสามารถด้านวิทยาศาสตร์ สิ่งแวดล้อมและเทคโนโลยี', expected: 'พัฒนา' },
-                    { key: 'social', name: 'ความสามารถด้านสังคมและความเป็นพลเมือง', expected: 'พัฒนา' },
-                    { key: 'economics', name: 'ความสามารถด้านเศรษฐกิจและการเงิน', expected: 'พัฒนา' },
-                    { key: 'health', name: 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต', expected: 'พัฒนา' },
-                    { key: 'arts', name: 'ความสามารถด้านศิลปะและสุนทรียภาพ', expected: 'พัฒนา' },
-                ]
-            },
-        ]
+        groups: PHASE_END_CAPABILITY_GROUPS_2568,
     }
 };
 
