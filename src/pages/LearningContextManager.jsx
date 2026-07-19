@@ -35,7 +35,6 @@ const TYPE_META = {
 
 const EMPTY_FORM = {
     context_type: 'subject',
-    context_code: '',
     context_name: '',
     description: '',
     subject_group: '',
@@ -118,7 +117,6 @@ export default function LearningContextManager() {
                     source: 'subject',
                     recordId: subject.subject_id,
                     context_type: 'subject',
-                    context_code: null,
                     context_name: subject.subject_name,
                     description: subject.subject_group ? `กลุ่มสาระหรือกลุ่มวิชา: ${subject.subject_group}` : '',
                     grade_level: subject.grade_level,
@@ -261,7 +259,6 @@ export default function LearningContextManager() {
                 const payload = {
                     school_id: currentUser.school_id,
                     context_type: form.context_type,
-                    context_code: form.context_code.trim() || null,
                     context_name: form.context_name.trim(),
                     description: form.description.trim() || null,
                     academic_year: academicYear,
@@ -397,7 +394,6 @@ export default function LearningContextManager() {
                                         <fieldset><legend className="text-sm font-extrabold text-slate-800">เลือกรูปแบบ</legend><div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">{LEARNING_FORMAT_ORDER.map(type => { const meta = TYPE_META[type]; const Icon = meta.icon; const active = form.context_type === type; return <button key={type} type="button" onClick={() => updateForm('context_type', type)} aria-pressed={active} className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${active ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}><Icon className="h-4 w-4" /> {learningFormatLabel(type)}</button>; })}</div><p className="mt-2 text-sm leading-5 text-slate-600">{LEARNING_FORMATS[form.context_type].description}</p></fieldset>
                                         <div className="mt-6 grid gap-4 sm:grid-cols-2">
                                             <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-bold text-slate-700">ชื่อ{learningFormatLabel(form.context_type)} <span className="text-rose-600">*</span></span><input required autoFocus value={form.context_name} onChange={event => updateForm('context_name', event.target.value)} placeholder={isSubjectForm ? 'เช่น ภาษาไทย: อ่าน เขียน สื่อสาร' : `เช่น ${form.context_type === 'project' ? 'ตลาดนัดพอเพียง' : form.context_type === 'activity' ? 'สุขภาวะดี มีสุนทรียภาพ' : 'ชุมชนของเรา'}`} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
-                                            {!isSubjectForm && <label><span className="mb-1.5 block text-sm font-bold text-slate-700">รหัสภายใน <span className="font-normal text-slate-500">(ถ้ามี)</span></span><input value={form.context_code} onChange={event => updateForm('context_code', event.target.value)} placeholder="เช่น PROJECT-P1-01" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>}
                                             {isSubjectForm && <label><span className="mb-1.5 block text-sm font-bold text-slate-700">กลุ่มสาระหรือกลุ่มวิชา</span><input value={form.subject_group} onChange={event => updateForm('subject_group', event.target.value)} placeholder="เช่น ภาษาไทย" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>}
                                             <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ระดับชั้น</span><select value={form.grade_level} onChange={event => updateForm('grade_level', event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"><option value="">ทุกระดับชั้น</option>{GRADE_LEVELS.map(grade => <option key={grade}>{grade}</option>)}</select></label>
                                             <label><span className="mb-1.5 block text-sm font-bold text-slate-700">{isSubjectForm ? 'ครูผู้สอน' : 'ผู้รับผิดชอบ'}</span><select value={form.responsible_teacher_id} onChange={event => updateForm('responsible_teacher_id', event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"><option value="">ยังไม่กำหนด</option>{teachers.map(teacher => <option key={teacher.teacher_id} value={teacher.teacher_id}>{teacherById[teacher.teacher_id]}</option>)}</select></label>
