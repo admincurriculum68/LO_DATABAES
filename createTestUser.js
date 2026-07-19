@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
-import fs from 'fs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -41,7 +40,7 @@ async function create() {
 
     for (const u of testUsers) {
         const hash = hashPassword(u.dob);
-        const { data, error: selectError } = await supabase.from('users_teachers').select('*').eq('citizen_id', u.citizen_id).single();
+        const { data } = await supabase.from('users_teachers').select('*').eq('citizen_id', u.citizen_id).single();
         
         if (!data) {
             const { error } = await supabase.from('users_teachers').insert({

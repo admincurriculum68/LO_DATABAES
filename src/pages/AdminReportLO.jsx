@@ -40,7 +40,9 @@ export default function AdminReportLO() {
         async function loadBase() {
             try {
                 const [{ data: los }, studs] = await Promise.all([
-                    supabase.from('learning_outcomes').select('*').order('ability_no', { ascending: true }),
+                    supabase.from('learning_outcomes').select('*')
+                        .eq('school_id', currentUser.school_id)
+                        .order('ability_no', { ascending: true }),
                     fetchAllRows((from, to) =>
                         supabase.from('users_students')
                             .select('student_id, student_code, prefix, first_name, last_name')
@@ -216,6 +218,7 @@ export default function AdminReportLO() {
                         {subjects.length === 0 ? (
                             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ไม่มีรายวิชาใดที่ผูก LO นี้ไว้</div>
                         ) : (
+                            <>
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
@@ -291,7 +294,8 @@ export default function AdminReportLO() {
                                     </div>
                                 </div>
                             )}
-                        </div>
+                            </>
+                        )}
                     </>
                 )}
             </main>

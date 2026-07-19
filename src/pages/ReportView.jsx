@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -9,7 +8,6 @@ export default function ReportView() {
     const { studentId, academicYear, semester } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const { currentUser } = useAuth();
 
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);

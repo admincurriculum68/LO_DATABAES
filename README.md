@@ -1,16 +1,75 @@
-# React + Vite
+# CBE Track
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ระบบติดตามผลลัพธ์การเรียนรู้เชิงสมรรถนะ (Learning Outcomes) สำหรับสถานศึกษา รองรับการประเมินรายวิชา การติดตามระดับความสามารถ และการจัดทำรายงานผลการเรียนรายบุคคล
 
-Currently, two official plugins are available:
+## ความสามารถหลัก
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- ผู้ดูแลระบบ: นำเข้าข้อมูล DMC/Excel/CSV จัดการครู นักเรียน รายวิชา การลงทะเบียน และการผูก LO
+- ฝ่ายวิชาการ: สร้างโครงงาน กิจกรรม หน่วยบูรณาการ ผูก LO ซ้ำข้ามบริบท ตรวจหลักฐาน และรับรองผล LO สุดท้าย
+- ครูผู้สอน: ประเมิน LO พร้อมหลักฐานเชิงคุณภาพ บันทึกเวลาเรียน และส่งผลให้ฝ่ายวิชาการตรวจสอบ
+- นักเรียน/ผู้ปกครอง: ดูรายวิชา ผลระหว่างเรียน และผล LO ทางการที่ฝ่ายวิชาการรับรองแล้ว
+- ผู้บริหาร: ดูสถิติภาพรวมเฉพาะโรงเรียน ปีการศึกษา และภาคเรียนที่เลือก
+- รายงาน: สรุปรายวิชา ภาพรวม LO รายด้านความสามารถ ปพ.๖ และรายงานจบช่วงชั้น
 
-## React Compiler
+ระดับความสามารถที่ระบบใช้ ได้แก่ `เริ่มต้น`, `พัฒนา`, `ชำนาญ` และ `เชี่ยวชาญ`
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## เทคโนโลยี
 
-## Expanding the ESLint configuration
+- React 19 และ Vite
+- Tailwind CSS
+- Supabase
+- SheetJS และ Papa Parse สำหรับ Excel/CSV
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## เริ่มต้นใช้งาน
+
+สร้างไฟล์ `.env` ที่โฟลเดอร์หลักของโปรเจกต์:
+
+```env
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
+
+ติดตั้งและเปิดระบบ:
+
+```bash
+npm install
+npm run dev
+```
+
+ระบบเปิดที่ `http://localhost:5999`
+
+สำหรับฐานทดลองเดิม ให้รัน `cbe_track_demo_upgrade.sql` ผ่าน Supabase SQL Editor หนึ่งครั้ง สคริปต์นี้เพิ่ม workflow การส่งตรวจ ศูนย์รับรองผล บริบทการเรียนรู้ audit log และข้อมูลสาธิต โดยไม่ลบข้อมูลเดิมและสามารถรันซ้ำได้
+
+## ตรวจสอบก่อน deploy
+
+```bash
+npm run lint
+npm run build
+```
+
+ทั้งสองคำสั่งต้องผ่านก่อนนำระบบขึ้นใช้งานหรือสาธิต
+
+## โครงสร้างสำคัญ
+
+- `src/pages` หน้าจอของแต่ละบทบาทและรายงาน
+- `src/components` ส่วนประกอบหน้าจอร่วม
+- `src/lib` การเชื่อมต่อ Supabase และฟังก์ชันช่วย
+- `*.sql` migration และข้อมูลตัวอย่างเดิมของโครงการ
+- `cbe_track_demo_upgrade.sql` migration หลักสำหรับยกระดับฐานทดลองปัจจุบัน
+- `presentation_mockup.sql` ข้อมูลตัวอย่างสำหรับการนำเสนอ
+- `DATABASE_DATA_DICTIONARY.md` แบบจำลองข้อมูลและขอบเขตข้อมูลส่วนกลาง/รายโรงเรียนสำหรับใช้คุย TOR
+- `DEMO_PRESENTATION_GUIDE.md` ลำดับสาธิตและสารสำคัญสำหรับการนำเสนอ
+
+## ข้อควรระวัง
+
+- ห้าม commit ไฟล์ `.env` หรือ service-role key
+- สคริปต์ลบข้อมูลทำงานแบบ dry run โดยปริยาย และต้องกำหนด `TARGET_SCHOOL_ID` ก่อนใช้
+- อย่ารัน SQL ที่ปิด Row Level Security กับระบบ production
+- ระบบ production ระดับหลายโรงเรียนหรือระดับประเทศต้องออกแบบ Supabase Auth, RLS, PDPA, audit log และการแยก tenant ให้สมบูรณ์ก่อนเปิดใช้จริง
+- ไฟล์ SQL ในโฟลเดอร์นี้เกิดจากการพัฒนาหลายช่วง ควรรวมเป็น canonical migration ชุดเดียวก่อนติดตั้งโรงเรียนใหม่
+
+## สถานะปัจจุบัน
+
+ฐานทดลองได้รับ migration แล้ว และ flow ฝ่ายวิชาการรวมหลักฐาน LO เดียวกันจากรายวิชาและโครงงาน พร้อมรับรองผลและบันทึก audit log ผ่านการทดสอบจริงกับ Supabase เมื่อวันที่ 19 กรกฎาคม 2569
+
+สถานะนี้เหมาะสำหรับการสาธิตและใช้ประกอบการกำหนด TOR แต่ยังไม่ควรประกาศเป็น production ระดับประเทศจนกว่าจะย้ายการยืนยันตัวตนไปยังระบบที่เชื่อถือได้ เปิดใช้ tenant-scoped RLS ครบทุกตาราง ทำ PDPA/security review และทดสอบ UAT/โหลด/สำรองข้อมูลตามเกณฑ์ใน TOR

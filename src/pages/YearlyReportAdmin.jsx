@@ -19,7 +19,7 @@ function compareLevels(achieved, expected) {
 }
 
 const GRADE_LEVELS = ['ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'];
-const CURRENT_YEAR = 2567;
+const CURRENT_YEAR = new Date().getFullYear() + 543;
 
 export default function YearlyReportAdmin() {
     const { currentUser } = useAuth();

@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
-import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function EvalView() {
@@ -21,6 +21,8 @@ export default function EvalView() {
     const [lastSaved, setLastSaved] = useState(null);
     const [showMissingOnly, setShowMissingOnly] = useState(false);
     const [selectedRoom, setSelectedRoom] = useState('all');
+    const [submission, setSubmission] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         async function loadData() {
@@ -59,6 +61,13 @@ export default function EvalView() {
                     setEvaluations(evals || []);
                 }
 
+                const { data: submissionData } = await supabase
+                    .from('assessment_submissions')
+                    .select('*')
+                    .eq('subject_id', subjectId)
+                    .maybeSingle();
+                setSubmission(submissionData || null);
+
                 // Track attendance state separately for easy upsert
                 const initialAtt = {};
                 formatEnrolls.forEach(e => {
@@ -90,6 +99,7 @@ export default function EvalView() {
     // Auto-save: debounced 30 seconds after last change
     const autoSaveTimerRef = useRef(null);
     const autoSaveCountdownRef = useRef(null);
+    const saveEvaluationsRef = useRef(null);
     const [autoSaveIn, setAutoSaveIn] = useState(null);
 
     useEffect(() => {
@@ -110,7 +120,7 @@ export default function EvalView() {
             }, 1000);
 
             autoSaveTimerRef.current = setTimeout(() => {
-                saveEvaluations();
+                saveEvaluationsRef.current?.();
             }, 30000);
         } else {
             setAutoSaveIn(null);
@@ -139,15 +149,39 @@ export default function EvalView() {
         setEvaluations(prev => {
             const existing = prev.find(e => e.enrollment_id === enrollmentId && e.lo_id === loId);
             if (existing) {
-                return prev.map(e => e.enrollment_id === enrollmentId && e.lo_id === loId ? { ...e, competency_level: newLevel } : e);
+                return prev.map(e => e.enrollment_id === enrollmentId && e.lo_id === loId ? { ...e, competency_level: newLevel, workflow_status: 'draft', updated_at: new Date().toISOString() } : e);
             } else {
-                return [...prev, { evaluation_id: crypto.randomUUID(), enrollment_id: enrollmentId, lo_id: loId, competency_level: newLevel, evaluated_by: currentUser.teacher_id }];
+                return [...prev, { evaluation_id: crypto.randomUUID(), enrollment_id: enrollmentId, lo_id: loId, competency_level: newLevel, evidence_note: '', workflow_status: 'draft', evaluated_by: currentUser.teacher_id, updated_at: new Date().toISOString() }];
             }
         });
+        setSubmission(prev => prev ? { ...prev, status: 'draft' } : prev);
         setIsDirty(true);
     };
 
-    const saveEvaluations = async () => {
+    const handleEvidenceChange = (enrollmentId, loId, evidenceNote) => {
+        setEvaluations(prev => {
+            const existing = prev.find(e => e.enrollment_id === enrollmentId && e.lo_id === loId);
+            if (existing) {
+                return prev.map(e => e.enrollment_id === enrollmentId && e.lo_id === loId
+                    ? { ...e, evidence_note: evidenceNote, workflow_status: 'draft', updated_at: new Date().toISOString() }
+                    : e);
+            }
+            return [...prev, {
+                evaluation_id: crypto.randomUUID(),
+                enrollment_id: enrollmentId,
+                lo_id: loId,
+                competency_level: '',
+                evidence_note: evidenceNote,
+                workflow_status: 'draft',
+                evaluated_by: currentUser.teacher_id,
+                updated_at: new Date().toISOString()
+            }];
+        });
+        setSubmission(prev => prev ? { ...prev, status: 'draft' } : prev);
+        setIsDirty(true);
+    };
+
+    const saveEvaluations = async (showSuccessToast = true) => {
         setSaving(true);
         try {
             // Updated to also save attendance. Upserting both is possible, but attendance is on student_enrollments
@@ -161,27 +195,36 @@ export default function EvalView() {
             }
 
             // 2. Save Attendance
-            const attUpdates = Object.keys(attendance).map(eId => ({
-                enrollment_id: eId,
-                attendance_percent: attendance[eId]
-            }));
+            const attUpdates = Object.entries(attendance);
 
             if (attUpdates.length > 0) {
-                const { error: attErr } = await supabase
-                    .from('student_enrollments')
-                    .upsert(attUpdates, { onConflict: 'enrollment_id' });
-                if (attErr) throw attErr;
+                // Update existing enrollments instead of upserting partial rows.
+                // The enrollment table has required student/subject/room fields;
+                // a partial upsert can fail its NOT NULL checks before conflict handling.
+                const attendanceResults = await Promise.all(
+                    attUpdates.map(([enrollmentId, attendancePercent]) => (
+                        supabase
+                            .from('student_enrollments')
+                            .update({ attendance_percent: attendancePercent })
+                            .eq('enrollment_id', enrollmentId)
+                    ))
+                );
+                const failedAttendance = attendanceResults.find(result => result.error);
+                if (failedAttendance?.error) throw failedAttendance.error;
             }
 
             setIsDirty(false);
             setLastSaved(new Date());
-            toast.success('บันทึกผลการประเมินและเวลาเรียนสำเร็จ!');
+            if (showSuccessToast) toast.success('บันทึกผลการประเมิน เวลาเรียน และหลักฐานสำเร็จ');
+            return true;
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
+            return false;
         } finally {
             setSaving(false);
         }
     };
+    saveEvaluationsRef.current = saveEvaluations;
 
     const getSelectColor = (val) => {
         if (!val) return 'border-slate-300 text-slate-500 bg-white placeholder-slate-400';
@@ -215,6 +258,65 @@ export default function EvalView() {
     const filledCells = evaluations.filter(e => e.competency_level && e.competency_level !== '').length;
     const missingCount = totalCells - filledCells;
 
+    const submitForReview = async () => {
+        if (missingCount > 0) {
+            toast.error(`ยังส่งตรวจไม่ได้: เหลือ ${missingCount} ช่องที่ยังไม่ประเมิน`);
+            return;
+        }
+        const missingEvidence = evaluations.filter(e => e.competency_level && e.competency_level !== 'N/A' && !e.evidence_note?.trim()).length;
+        if (missingEvidence > 0 && !window.confirm(`มี ${missingEvidence} รายการที่ยังไม่มีหลักฐานเชิงคุณภาพ ต้องการส่งฝ่ายวิชาการต่อหรือไม่?`)) return;
+
+        setSubmitting(true);
+        try {
+            if (isDirty) {
+                const saved = await saveEvaluations(false);
+                if (!saved) return;
+            }
+            const now = new Date().toISOString();
+            const payload = {
+                school_id: currentUser.school_id,
+                subject_id: subjectId,
+                academic_year: subject.academic_year,
+                semester: subject.semester,
+                teacher_id: currentUser.teacher_id,
+                status: 'submitted',
+                submitted_at: now,
+                updated_at: now,
+            };
+            const { data, error } = await supabase
+                .from('assessment_submissions')
+                .upsert(payload, { onConflict: 'subject_id,academic_year,semester' })
+                .select()
+                .single();
+            if (error) throw error;
+
+            const evaluationIds = evaluations.filter(e => e.competency_level).map(e => e.evaluation_id);
+            if (evaluationIds.length) {
+                const { error: statusError } = await supabase
+                    .from('lo_evaluations')
+                    .update({ workflow_status: 'submitted', submitted_at: now, updated_at: now })
+                    .in('evaluation_id', evaluationIds);
+                if (statusError) throw statusError;
+            }
+            await supabase.from('audit_logs').insert({
+                school_id: currentUser.school_id,
+                actor_id: currentUser.teacher_id,
+                actor_role: currentUser.role,
+                action: 'submit_subject_assessment',
+                entity_type: 'subject',
+                entity_id: subjectId,
+                detail: { academic_year: subject.academic_year, semester: subject.semester, evaluation_count: evaluationIds.length }
+            });
+            setSubmission(data);
+            setEvaluations(prev => prev.map(e => e.competency_level ? { ...e, workflow_status: 'submitted', submitted_at: now } : e));
+            toast.success('ส่งผลให้ฝ่ายวิชาการตรวจสอบแล้ว');
+        } catch (err) {
+            toast.error('ส่งผลตรวจสอบไม่สำเร็จ: ' + err.message);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     let displayedEnrollments = showMissingOnly
         ? enrollments.filter(enroll => {
             const studentEvals = evaluations.filter(e => e.enrollment_id === enroll.enrollment_id && e.competency_level && e.competency_level !== '');
@@ -227,6 +329,14 @@ export default function EvalView() {
     }
 
     const uniqueRooms = [...new Set(enrollments.map(e => e.room).filter(Boolean))].sort();
+    const submissionStatus = submission?.status || 'draft';
+    const submissionLabel = {
+        draft: 'ฉบับร่าง',
+        submitted: 'ส่งฝ่ายวิชาการแล้ว',
+        under_review: 'กำลังตรวจสอบ',
+        returned: 'ส่งกลับแก้ไข',
+        approved: 'ฝ่ายวิชาการรับรองแล้ว'
+    }[submissionStatus] || 'ฉบับร่าง';
 
     // Warn if navigating away with unsaved changes
     const handleBack = () => {
@@ -258,6 +368,15 @@ export default function EvalView() {
                     </div>
                     {/* Auto-save / Save state indicator */}
                     <div className="flex items-center gap-3">
+                        <span className={`hidden lg:inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold ${
+                            submissionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
+                            submissionStatus === 'returned' ? 'border-rose-200 bg-rose-50 text-rose-700' :
+                            submissionStatus === 'submitted' || submissionStatus === 'under_review' ? 'border-blue-200 bg-blue-50 text-blue-700' :
+                            'border-slate-200 bg-slate-50 text-slate-600'
+                        }`}>
+                            {submissionStatus === 'returned' ? <RotateCcw className="h-3.5 w-3.5" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+                            {submissionLabel}
+                        </span>
                         {isDirty && !saving && (
                             <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
                                 <Clock className="w-3.5 h-3.5" />
@@ -272,7 +391,7 @@ export default function EvalView() {
                         )}
                         <button
                             onClick={saveEvaluations}
-                            disabled={saving || !isDirty}
+                            disabled={saving || !isDirty || submissionStatus === 'approved'}
                             className={`px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center ${
                                 isDirty
                                     ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/30'
@@ -281,6 +400,15 @@ export default function EvalView() {
                         >
                             {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                             {saving ? 'กำลังบันทึก...' : 'บันทึกผล'}
+                        </button>
+                        <button
+                            onClick={submitForReview}
+                            disabled={submitting || loading || missingCount > 0 || submissionStatus === 'approved'}
+                            className="hidden min-h-10 items-center rounded-xl bg-blue-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 sm:inline-flex"
+                            title={missingCount > 0 ? `เหลือ ${missingCount} ช่องที่ยังไม่ประเมิน` : 'ส่งผลให้ฝ่ายวิชาการตรวจสอบ'}
+                        >
+                            {submitting ? <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="mr-2 h-4 w-4" />}
+                            ส่งตรวจ
                         </button>
                     </div>
                 </div>
@@ -345,7 +473,7 @@ export default function EvalView() {
                                         <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider min-w-[200px] sticky left-[190px] bg-slate-50 z-20 border-r border-slate-200 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
                                         <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-slate-200">เวลาเรียน (%)</th>
                                         {learningOutcomes.map(lo => (
-                                            <th key={lo.lo_id} className="px-4 py-4 text-center text-xs font-bold text-indigo-900 uppercase min-w-[140px] bg-indigo-50/50" title={lo.lo_description}>
+                                            <th key={lo.lo_id} className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
                                                 <div>{lo.lo_code ? lo.lo_code : `LO ข้อ ${lo.ability_no}`}</div>
                                                 {lo.lo_code && <div className="text-[10px] text-indigo-500 font-medium mt-1">ข้อ {lo.ability_no}</div>}
                                             </th>
@@ -381,6 +509,7 @@ export default function EvalView() {
                                                             <select
                                                                 value={val}
                                                                 onChange={(e) => handleLevelChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
+                                                                disabled={submissionStatus === 'approved'}
                                                                 className={`block w-full px-3 py-2 text-sm border-2 rounded-xl focus:ring-offset-1 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none cursor-pointer ${getSelectColor(val)} hover:border-slate-400`}
                                                             >
                                                                 <option value="" disabled className="text-slate-400">- เลือก -</option>
@@ -390,6 +519,20 @@ export default function EvalView() {
                                                                 <option value="เชี่ยวชาญ">เชี่ยวชาญ</option>
                                                                 <option value="N/A">N/A (ข้าม)</option>
                                                             </select>
+                                                            <label className="mt-2 block text-left">
+                                                                <span className="sr-only">หลักฐานเชิงคุณภาพ {lo.lo_code || `LO ${lo.ability_no}`} ของ {st.first_name}</span>
+                                                                <div className="relative">
+                                                                    <MessageSquareText className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                                                                    <textarea
+                                                                        rows="2"
+                                                                        value={ev?.evidence_note || ''}
+                                                                        onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
+                                                                        disabled={submissionStatus === 'approved'}
+                                                                        placeholder="หลักฐาน/ข้อสังเกต"
+                                                                        className="w-full resize-y rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                                                    />
+                                                                </div>
+                                                            </label>
                                                         </td>
                                                     );
                                                 })}

@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import { useAuth } from './AuthContext';
 
 const AcademicContext = createContext();
+const DEFAULT_ACADEMIC_YEAR = new Date().getFullYear() + 543;
 
 export function AcademicProvider({ children }) {
     const { currentUser } = useAuth();
@@ -28,14 +29,14 @@ export function AcademicProvider({ children }) {
                     .single();
 
                 if (data) {
-                    setAcademicYear(data.active_academic_year || 2569);
+                    setAcademicYear(data.active_academic_year || DEFAULT_ACADEMIC_YEAR);
                     setSemester(data.active_semester || 1);
                 } else {
-                    setAcademicYear(2569);
+                    setAcademicYear(DEFAULT_ACADEMIC_YEAR);
                     setSemester(1);
                 }
             } catch {
-                setAcademicYear(2569);
+                setAcademicYear(DEFAULT_ACADEMIC_YEAR);
                 setSemester(1);
             } finally {
                 setLoading(false);

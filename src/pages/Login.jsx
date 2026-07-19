@@ -145,7 +145,7 @@ export default function Login() {
                 </div>
 
                 <div className="mt-6 text-center text-xs text-slate-500">
-                    <span className="font-bold text-slate-400">CBE Track</span> · สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.) © 2569
+                    <span className="font-bold text-slate-400">CBE Track</span> · สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.) © {new Date().getFullYear() + 543}
                 </div>
             </div>
         </div>

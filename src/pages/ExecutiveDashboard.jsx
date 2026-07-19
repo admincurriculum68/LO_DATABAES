@@ -14,18 +14,34 @@ export default function ExecutiveDashboard() {
 
     useEffect(() => {
         async function loadData() {
+            if (!currentUser?.school_id || !academicYear || !semester) return;
             try {
                 const [
                     { count: studentCount },
                     { count: teacherCount },
                     { count: subjectCount },
-                    { data: evals }
+                    { data: activeEnrollments }
                 ] = await Promise.all([
                     supabase.from('users_students').select('*', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
                     supabase.from('users_teachers').select('*', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
-                    supabase.from('subjects').select('*', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
-                    supabase.from('lo_evaluations').select('competency_level')
+                    supabase.from('subjects').select('*', { count: 'exact', head: true })
+                        .eq('school_id', currentUser.school_id)
+                        .eq('academic_year', academicYear)
+                        .eq('semester', semester),
+                    supabase.from('student_enrollments')
+                        .select('enrollment_id, subjects!inner(school_id, academic_year, semester)')
+                        .eq('subjects.school_id', currentUser.school_id)
+                        .eq('subjects.academic_year', academicYear)
+                        .eq('subjects.semester', semester)
                 ]);
+
+                const enrollmentIds = (activeEnrollments || []).map(item => item.enrollment_id);
+                const { data: evals, error: evalError } = enrollmentIds.length > 0
+                    ? await supabase.from('lo_evaluations')
+                        .select('competency_level')
+                        .in('enrollment_id', enrollmentIds)
+                    : { data: [], error: null };
+                if (evalError) throw evalError;
 
                 let counts = { 'เริ่มต้น': 0, 'พัฒนา': 0, 'ชำนาญ': 0, 'เชี่ยวชาญ': 0 };
                 (evals || []).forEach(e => {
@@ -47,7 +63,7 @@ export default function ExecutiveDashboard() {
             }
         }
         loadData();
-    }, [currentUser]);
+    }, [currentUser, academicYear, semester]);
 
     const StatCard = ({ title, value, icon: Icon, colorClass, borderClass, bgGradient }) => (
         <div className={`relative bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border ${borderClass} p-8 overflow-hidden group hover:-translate-y-1.5 transition-all duration-300`}>

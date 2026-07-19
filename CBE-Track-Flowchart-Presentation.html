@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ภาพรวมการทำงานระบบ CBE Track</title>
+  <style>
+    :root {
+      --background: #f8fafc;
+      --foreground: #172554;
+      --card: #ffffff;
+      --card-foreground: #172554;
+      --muted: #eef2ff;
+      --muted-foreground: #475569;
+      --border: #cbd5e1;
+      --primary: #1d4ed8;
+      --primary-foreground: #ffffff;
+      --secondary: #ede9fe;
+      --secondary-foreground: #4c1d95;
+      --accent: #ecfeff;
+      --accent-foreground: #155e75;
+      --destructive: #fff1f2;
+      --destructive-foreground: #9f1239;
+      --viz-series-1: #2563eb;
+      --viz-series-2: #0f766e;
+      --viz-series-3: #d97706;
+      --viz-series-4: #7c3aed;
+      --viz-series-5: #dc2626;
+    }
+    html, body { margin: 0; width: 100%; min-height: 100%; background: var(--background); }
+  </style>
+</head>
+<body>
+<div id="cbe-presentation-flow" role="img" aria-label="แผนภาพสรุปการทำงานระบบ CBE Track สำหรับนำเสนอ">
+  <style>
+    #cbe-presentation-flow {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 100vh;
+      padding: 52px 64px 44px;
+      background: var(--background);
+      color: var(--foreground);
+      font-family: "Noto Sans Thai", "Sarabun", system-ui, sans-serif;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 22px;
+    }
+    #cbe-presentation-flow * { box-sizing: border-box; }
+    #cbe-presentation-flow .title-row {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    #cbe-presentation-flow h1,
+    #cbe-presentation-flow h2,
+    #cbe-presentation-flow h3,
+    #cbe-presentation-flow p { margin: 0; }
+    #cbe-presentation-flow h1 { font-size: 38px; font-weight: 500; }
+    #cbe-presentation-flow .subtitle { font-size: 18px; color: var(--muted-foreground); }
+    #cbe-presentation-flow .central-band {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 20px;
+      align-items: center;
+      padding: 16px 20px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--viz-series-4) 9%, var(--card));
+    }
+    #cbe-presentation-flow .central-title { font-size: 20px; font-weight: 500; }
+    #cbe-presentation-flow .central-items {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    #cbe-presentation-flow .central-items span {
+      padding-left: 14px;
+      border-left: 2px solid var(--viz-series-4);
+      font-size: 16px;
+    }
+    #cbe-presentation-flow .school-zone {
+      position: relative;
+      border: 2px solid color-mix(in srgb, var(--viz-series-1) 55%, var(--border));
+      border-radius: 22px;
+      padding: 48px 28px 26px;
+      background: color-mix(in srgb, var(--viz-series-1) 4%, var(--card));
+      display: grid;
+      grid-template-rows: 1fr auto 1fr;
+      gap: 12px;
+    }
+    #cbe-presentation-flow .school-label {
+      position: absolute;
+      top: 12px;
+      left: 24px;
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--foreground);
+    }
+    #cbe-presentation-flow .school-note {
+      position: absolute;
+      top: 12px;
+      right: 24px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+    #cbe-presentation-flow .flow-row {
+      display: grid;
+      grid-template-columns: 1fr 46px 1fr 46px 1fr 46px 1fr;
+      align-items: stretch;
+      gap: 8px;
+    }
+    #cbe-presentation-flow .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--muted-foreground);
+      font-size: 30px;
+    }
+    #cbe-presentation-flow .down-arrow {
+      text-align: right;
+      padding-right: 10.8%;
+      font-size: 25px;
+      color: var(--muted-foreground);
+      line-height: 1;
+    }
+    #cbe-presentation-flow .stage {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+      color: var(--card-foreground);
+      padding: 18px 18px 15px;
+      min-width: 0;
+    }
+    #cbe-presentation-flow .stage-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    #cbe-presentation-flow .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      background: var(--primary);
+      color: var(--primary-foreground);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    #cbe-presentation-flow .stage h3 { font-size: 18px; font-weight: 500; }
+    #cbe-presentation-flow .stage ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted-foreground);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    #cbe-presentation-flow .reuse {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 7px;
+      align-items: center;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    #cbe-presentation-flow .reuse-main {
+      text-align: center;
+      padding: 7px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--viz-series-3) 13%, var(--muted));
+      font-weight: 500;
+    }
+    #cbe-presentation-flow .reuse-list {
+      display: grid;
+      gap: 4px;
+      color: var(--muted-foreground);
+    }
+    #cbe-presentation-flow .decision {
+      border-color: color-mix(in srgb, var(--viz-series-5) 55%, var(--border));
+      background: color-mix(in srgb, var(--viz-series-5) 7%, var(--card));
+    }
+    #cbe-presentation-flow .outputs {
+      border-color: color-mix(in srgb, var(--viz-series-2) 55%, var(--border));
+      background: color-mix(in srgb, var(--viz-series-2) 7%, var(--card));
+    }
+    #cbe-presentation-flow .footer-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+    #cbe-presentation-flow .isolation {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    #cbe-presentation-flow .isolation span {
+      text-align: center;
+      padding: 9px 12px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+    }
+    #cbe-presentation-flow .feedback {
+      text-align: right;
+      color: var(--muted-foreground);
+      font-size: 15px;
+    }
+  </style>
+
+  <header class="title-row">
+    <div>
+      <h1>ภาพรวมการทำงานระบบ CBE Track</h1>
+      <p class="subtitle">จากหลักสูตรสถานศึกษา สู่การประเมินผู้เรียนและข้อมูลเชิงนโยบาย</p>
+    </div>
+    <span class="viz-badge">Competency-Based Education</span>
+  </header>
+
+  <section class="central-band">
+    <div class="central-title">กระทรวงศึกษาธิการ<br>กำหนดมาตรฐานกลาง</div>
+    <div class="central-items">
+      <span>คำบรรยายระดับความสามารถ 4 ระดับ</span>
+      <span>คำบรรยายผลเมื่อจบช่วงชั้น</span>
+      <span>รูปแบบรายงานและเกณฑ์มาตรฐาน</span>
+    </div>
+  </section>
+
+  <main class="school-zone">
+    <div class="school-label">พื้นที่ข้อมูลเฉพาะของแต่ละโรงเรียน</div>
+    <div class="school-note">ข้อมูลไม่เชื่อมข้ามโรงเรียน</div>
+
+    <div class="flow-row">
+      <section class="stage">
+        <div class="stage-head"><span class="num">1</span><h3>นำเข้าข้อมูลโรงเรียน</h3></div>
+        <ul>
+          <li>ครูและบุคลากร</li>
+          <li>นักเรียนจาก DMC / Excel</li>
+          <li>รายวิชา หน่วย โครงงาน กิจกรรม</li>
+          <li>LO ตามหลักสูตรสถานศึกษา</li>
+        </ul>
+      </section>
+      <div class="arrow" aria-hidden="true">→</div>
+      <section class="stage">
+        <div class="stage-head"><span class="num">2</span><h3>จัดโครงสร้างการประเมิน</h3></div>
+        <ul>
+          <li>ตรวจสอบและจัดเก็บข้อมูล</li>
+          <li>กำหนดครูประจำชั้น/ครูผู้สอน</li>
+          <li>จัดนักเรียนเข้าห้องและรายวิชา</li>
+        </ul>
+      </section>
+      <div class="arrow" aria-hidden="true">→</div>
+      <section class="stage">
+        <div class="stage-head"><span class="num">3</span><h3>ผูก LO กับบริบทเรียนรู้</h3></div>
+        <div class="reuse">
+          <div class="reuse-main">LO เดียวกัน</div>
+          <span aria-hidden="true">→</span>
+          <div class="reuse-list"><span>รายวิชา A</span><span>รายวิชา B</span><span>โครงงาน/กิจกรรม</span></div>
+        </div>
+        <ul><li>LO ใช้ซ้ำได้หลายบริบทภายในโรงเรียน</li></ul>
+      </section>
+      <div class="arrow" aria-hidden="true">→</div>
+      <section class="stage">
+        <div class="stage-head"><span class="num">4</span><h3>ครูประเมินผู้เรียน</h3></div>
+        <ul>
+          <li>ประเมิน LO 4 ระดับ</li>
+          <li>บันทึกเวลาเรียนและหลักฐาน</li>
+          <li>ครูประจำชั้นประเมินกิจกรรมและคุณลักษณะ</li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="down-arrow" aria-hidden="true">↓</div>
+
+    <div class="flow-row">
+      <section class="stage outputs">
+        <div class="stage-head"><span class="num">8</span><h3>นำข้อมูลไปใช้</h3></div>
+        <ul>
+          <li>ผู้เรียน/ผู้ปกครองดูผล</li>
+          <li>ครูติดตามและพัฒนาผู้เรียน</li>
+          <li>ผู้บริหารใช้ข้อมูลตัดสินใจ</li>
+        </ul>
+      </section>
+      <div class="arrow" aria-hidden="true">←</div>
+      <section class="stage outputs">
+        <div class="stage-head"><span class="num">7</span><h3>ออกรายงาน</h3></div>
+        <ul>
+          <li>รายงานผลการเรียน ปพ.๖</li>
+          <li>รายงานจบช่วงชั้น</li>
+          <li>Excel และเอกสารพิมพ์</li>
+        </ul>
+      </section>
+      <div class="arrow" aria-hidden="true">←</div>
+      <section class="stage decision">
+        <div class="stage-head"><span class="num">6</span><h3>ฝ่ายวิชาการรับรองผล</h3></div>
+        <ul>
+          <li>ตรวจผลจากครูทุกวิชา</li>
+          <li>ตัดสินระดับ LO สุดท้าย</li>
+          <li>รับรองผลผ่าน/ไม่ผ่าน</li>
+        </ul>
+      </section>
+      <div class="arrow" aria-hidden="true">←</div>
+      <section class="stage">
+        <div class="stage-head"><span class="num">5</span><h3>ระบบประมวลผล</h3></div>
+        <ul>
+          <li>รวมผล LO จากหลายวิชา</li>
+          <li>ติดตามรายการที่ยังไม่ประเมิน</li>
+          <li>สรุปรายบุคคล ห้อง วิชา โรงเรียน</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer-row">
+    <div class="isolation">
+      <span>ฐานข้อมูลโรงเรียน A</span>
+      <span>ฐานข้อมูลโรงเรียน B</span>
+      <span>ฐานข้อมูลโรงเรียนอื่น</span>
+    </div>
+    <span aria-hidden="true">→</span>
+    <div class="feedback">รายงานภาพรวมกลับส่วนกลาง<br><strong>เพื่อวางแผนและกำหนดนโยบายการศึกษา</strong></div>
+  </footer>
+</div>
+</body>
+</html>

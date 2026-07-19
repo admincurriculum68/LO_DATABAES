@@ -6,18 +6,8 @@ import Layout from '../components/Layout';
 import { Search, Printer, Save, ChevronLeft, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// ─── Level ordering ──────────────────────────────────────────────────────────
-const LEVEL_ORDER = { 'เริ่มต้น': 1, 'พัฒนา': 2, 'ชำนาญ': 3, 'เชี่ยวชาญ': 4 };
+// ─── Competency levels ──────────────────────────────────────────────────────
 const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
-
-function compareLevels(achieved, expected) {
-    const a = LEVEL_ORDER[achieved] ?? 0;
-    const e = LEVEL_ORDER[expected] ?? 0;
-    if (!a || !e) return '—';
-    if (a > e) return 'สูงกว่าเกณฑ์';
-    if (a === e) return 'ตามเกณฑ์';
-    return 'เข้าใกล้เกณฑ์';
-}
 
 // ─── Fixed Phase Structure (curriculum-defined) ───────────────────────────────
 const PHASE_CONFIG = {
@@ -62,7 +52,7 @@ const PHASE_CONFIG = {
 const ALL_ABILITIES = (phase) =>
     (PHASE_CONFIG[phase]?.groups || []).flatMap(g => g.abilities);
 
-const CURRENT_YEAR = 2567;
+const CURRENT_YEAR = new Date().getFullYear() + 543;
 
 export default function PhaseReportAdmin() {
     const { currentUser } = useAuth();
@@ -199,12 +189,6 @@ export default function PhaseReportAdmin() {
     const phaseConfig = PHASE_CONFIG[selectedPhase];
     const allAbilities = ALL_ABILITIES(selectedPhase);
     const hasBehaviors = centralBehaviors.length > 0;
-
-    const devColor = (dev) => ({
-        'สูงกว่าเกณฑ์': 'text-emerald-700',
-        'ตามเกณฑ์': 'text-blue-700',
-        'เข้าใกล้เกณฑ์': 'text-amber-700',
-    }[dev] || 'text-slate-400');
 
     return (
         <Layout title="รายงานผลการเรียนเมื่อจบช่วงชั้น">
@@ -372,24 +356,17 @@ export default function PhaseReportAdmin() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {phaseConfig.groups.map((group, gi) => (
+                                    {phaseConfig.groups.map((group) => (
                                         group.abilities.map((ab, ai) => {
                                             const achieved = achievedLevels[ab.key] || '';
                                             return (
                                                 <tr key={ab.key}>
-                                                    {/* Group cell — only shown for first row of group */}
-                                                    {group.groupName && ai === 0 && (
-                                                        <td className="border border-black p-3 font-medium align-top leading-relaxed" rowSpan={group.abilities.length}>
-                                                            {group.groupName}
-                                                            <div className="mt-1 pl-2 text-slate-500 text-xs">{ab.name}</div>
-                                                        </td>
-                                                    )}
-                                                    {group.groupName && ai > 0 && (
-                                                        <td className="border border-black p-3 pl-5 text-slate-600">{ab.name}</td>
-                                                    )}
-                                                    {!group.groupName && (
-                                                        <td className="border border-black p-3 font-medium leading-relaxed">{ab.name}</td>
-                                                    )}
+                                                    <td className="border border-black p-3 font-medium align-top leading-relaxed">
+                                                        {group.groupName && ai === 0 && (
+                                                            <div className="font-bold mb-1">{group.groupName}</div>
+                                                        )}
+                                                        <div className="text-slate-700">{ab.name}</div>
+                                                    </td>
                                                     <td className="border border-black p-3 text-center font-medium">{ab.expected}</td>
                                                     <td className="border border-black p-3 text-center font-bold">{achieved || '—'}</td>
                                                 </tr>

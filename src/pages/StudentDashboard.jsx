@@ -2,17 +2,26 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { GraduationCap, BookOpen, UserCheck, Compass, CheckCircle2, Bookmark, ArrowRight, BookMarked, UserCircle2 } from 'lucide-react';
+import { GraduationCap, BookOpen, UserCheck, Compass, CheckCircle2, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function StudentDashboard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState([]);
+    const [finalResults, setFinalResults] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function fetchDashboard() {
             try {
+                const { data: approvedResults } = await supabase
+                    .from('lo_final_decisions')
+                    .select('decision_id, academic_year, semester, final_level, pass_status, decision_reason, decided_at, learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)')
+                    .eq('student_id', currentUser.student_id)
+                    .eq('decision_status', 'approved')
+                    .order('decided_at', { ascending: false });
+                setFinalResults(approvedResults || []);
+
                 const { data: enrollments, error: enrollErr } = await supabase
                     .from('student_enrollments')
                     .select(`
@@ -102,7 +111,7 @@ export default function StudentDashboard() {
                         <GraduationCap className="w-10 h-10 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-700 to-teal-700 tracking-tight">ห้องเรียนของฉัน</h2>
+                        <h2 className="text-4xl font-black text-emerald-800 tracking-tight">ห้องเรียนของฉัน</h2>
                         <p className="text-slate-500 font-medium text-lg mt-2">
                             ยินดีต้อนรับ, <span className="font-bold text-slate-700">{currentUser?.full_name}</span> | ติดตามผลลัพธ์การเรียนรู้ (LO)
                         </p>
@@ -155,6 +164,30 @@ export default function StudentDashboard() {
                     </div>
                 </div>
             </div>
+
+            {finalResults.length > 0 && (
+                <section className="mb-10 overflow-hidden rounded-3xl border border-emerald-200 bg-white" aria-labelledby="certified-results-title">
+                    <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="rounded-2xl bg-emerald-600 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
+                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผล LO ที่ฝ่ายวิชาการรับรองแล้ว</h3><p className="text-sm text-emerald-800">ผลอย่างเป็นทางการหลังพิจารณาหลักฐานจากทุกวิชาและกิจกรรม</p></div>
+                        </div>
+                        <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
+                    </div>
+                    <div className="divide-y divide-slate-200">
+                        {finalResults.map(result => {
+                            const lo = result.learning_outcomes;
+                            return (
+                                <article key={result.decision_id} className="grid gap-3 px-6 py-5 md:grid-cols-[150px_minmax(0,1fr)_140px] md:items-center">
+                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{lo?.lo_code || `LO ${lo?.ability_no || '-'}`}</span><p className="mt-2 text-xs font-semibold text-slate-500">เทอม {result.semester}/{result.academic_year}</p></div>
+                                    <div><p className="font-bold leading-6 text-slate-900">{lo?.lo_description || 'ผลลัพธ์การเรียนรู้'}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
+                                    <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-extrabold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{result.final_level}</span></div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
 
             {/* Main Content */}
             {loading ? (

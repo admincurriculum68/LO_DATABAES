@@ -43,7 +43,9 @@ export default function AdminReportCompetency() {
         async function init() {
             try {
                 const [{ data: los }, studs] = await Promise.all([
-                    supabase.from('learning_outcomes').select('competency_area').order('competency_area'),
+                    supabase.from('learning_outcomes').select('competency_area')
+                        .eq('school_id', currentUser.school_id)
+                        .order('competency_area'),
                     fetchAllRows((from, to) =>
                         supabase.from('users_students')
                             .select('student_id, student_code, prefix, first_name, last_name')
@@ -74,6 +76,7 @@ export default function AdminReportCompetency() {
             const { data: los } = await supabase
                 .from('learning_outcomes')
                 .select('*')
+                .eq('school_id', currentUser.school_id)
                 .eq('competency_area', area)
                 .order('ability_no', { ascending: true });
             setLosByArea(los || []);
@@ -267,6 +270,7 @@ export default function AdminReportCompetency() {
                         {columns.length === 0 ? (
                             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ไม่มีรายวิชาใดที่ผูก LO ในด้านนี้ไว้</div>
                         ) : (
+                            <>
                             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
@@ -350,7 +354,8 @@ export default function AdminReportCompetency() {
                                     </div>
                                 </div>
                             )}
-                        </div>
+                            </>
+                        )}
                     </>
                 )}
             </main>

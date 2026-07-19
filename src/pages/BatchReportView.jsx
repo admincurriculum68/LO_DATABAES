@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // Reusable single-student report component (same layout as ReportView)
-function SingleStudentReport({ student, enrollments, evaluations, behaviors, activities, isLast }) {
+function SingleStudentReport({ student, enrollments, evaluations, activities, isLast }) {
     const fullName = `${student.prefix || ''}${student.first_name} ${student.last_name}`;
 
     // Calculate average attendance
@@ -130,11 +129,8 @@ function SingleStudentReport({ student, enrollments, evaluations, behaviors, act
 export default function BatchReportView() {
     const { room, academicYear, semester } = useParams();
     const navigate = useNavigate();
-    const { currentUser } = useAuth();
-
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [behaviors, setBehaviors] = useState([]);
 
     useEffect(() => {
         async function fetchAll() {
@@ -174,20 +170,17 @@ export default function BatchReportView() {
                 const studentIds = Object.keys(studentMap);
                 const enrollmentIds = filtered.map(e => e.enrollment_id);
 
-                // 3. Load evaluations, behaviors, activities
-                const [{ data: evalData }, { data: behaviorData }, { data: activityData }] = await Promise.all([
+                // 3. Load evaluations and activity results
+                const [{ data: evalData }, { data: activityData }] = await Promise.all([
                     supabase.from('lo_evaluations')
                         .select('*, learning_outcomes(*)')
                         .in('enrollment_id', enrollmentIds),
-                    supabase.from('behavior_templates').select('*'),
                     supabase.from('student_year_evaluations')
                         .select('*')
                         .in('student_id', studentIds)
                         .eq('academic_year', parseInt(academicYear))
                         .eq('semester', parseInt(semester))
                 ]);
-
-                setBehaviors(behaviorData || []);
 
                 // Build activity map
                 const actMap = {};
@@ -262,7 +255,6 @@ export default function BatchReportView() {
                         student={r.student}
                         enrollments={r.enrollments}
                         evaluations={r.evaluations}
-                        behaviors={behaviors}
                         activities={r.activities}
                         isLast={i === reports.length - 1}
                     />

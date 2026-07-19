@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle } from 'lucide-react';
+import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -445,6 +445,12 @@ export default function AdminDashboard() {
                     }
                     else if (importType === 'subjects') {
                         // Create a map to lookup teacher_id from citizen_id
+                        const teachers = await fetchAllRows((from, to) =>
+                            supabase.from('users_teachers')
+                                .select('teacher_id, citizen_id')
+                                .eq('school_id', currentUser.school_id)
+                                .range(from, to)
+                        );
                         const teacherMap = {};
                         teachers.forEach(t => teacherMap[t.citizen_id] = t.teacher_id);
 
@@ -454,8 +460,8 @@ export default function AdminDashboard() {
 
                             return {
                                 school_id: currentUser.school_id, 
-                                academic_year: parseInt(s.academic_year) || 2567,
-                                semester: parseInt(s.semester) || 1, 
+                                academic_year: parseInt(s.academic_year) || academicYear || (new Date().getFullYear() + 543),
+                                semester: parseInt(s.semester) || semester || 1,
                                 subject_code: s.subject_code?.trim(),
                                 subject_name: s.subject_name?.trim(), 
                                 grade_level: s.grade_level?.trim(),
@@ -478,7 +484,7 @@ export default function AdminDashboard() {
                     }
                     else if (importType === 'enrollments') {
                         const studentMap = {};
-                        students.forEach(st => studentMap[st.citizen_id] = st.student_id);
+                        allStudents.forEach(st => studentMap[st.citizen_id] = st.student_id);
                         
                         const subjectMap = {};
                         subjects.forEach(su => subjectMap[su.subject_name] = su.subject_id);
@@ -663,7 +669,9 @@ export default function AdminDashboard() {
         setLoadingMapping(true);
         try {
             const [{ data: los }, { data: mapped }] = await Promise.all([
-                supabase.from('learning_outcomes').select('*').order('ability_no', { ascending: true }),
+                supabase.from('learning_outcomes').select('*')
+                    .eq('school_id', currentUser.school_id)
+                    .order('ability_no', { ascending: true }),
                 supabase.from('subject_lo_mapping').select('lo_id').eq('subject_id', subjectId)
             ]);
             setAllLOs(los || []);
@@ -791,7 +799,32 @@ export default function AdminDashboard() {
 
             {/* Admin Reports Quick Access */}
             <div className="mb-8">
-                <h3 className="text-sm font-extrabold text-slate-500 uppercase tracking-widest mb-4">📊 รายงานภาพรวมวิชาการ (สำหรับ Admin เท่านั้น)</h3>
+                <button
+                    onClick={() => navigate('/admin/approval')}
+                    className="mb-5 flex w-full flex-col gap-4 rounded-3xl border border-indigo-300 bg-indigo-700 p-6 text-left text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:flex-row md:items-center md:justify-between"
+                >
+                    <div className="flex items-start gap-4">
+                        <div className="rounded-2xl bg-white/15 p-3" aria-hidden="true">
+                            <ShieldCheck className="h-7 w-7" />
+                        </div>
+                        <div>
+                            <p className="text-xl font-extrabold">ศูนย์ตรวจสอบและรับรองผล LO</p>
+                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวมผล LO เดียวกันจากหลายรายวิชา โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลสุดท้ายของผู้เรียน</p>
+                        </div>
+                    </div>
+                    <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-white px-4 font-extrabold text-indigo-800">เปิดคิวรับรองผล</span>
+                </button>
+                <button
+                    onClick={() => navigate('/admin/learning-contexts')}
+                    className="mb-5 flex w-full flex-col gap-4 rounded-2xl border border-slate-300 bg-white p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 focus:outline-none focus:ring-2 focus:ring-indigo-500 md:flex-row md:items-center md:justify-between"
+                >
+                    <div className="flex items-start gap-4">
+                        <div className="rounded-xl bg-violet-100 p-3 text-violet-700" aria-hidden="true"><LinkIcon className="h-6 w-6" /></div>
+                        <div><p className="font-extrabold text-slate-900">โครงงาน กิจกรรม และหน่วยบูรณาการ</p><p className="mt-1 text-sm leading-6 text-slate-600">สร้างบริบทการเรียนรู้และผูก LO เดียวกันกับหลายวิชาหรือหลายกิจกรรม</p></div>
+                    </div>
+                    <span className="font-extrabold text-indigo-700">จัดการบริบทการเรียนรู้ →</span>
+                </button>
+                <h3 className="mb-4 text-sm font-extrabold text-slate-600">รายงานภาพรวมวิชาการสำหรับฝ่ายวิชาการ</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button
                         onClick={() => navigate('/admin/report-lo')}
@@ -1114,7 +1147,7 @@ export default function AdminDashboard() {
                                 <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> ผูกโครงสร้างรายวิชาและสมรรถนะ (Mapping)</h2>
-                                        <p className="text-slate-500 font-medium mt-1 text-sm">เลือกลายวิชาแล้วติ๊กเลือกสมรรถนะที่ต้องการจัดการประเมินในเทอมนี้</p>
+                                        <p className="text-slate-500 font-medium mt-1 text-sm">เลือกรายวิชาแล้วติ๊กเลือกสมรรถนะที่ต้องการจัดการประเมินในเทอมนี้</p>
                                     </div>
                                     <div className="w-full md:w-1/3">
                                         <select
@@ -1122,7 +1155,7 @@ export default function AdminDashboard() {
                                             onChange={(e) => loadMappingData(e.target.value)}
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-extrabold outline-none"
                                         >
-                                            <option value="" disabled>- โปรดเลือกลายวิชาเพื่อจัดการ -</option>
+                                            <option value="" disabled>- โปรดเลือกรายวิชาเพื่อจัดการ -</option>
                                             {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) เทอม {s.semester}</option>)}
                                         </select>
                                     </div>
@@ -1160,6 +1193,12 @@ export default function AdminDashboard() {
                                                     const isChecked = mappedLOs.includes(lo.lo_id);
                                                     return (
                                                         <label key={lo.lo_id} className={`flex items-start p-5 rounded-2xl border bg-white transition-all cursor-pointer ${isChecked ? 'border-indigo-500 ring-2 ring-indigo-100 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={() => toggleMapping(lo.lo_id)}
+                                                                className="sr-only"
+                                                            />
                                                             <div className="flex items-center h-full mr-4">
                                                                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isChecked ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
                                                                     {isChecked && <CheckCircle className="w-4 h-4 text-white" />}
@@ -1188,7 +1227,7 @@ export default function AdminDashboard() {
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
                                     <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดผู้เรียนเข้าห้องสอบ/รายวิชา (Enrollments)</h2>
-                                    <p className="text-slate-500 font-medium text-sm">เลือกลายวิชาเพื่อดูรายชื่อนักเรียน นำเข้า หรือนำออกจากการประเมินในวิชานี้</p>
+                                    <p className="text-slate-500 font-medium text-sm">เลือกรายวิชาเพื่อดูรายชื่อนักเรียน นำเข้า หรือนำออกจากการประเมินในวิชานี้</p>
                                 </div>
 
                                 <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">

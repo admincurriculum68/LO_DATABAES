@@ -2,13 +2,12 @@ import { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function Layout({ children, title, onActionClick, actionText, actionIcon: ActionIcon }) {
     const { currentUser, logoutUser } = useAuth();
     const { academicYear, semester, setAcademicYear, setSemester, updateAcademicSettings } = useAcademic();
     const navigate = useNavigate();
-    const location = useLocation();
     const [showTermPicker, setShowTermPicker] = useState(false);
 
     const handleLogout = () => {
@@ -40,7 +39,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
     };
 
     // Generate year options (current year ± 3)
-    const baseYear = academicYear || 2569;
+    const baseYear = academicYear || (new Date().getFullYear() + 543);
     const yearOptions = [];
     for (let y = baseYear - 3; y <= baseYear + 2; y++) {
         yearOptions.push(y);

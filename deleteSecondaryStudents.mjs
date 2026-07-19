@@ -2,19 +2,37 @@
  * deleteSecondaryStudents.mjs
  * 
  * สคริปต์สำหรับลบนักเรียนระดับมัธยมศึกษาที่อัปโหลดผิดพลาด
- * School ID: 34d27770-27ad-447a-8920-7197a089d600
+ * โรงเรียนเป้าหมายกำหนดผ่าน TARGET_SCHOOL_ID
  * 
  * วิธีใช้:
- *   node deleteSecondaryStudents.mjs           → ดูตัวอย่างก่อน (DRY RUN)
- *   node deleteSecondaryStudents.mjs --confirm → ลบจริง
+ *   TARGET_SCHOOL_ID=<uuid> node deleteSecondaryStudents.mjs           → ดูตัวอย่างก่อน (DRY RUN)
+ *   TARGET_SCHOOL_ID=<uuid> node deleteSecondaryStudents.mjs --confirm → ลบจริง
  */
 
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const SUPABASE_URL = 'https://pwmgucsrnvuvafcdgbij.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bWd1Y3NybnZ1dmFmY2RnYmlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzQ4NzgsImV4cCI6MjA4ODU1MDg3OH0.jErXcoWlbK3hM9VSgrOXFXnuGYzMYrc2ELXun5ajx0g';
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const env = Object.fromEntries(
+    fs.readFileSync(join(scriptDir, '.env'), 'utf8')
+        .split('\n')
+        .filter(line => line.includes('=') && !line.trim().startsWith('#'))
+        .map(line => {
+            const [key, ...value] = line.split('=');
+            return [key.trim(), value.join('=').trim()];
+        })
+);
 
-const SCHOOL_ID = '34d27770-27ad-447a-8920-7197a089d600';
+const SUPABASE_URL = env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
+const SCHOOL_ID = process.env.TARGET_SCHOOL_ID;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SCHOOL_ID) {
+    console.error('❌ ต้องกำหนด VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY และ TARGET_SCHOOL_ID ก่อนใช้งาน');
+    process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const isDryRun = !process.argv.includes('--confirm');

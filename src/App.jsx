@@ -14,6 +14,8 @@ import AdminReportCompetency from './pages/AdminReportCompetency';
 import YearlyReportAdmin from './pages/YearlyReportAdmin';
 import PhaseReportAdmin from './pages/PhaseReportAdmin';
 import BatchReportView from './pages/BatchReportView';
+import AcademicApprovalCenter from './pages/AcademicApprovalCenter';
+import LearningContextManager from './pages/LearningContextManager';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
@@ -96,6 +98,16 @@ export default function App() {
         <Route path="/admin/phase-report" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <PhaseReportAdmin />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/approval" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AcademicApprovalCenter />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/learning-contexts" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <LearningContextManager />
           </ProtectedRoute>
         } />
 
