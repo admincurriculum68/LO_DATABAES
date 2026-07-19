@@ -9,7 +9,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
-import AcademicWorkflowHome from '../components/AcademicWorkflowHome';
+import AcademicDashboardHome from '../components/AcademicDashboardHome';
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
@@ -20,7 +20,7 @@ export default function AdminDashboard() {
     const [activeTab, setActiveTab] = useState(['data', 'import', 'mapping', 'enrollment', 'progress', 'promotion'].includes(requestedTab) ? requestedTab : 'overview');
 
     // Stats for Dashboard Overview
-    const [stats, setStats] = useState({ students: 0, teachers: 0, subjects: 0 });
+    const [stats, setStats] = useState({ students: 0, teachers: 0, subjects: 0, contexts: 0, learningOutcomes: 0 });
 
     // Data Tab States
     const [selectedTable, setSelectedTable] = useState('');
@@ -91,7 +91,8 @@ export default function AdminDashboard() {
         supabase.from('subjects').select('*').eq('school_id', currentUser.school_id)
             .then(({ data }) => {
                 setSubjects(data || []);
-                setStats(prev => ({ ...prev, subjects: data?.length || 0 }));
+                const currentSubjects = (data || []).filter(item => item.academic_year === academicYear && item.semester === semester);
+                setStats(prev => ({ ...prev, subjects: currentSubjects.length }));
             });
             
         // ใช้ fetchAllRows เพื่อดึงนักเรียนทุกคน (ไม่ติด Supabase 1,000 row limit)
@@ -107,7 +108,15 @@ export default function AdminDashboard() {
             .then(({ count }) => {
                 setStats(prev => ({ ...prev, teachers: count || 0 }));
             });
-    }, [currentUser]);
+
+        supabase.from('learning_contexts').select('context_id', { count: 'exact', head: true })
+            .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester)
+            .then(({ count }) => setStats(prev => ({ ...prev, contexts: count || 0 })));
+
+        supabase.from('learning_outcomes').select('lo_id', { count: 'exact', head: true })
+            .eq('school_id', currentUser.school_id)
+            .then(({ count }) => setStats(prev => ({ ...prev, learningOutcomes: count || 0 })));
+    }, [academicYear, currentUser, semester]);
 
     // --- DATA MANAGEMENT ---
     const loadTableData = async (table, page = 1) => {
@@ -710,12 +719,10 @@ export default function AdminDashboard() {
     if (activeTab === 'overview') {
         return (
             <Layout title="ฝ่ายวิชาการ">
-                <AcademicWorkflowHome
+                <AcademicDashboardHome
                     stats={stats}
                     onOpenTab={setActiveTab}
-                    onOpenLearningFormats={() => navigate('/admin/learning-contexts')}
-                    onOpenApproval={() => navigate('/admin/approval')}
-                    onOpenReports={() => navigate('/admin/report-lo')}
+                    onNavigate={navigate}
                 />
             </Layout>
         );
