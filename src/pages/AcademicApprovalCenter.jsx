@@ -221,6 +221,17 @@ export default function AcademicApprovalCenter() {
         });
     }, [groups, loFilter, query, statusFilter]);
 
+    useEffect(() => {
+        if (loading) return;
+        if (filteredGroups.length === 0) {
+            if (selectedKey) setSelectedKey('');
+            return;
+        }
+        if (!filteredGroups.some(group => group.key === selectedKey)) {
+            setSelectedKey(filteredGroups[0].key);
+        }
+    }, [filteredGroups, loading, selectedKey]);
+
     const stats = useMemo(() => groups.reduce((acc, group) => {
         const status = group.decision?.decision_status || 'pending';
         acc[status] = (acc[status] || 0) + 1;
@@ -300,21 +311,37 @@ export default function AcademicApprovalCenter() {
 
     return (
         <Layout title="การตรวจสอบและรับรองผลลัพธ์การเรียนรู้">
-            <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-3xl">
-                    <button onClick={() => history.back()} className="mb-3 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        <ArrowLeft className="h-4 w-4" /> กลับหน้าฝ่ายวิชาการ
-                    </button>
-                <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</h2>
-                    <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">
-                        รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อให้ฝ่ายวิชาการพิจารณาหลักฐานก่อนรับรองผลของผู้เรียน
-                    </p>
-                </div>
-                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm text-indigo-950">
-                    <div className="flex items-center gap-2 font-extrabold"><ShieldCheck className="h-5 w-5" /> รอบการรับรอง</div>
-                    <div className="mt-1">ภาคเรียนที่ {semester}/{academicYear}</div>
-                </div>
-            </div>
+            <div className="mx-auto w-full max-w-[1600px]">
+                <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="max-w-3xl">
+                        <button onClick={() => history.back()} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <ArrowLeft className="h-4 w-4" /> กลับ Dashboard
+                        </button>
+                        <h2 className="text-2xl font-extrabold text-slate-950">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</h2>
+                        <p className="mt-1 max-w-[72ch] text-sm leading-6 text-slate-600">
+                            เลือกผู้เรียน ตรวจสอบผลจากทุกรูปแบบการจัดการเรียนรู้ แล้วบันทึกผลสรุปของ LO เป็นรายบุคคล
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+                        <ShieldCheck className="h-5 w-5 text-indigo-700" />
+                        <div><span className="block text-xs font-semibold text-slate-500">รอบการรับรอง</span><strong className="text-slate-900">ภาคเรียนที่ {semester}/{academicYear}</strong></div>
+                    </div>
+                </header>
+
+                <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-label="ขั้นตอนการรับรองผล">
+                    <ol className="grid divide-y divide-slate-200 md:grid-cols-3 md:divide-x md:divide-y-0">
+                        {[
+                            ['1', 'เลือกรายการ', 'ค้นหาผู้เรียนหรือ LO ที่ต้องตรวจสอบ'],
+                            ['2', 'ตรวจหลักฐาน', 'เปรียบเทียบผลจากวิชา หน่วย โครงงาน และกิจกรรม'],
+                            ['3', 'ตัดสินและรับรอง', 'เลือกระดับ สรุปเหตุผล และยืนยันผล'],
+                        ].map(([number, title, description]) => (
+                            <li key={number} className="flex items-start gap-3 px-4 py-3.5">
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-extrabold text-indigo-800">{number}</span>
+                                <span><strong className="block text-sm text-slate-900">{title}</strong><span className="mt-0.5 block text-xs leading-5 text-slate-600">{description}</span></span>
+                            </li>
+                        ))}
+                    </ol>
+                </section>
 
             {loadError ? (
                 <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="alert">
@@ -330,138 +357,141 @@ export default function AcademicApprovalCenter() {
                     </div>
                 </section>
             ) : (
-                <>
-                    <section className="mb-6 flex flex-wrap gap-3" aria-label="สรุปสถานะการรับรอง">
-                        {[
-                            { key: 'pending', label: 'รอรับรอง', value: stats.pending, icon: ClipboardCheck },
-                            { key: 'approved', label: 'รับรองแล้ว', value: stats.approved, icon: CheckCircle2 },
-                            { key: 'returned', label: 'ส่งกลับแก้ไข', value: stats.returned, icon: RotateCcw },
-                        ].map(item => (
-                            <button key={item.key} onClick={() => setStatusFilter(item.key)} className={`flex min-h-16 min-w-48 items-center gap-3 rounded-2xl border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statusFilter === item.key ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                <item.icon className="h-6 w-6 text-indigo-600" />
-                                <span><span className="block text-2xl font-extrabold text-slate-900">{item.value}</span><span className="text-sm font-semibold text-slate-600">{item.label}</span></span>
-                            </button>
-                        ))}
-                    </section>
-
-                    <section className="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:flex-row" aria-label="ตัวกรองคิวรับรองผล">
-                        <label className="relative flex-1">
-                            <span className="sr-only">ค้นหาผู้เรียนหรือ LO</span>
-                            <Search className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-500" />
-                            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อ รหัสนักเรียน ห้อง หรือรหัส LO" className="min-h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-                        </label>
-                        <label className="relative md:w-72">
-                            <span className="sr-only">กรองตาม LO</span>
-                            <Filter className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-500" />
-                            <select value={loFilter} onChange={event => setLoFilter(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
-                                <option value="all">ทุกผลลัพธ์การเรียนรู้</option>
-                                {loOptions.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} — {lo.competency_area || 'ทั่วไป'}</option>)}
-                            </select>
-                        </label>
-                        <button onClick={() => setStatusFilter('all')} className="min-h-12 rounded-xl border border-slate-300 px-4 font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">ดูทุกสถานะ</button>
-                    </section>
-
-                    <div className="grid gap-6 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.4fr)]">
-                        <section aria-label="รายการรอตรวจสอบ">
-                            {loading ? <LoadingState /> : filteredGroups.length === 0 ? (
-                                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-                                    <ClipboardCheck className="mx-auto h-12 w-12 text-slate-300" />
-                                    <h3 className="mt-4 text-lg font-extrabold text-slate-800">ไม่พบรายการในตัวกรองนี้</h3>
-                                    <p className="mt-1 text-slate-600">ลองเปลี่ยนสถานะ LO หรือคำค้นหา</p>
+                <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[400px_minmax(0,1fr)]">
+                        <aside className="border-b border-slate-200 bg-slate-50/70 xl:border-b-0 xl:border-r" aria-label="คิวตรวจสอบและรับรองผล">
+                            <div className="border-b border-slate-200 bg-white p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div><h3 className="font-extrabold text-slate-950">รายการตรวจสอบ</h3><p className="mt-0.5 text-xs text-slate-600">พบ {filteredGroups.length} จาก {groups.length} รายการ</p></div>
+                                    <ClipboardCheck className="h-5 w-5 text-indigo-700" />
                                 </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {filteredGroups.map(group => {
-                                        const status = group.decision?.decision_status || 'pending';
-                                        const meta = statusMeta[status] || statusMeta.pending;
-                                        const selectedRow = selectedKey === group.key;
-                                        return (
-                                            <button key={group.key} onClick={() => setSelectedKey(group.key)} className={`w-full rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedRow ? 'border-indigo-400 bg-indigo-50/70 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <p className="truncate font-extrabold text-slate-900">{fullName(group.student)}</p>
-                                                        <p className="mt-0.5 text-sm text-slate-600">{group.student.student_code} · {group.student.current_room || group.student.current_grade_level || '-'}</p>
-                                                    </div>
-                                                    <ChevronRight className={`mt-1 h-5 w-5 shrink-0 ${selectedRow ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                                </div>
-                                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                    <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{group.lo.lo_code || `LO ${group.lo.ability_no}`}</span>
-                                                    <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${meta.className}`}>{meta.label}</span>
-                                                    <span className="text-xs font-semibold text-slate-600">{group.sources.length} แหล่งหลักฐาน</span>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
+                                <div className="mt-4 grid grid-cols-4 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="กรองตามสถานะ">
+                                    {[
+                                        { key: 'pending', label: 'รอตรวจ', value: stats.pending },
+                                        { key: 'returned', label: 'ส่งกลับ', value: stats.returned },
+                                        { key: 'approved', label: 'รับรอง', value: stats.approved },
+                                        { key: 'all', label: 'ทั้งหมด', value: groups.length },
+                                    ].map(item => (
+                                        <button key={item.key} role="tab" aria-selected={statusFilter === item.key} onClick={() => setStatusFilter(item.key)} className={`min-h-11 rounded-lg px-1 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${statusFilter === item.key ? 'bg-white text-indigo-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>
+                                            <span className="block text-sm font-extrabold">{item.value}</span>{item.label}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
-                        </section>
+                                <label className="relative mt-3 block">
+                                    <span className="sr-only">ค้นหาผู้เรียนหรือ LO</span>
+                                    <Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                                    <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อ รหัสนักเรียน ห้อง หรือ LO" className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                                </label>
+                                <label className="relative mt-2 block">
+                                    <span className="sr-only">กรองตาม LO</span>
+                                    <Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                                    <select value={loFilter} onChange={event => setLoFilter(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-8 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+                                        <option value="all">ทุกผลลัพธ์การเรียนรู้</option>
+                                        {loOptions.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} — {lo.competency_area || 'ทั่วไป'}</option>)}
+                                    </select>
+                                </label>
+                            </div>
 
-                        <section className="min-h-[560px] rounded-2xl border border-slate-200 bg-white" aria-label="รายละเอียดการรับรองผล">
+                            <div className="max-h-[720px] overflow-y-auto p-2">
+                                {loading ? <LoadingState /> : filteredGroups.length === 0 ? (
+                                    <div className="px-5 py-14 text-center">
+                                        <ClipboardCheck className="mx-auto h-10 w-10 text-slate-300" />
+                                        <h4 className="mt-3 font-extrabold text-slate-800">ไม่พบรายการ</h4>
+                                        <p className="mt-1 text-sm leading-6 text-slate-600">ลองเปลี่ยนสถานะ ผลลัพธ์การเรียนรู้ หรือคำค้นหา</p>
+                                        <button onClick={() => { setQuery(''); setLoFilter('all'); setStatusFilter('all'); }} className="mt-3 min-h-10 rounded-lg px-3 text-sm font-bold text-indigo-700 hover:bg-indigo-50">ล้างตัวกรอง</button>
+                                    </div>
+                                ) : filteredGroups.map(group => {
+                                    const status = group.decision?.decision_status || 'pending';
+                                    const meta = statusMeta[status] || statusMeta.pending;
+                                    const selectedRow = selectedKey === group.key;
+                                    const assessed = group.sources.filter(source => source.competency_level && source.competency_level !== 'N/A').length;
+                                    return (
+                                        <button key={group.key} onClick={() => setSelectedKey(group.key)} className={`mb-1 w-full rounded-xl border px-3.5 py-3 text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedRow ? 'border-indigo-300 bg-indigo-50 shadow-sm' : 'border-transparent hover:border-slate-200 hover:bg-white'}`}>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0"><p className="truncate text-sm font-extrabold text-slate-950">{fullName(group.student)}</p><p className="mt-0.5 text-xs text-slate-600">{group.student.student_code} · ห้อง {group.student.current_room || group.student.current_grade_level || '-'}</p></div>
+                                                <ChevronRight className={`mt-1 h-4 w-4 shrink-0 ${selectedRow ? 'text-indigo-700' : 'text-slate-400'}`} />
+                                            </div>
+                                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                                                <span className="rounded-md bg-slate-200/70 px-2 py-1 text-xs font-extrabold text-slate-800">{group.lo.lo_code || `LO ${group.lo.ability_no}`}</span>
+                                                <span className={`rounded-md border px-2 py-1 text-xs font-bold ${meta.className}`}>{meta.label}</span>
+                                                <span className="ml-auto text-xs font-semibold text-slate-600">ประเมินแล้ว {assessed}/{group.sources.length}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </aside>
+
+                        <main className="min-h-[650px] min-w-0" aria-label="รายละเอียดการรับรองผล">
                             {!selected ? (
-                                <div className="flex min-h-[560px] items-center justify-center p-8 text-center text-slate-600">เลือกรายการทางซ้ายเพื่อพิจารณาหลักฐาน</div>
+                                <div className="flex min-h-[650px] items-center justify-center p-8 text-center">
+                                    <div><ClipboardCheck className="mx-auto h-12 w-12 text-slate-300" /><h3 className="mt-4 font-extrabold text-slate-800">เลือกรายการที่ต้องการตรวจสอบ</h3><p className="mt-1 text-sm text-slate-600">ข้อมูลหลักฐานและแบบบันทึกผลจะแสดงในพื้นที่นี้</p></div>
+                                </div>
                             ) : (
                                 <div>
-                                    <header className="border-b border-slate-200 p-6">
+                                    <header className="border-b border-slate-200 px-5 py-5 lg:px-7">
                                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                             <div>
-                                                <div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><UserRound className="h-4 w-4" /> ผู้เรียนรายบุคคล</div>
-                                                <h3 className="mt-1 text-2xl font-extrabold text-slate-900">{fullName(selected.student)}</h3>
-                                                <p className="mt-1 text-slate-600">{selected.student.student_code} · {selected.student.current_room || selected.student.current_grade_level || '-'}</p>
+                                                <div className="flex items-center gap-2 text-xs font-bold text-indigo-700"><UserRound className="h-4 w-4" /> รายการที่กำลังตรวจสอบ</div>
+                                                <h3 className="mt-1 text-xl font-extrabold text-slate-950">{fullName(selected.student)}</h3>
+                                                <p className="mt-1 text-sm text-slate-600">รหัสนักเรียน {selected.student.student_code} · ห้อง {selected.student.current_room || selected.student.current_grade_level || '-'}</p>
                                             </div>
-                                            <span className="w-fit rounded-xl bg-indigo-600 px-3 py-2 text-sm font-extrabold text-white">{selected.lo.lo_code || `LO ${selected.lo.ability_no}`}</span>
+                                            <span className={`w-fit rounded-lg border px-3 py-2 text-sm font-extrabold ${(statusMeta[selected.decision?.decision_status || 'pending'] || statusMeta.pending).className}`}>{(statusMeta[selected.decision?.decision_status || 'pending'] || statusMeta.pending).label}</span>
                                         </div>
-                                        <p className="mt-5 max-w-[70ch] text-base font-semibold leading-7 text-slate-800">{selected.lo.lo_description}</p>
-                                        <p className="mt-1 text-sm text-slate-600">ด้านความสามารถ: {selected.lo.competency_area || 'ไม่ระบุ'}</p>
+                                        <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3">
+                                            <div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-indigo-700 px-2.5 py-1 text-xs font-extrabold text-white">{selected.lo.lo_code || `LO ${selected.lo.ability_no}`}</span><span className="text-xs font-bold text-slate-600">ด้านความสามารถ: {selected.lo.competency_area || 'ไม่ระบุ'}</span></div>
+                                            <p className="mt-2 max-w-[75ch] text-sm font-semibold leading-6 text-slate-800">{selected.lo.lo_description}</p>
+                                        </div>
                                     </header>
 
-                                    <div className="p-6">
-                                        <div className="mb-4 flex items-center justify-between gap-3">
-                                            <h4 className="font-extrabold text-slate-900">หลักฐานจากรูปแบบการจัดการเรียนรู้ทั้งหมด</h4>
-                                            <span className="text-sm font-bold text-slate-600">ระดับที่สรุปจากหลักฐาน: <strong className="text-indigo-700">{selected.recommended_level || 'ข้อมูลยังไม่เพียงพอ'}</strong></span>
+                                    <div className="px-5 py-5 lg:px-7">
+                                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                            <div><h4 className="font-extrabold text-slate-950">2. ตรวจสอบผลและหลักฐาน</h4><p className="mt-0.5 text-sm text-slate-600">เปรียบเทียบผลจากครูผู้ประเมินทุกคนก่อนตัดสิน</p></div>
+                                            <div className="text-sm text-slate-600">ระบบแนะนำ: <strong className="text-indigo-800">{selected.recommended_level ? formalLevelLabel(selected.recommended_level) : 'ข้อมูลยังไม่เพียงพอ'}</strong></div>
                                         </div>
-                                        <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200">
-                                            {selected.sources.map((source, index) => (
-                                                <article key={`${source.source_type}-${source.source_id}-${index}`} className="p-4">
-                                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                                        <div className="flex gap-3">
-                                                            <div className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700">{source.source_type === 'subject' ? <BookOpen className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}</div>
-                                                            <div>
-                                                                <h5 className="font-extrabold text-slate-900">{sourceLabel(source)}</h5>
-                                                                <p className="mt-1 max-w-[58ch] text-sm leading-6 text-slate-600">{source.evidence_note || 'ครูยังไม่ได้บันทึกหลักฐานเชิงคุณภาพ'}</p>
-                                                            </div>
-                                                        </div>
-                                                        <span className="w-fit rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-extrabold text-slate-800">{source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}</span>
-                                                    </div>
-                                                </article>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-6 grid gap-5 md:grid-cols-[220px_1fr]">
-                                            <label>
-                                                <span className="mb-2 block text-sm font-extrabold text-slate-800">ระดับความสามารถสุดท้าย</span>
-                                                <select value={decisionLevel} onChange={event => setDecisionLevel(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">
-                                                    <option value="">เลือกระดับ</option>
-                                                    {LEVELS.map(level => <option key={level} value={level}>{formalLevelLabel(level)}</option>)}
-                                                </select>
-                                            </label>
-                                            <label>
-                                                <span className="mb-2 block text-sm font-extrabold text-slate-800">เหตุผลและหลักฐานประกอบการตัดสิน</span>
-                                                <textarea value={decisionReason} onChange={event => setDecisionReason(event.target.value)} rows="4" placeholder="สรุปเหตุผลที่เลือกระดับนี้ หรือระบุสิ่งที่ต้องการให้ครูเพิ่มเติม" className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 leading-6 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
-                                            </label>
+                                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                            <table className="w-full min-w-[700px] text-left text-sm">
+                                                <thead className="bg-slate-100 text-xs font-bold text-slate-700"><tr><th className="px-4 py-3">รูปแบบ/แหล่งประเมิน</th><th className="w-40 px-4 py-3">ระดับที่ประเมิน</th><th className="px-4 py-3">หลักฐานเชิงคุณภาพ</th><th className="w-32 px-4 py-3">สถานะข้อมูล</th></tr></thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {selected.sources.map((source, index) => (
+                                                        <tr key={`${source.source_type}-${source.source_id}-${index}`} className="align-top">
+                                                            <td className="px-4 py-3.5"><div className="flex gap-2.5">{source.source_type === 'subject' ? <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" /> : <FolderKanban className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" />}<strong className="text-slate-900">{sourceLabel(source)}</strong></div></td>
+                                                            <td className="px-4 py-3.5"><span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1.5 font-extrabold text-slate-800">{source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}</span></td>
+                                                            <td className="px-4 py-3.5 leading-6 text-slate-700">{source.evidence_note || <span className="font-semibold text-amber-800">ยังไม่ได้บันทึกหลักฐาน</span>}</td>
+                                                            <td className="px-4 py-3.5"><span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${source.competency_level ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{source.competency_level ? 'พร้อมตรวจ' : 'รอข้อมูล'}</span></td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
                                         </div>
 
-                                        <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                                            <button onClick={() => saveDecision('returned')} disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-5 font-extrabold text-rose-800 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-600 disabled:opacity-50"><RotateCcw className="h-4 w-4" /> ส่งกลับให้ครูแก้ไข</button>
-                                            <button onClick={() => saveDecision('approved')} disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} รับรองผลการประเมิน</button>
-                                        </div>
-                                        <p className="mt-4 flex items-center justify-end gap-2 text-xs text-slate-500"><History className="h-4 w-4" /> การรับรองและการส่งกลับจะถูกบันทึกในประวัติการใช้งาน</p>
+                                        <section className="mt-6 border-t border-slate-200 pt-5" aria-labelledby="decision-title">
+                                            <div><h4 id="decision-title" className="font-extrabold text-slate-950">3. บันทึกผลการพิจารณา</h4><p className="mt-0.5 text-sm text-slate-600">ฝ่ายวิชาการเป็นผู้ตัดสินระดับสุดท้าย โดยพิจารณาจากหลักฐานทั้งหมด</p></div>
+                                            <fieldset className="mt-4">
+                                                <legend className="mb-2 text-sm font-extrabold text-slate-800">ระดับความสามารถสุดท้าย <span className="text-rose-700">*</span></legend>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {LEVELS.map(level => <label key={level} className={`cursor-pointer rounded-xl border px-3.5 py-2.5 text-sm font-bold focus-within:ring-2 focus-within:ring-indigo-500 ${decisionLevel === level ? 'border-indigo-600 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}><input type="radio" name="decision-level" value={level} checked={decisionLevel === level} onChange={event => setDecisionLevel(event.target.value)} className="sr-only" />{formalLevelLabel(level)}</label>)}
+                                                </div>
+                                            </fieldset>
+                                            <label>
+                                                <span className="mb-2 mt-4 block text-sm font-extrabold text-slate-800">เหตุผลประกอบการตัดสิน / ข้อเสนอแนะถึงครู <span className="text-rose-700">*</span></span>
+                                                <textarea value={decisionReason} onChange={event => setDecisionReason(event.target.value)} rows="3" placeholder="เช่น ผลการประเมินจากหลายแหล่งสอดคล้องกัน และมีหลักฐานแสดงพัฒนาการชัดเจน" className="w-full resize-y rounded-xl border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                                            </label>
+
+                                            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                                                <p className="flex items-center gap-2 text-xs text-slate-500"><History className="h-4 w-4" /> ระบบบันทึกผู้ดำเนินการ วันเวลา และเหตุผลทุกครั้ง</p>
+                                                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                                                    <button onClick={() => saveDecision('returned')} disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white px-4 text-sm font-extrabold text-rose-800 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-600 disabled:opacity-50"><RotateCcw className="h-4 w-4" /> ส่งกลับให้ครูเพิ่มเติมข้อมูล</button>
+                                                    <button onClick={() => saveDecision('approved')} disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} ยืนยันและรับรองผล</button>
+                                                </div>
+                                            </div>
+                                        </section>
                                     </div>
                                 </div>
                             )}
-                        </section>
+                        </main>
                     </div>
-                </>
             )}
+            </div>
         </Layout>
     );
 }
