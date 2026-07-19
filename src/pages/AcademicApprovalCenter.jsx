@@ -86,7 +86,7 @@ export default function AcademicApprovalCenter() {
         try {
             const [{ data: students, error: studentError }, { data: subjects, error: subjectError }, { data: los, error: loError }] = await Promise.all([
                 supabase.from('users_students').select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room').eq('school_id', currentUser.school_id),
-                supabase.from('subjects').select('subject_id, subject_code, subject_name, academic_year, semester').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester),
+                supabase.from('subjects').select('subject_id, subject_name, academic_year, semester').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester),
                 supabase.from('learning_outcomes').select('lo_id, lo_code, ability_no, competency_area, lo_description').eq('school_id', currentUser.school_id),
             ]);
             if (studentError) throw studentError;
@@ -150,7 +150,6 @@ export default function AcademicApprovalCenter() {
                 addSource(enrollment.student_id, evaluation.lo_id, {
                     source_type: 'subject',
                     source_id: subject?.subject_id,
-                    source_code: subject?.subject_code,
                     source_name: subject?.subject_name,
                     competency_level: evaluation.competency_level,
                     evidence_note: evaluation.evidence_note,

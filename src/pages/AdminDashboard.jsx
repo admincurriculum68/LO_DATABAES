@@ -9,6 +9,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
+import AcademicWorkflowHome from '../components/AcademicWorkflowHome';
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
@@ -16,7 +17,7 @@ export default function AdminDashboard() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const requestedTab = searchParams.get('tab');
-    const [activeTab, setActiveTab] = useState(['data', 'import', 'mapping', 'enrollment', 'progress', 'promotion'].includes(requestedTab) ? requestedTab : 'data');
+    const [activeTab, setActiveTab] = useState(['data', 'import', 'mapping', 'enrollment', 'progress', 'promotion'].includes(requestedTab) ? requestedTab : 'overview');
 
     // Stats for Dashboard Overview
     const [stats, setStats] = useState({ students: 0, teachers: 0, subjects: 0 });
@@ -464,7 +465,7 @@ export default function AdminDashboard() {
                                 school_id: currentUser.school_id, 
                                 academic_year: parseInt(s.academic_year) || academicYear || (new Date().getFullYear() + 543),
                                 semester: parseInt(s.semester) || semester || 1,
-                                subject_code: s.subject_code?.trim(),
+                                subject_code: null,
                                 subject_name: s.subject_name?.trim(), 
                                 grade_level: s.grade_level?.trim(),
                                 subject_group: s.subject_group?.trim() || null, 
@@ -480,7 +481,7 @@ export default function AdminDashboard() {
                             const { error } = await supabase.from('subjects').insert(payload);
                             if (error) throw error;
                         } else {
-                            toast.error('ข้อมูลรายวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
+                            toast.error('ข้อมูลวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
                             return;
                         }
                     }
@@ -706,10 +707,24 @@ export default function AdminDashboard() {
         }
     };
 
+    if (activeTab === 'overview') {
+        return (
+            <Layout title="ฝ่ายวิชาการ">
+                <AcademicWorkflowHome
+                    stats={stats}
+                    onOpenTab={setActiveTab}
+                    onOpenLearningFormats={() => navigate('/admin/learning-contexts')}
+                    onOpenApproval={() => navigate('/admin/approval')}
+                    onOpenReports={() => navigate('/admin/report-lo')}
+                />
+            </Layout>
+        );
+    }
+
     return (
         <Layout title="ระบบบริหารจัดการข้อมูลวิชาการ">
             {/* Overview Stats Dashboard */}
-            <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="hidden">
                 <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
                     <div>
                         <p className="text-indigo-100 font-medium mb-1">นักเรียนทั้งหมด</p>
@@ -735,7 +750,7 @@ export default function AdminDashboard() {
 
             {/* Setup Checklist — shown until all steps complete */}
             {(stats.teachers === 0 || stats.students === 0 || stats.subjects === 0) && (
-                <div className="mb-8 bg-white rounded-3xl border border-amber-200 shadow-sm overflow-hidden">
+                <div className="hidden">
                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100 flex items-center gap-3">
                         <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0"><Settings className="h-4 w-4" /></div>
                         <div>
@@ -800,7 +815,7 @@ export default function AdminDashboard() {
             )}
 
             {/* Admin Reports Quick Access */}
-            <div className="mb-8">
+            <div className="hidden">
                 <button
                     onClick={() => navigate('/admin/approval')}
                     className="mb-5 flex w-full flex-col gap-4 rounded-3xl border border-indigo-300 bg-indigo-700 p-6 text-left text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:flex-row md:items-center md:justify-between"
@@ -885,10 +900,11 @@ export default function AdminDashboard() {
                 <div className="w-full lg:w-64 flex-shrink-0 mb-6 lg:mb-0">
                     <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-3 flex flex-row lg:flex-col overflow-x-auto gap-2 lg:sticky lg:top-24">
                         {[
+                            { id: 'overview', label: 'กลับหน้าเริ่มต้น', icon: LayoutDashboard },
                             { id: 'data', label: 'ข้อมูลพื้นฐานสถานศึกษา', icon: Search },
                             { id: 'import', label: 'นำเข้าข้อมูล', icon: Upload },
-                            { id: 'mapping', label: 'เชื่อมโยงรายวิชากับ LO', icon: LinkIcon },
-                            { id: 'enrollment', label: 'จัดนักเรียนเข้ารายวิชา', icon: Users },
+                            { id: 'mapping', label: 'กำหนด LO ของวิชา', icon: LinkIcon },
+                            { id: 'enrollment', label: 'จัดนักเรียนเข้ากลุ่มเรียน', icon: Users },
                             { id: 'progress', label: 'ติดตามการประเมิน', icon: CheckCircle },
                             { id: 'promotion', label: 'เลื่อนชั้นและจัดห้องเรียน', icon: ArrowUpCircle }
                         ].map(tab => (
@@ -926,7 +942,7 @@ export default function AdminDashboard() {
                                         <option value="" disabled>เลือกประเภทข้อมูล</option>
                                         <option value="users_students">ข้อมูลนักเรียน</option>
                                         <option value="users_teachers">ข้อมูลครูและบุคลากร</option>
-                                        <option value="subjects">ข้อมูลรายวิชา</option>
+                                        <option value="subjects">ข้อมูลวิชา</option>
                                         <option value="learning_outcomes">ผลลัพธ์การเรียนรู้ (LO)</option>
                                         <option value="behavior_templates">คำบรรยายระดับความสามารถ</option>
                                     </select>
@@ -970,7 +986,7 @@ export default function AdminDashboard() {
                                             <thead className="bg-slate-100 text-slate-600 sticky top-0 z-10 shadow-sm uppercase tracking-wider text-xs">
                                                 <tr>
                                                     <th className="px-5 py-4 font-extrabold w-12 text-center border-b border-slate-200">#</th>
-                                                    {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k)).map(key => (
+                                                    {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k) && !(selectedTable === 'subjects' && k === 'subject_code')).map(key => (
                                                         <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{key}</th>
                                                     ))}
                                                     <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">การดำเนินการ</th>
@@ -990,7 +1006,7 @@ export default function AdminDashboard() {
                                                     return (
                                                     <tr key={idx} className="hover:bg-slate-50 py-2 group transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                                                    {Object.keys(row).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k)).map(key => (
+                                                    {Object.keys(row).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k) && !(selectedTable === 'subjects' && k === 'subject_code')).map(key => (
                                                         <td key={key} className="px-5 py-3 text-slate-700 max-w-[200px] truncate">
                                                             {isEditing ? (
                                                                 <input
@@ -1088,7 +1104,7 @@ export default function AdminDashboard() {
                                     {[
                                         { id: 'students', title: '1. ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
                                         { id: 'teachers', title: '2. ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: '3. ข้อมูลรายวิชา', desc: 'รายวิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_code,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ท11101,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1,ความสามารถพื้นฐานด้านการเรียนรู้,เลขบัตรปชช_ครู_13หลัก' },
+                                        { id: 'subjects', title: '3. ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ภาษาไทย,ป.1,ภาษาไทย,เลขบัตรประชาชนครู 13 หลัก' },
                                         { id: 'enrollments', title: '4. การลงทะเบียนรายวิชา', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและรายวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
                                         { id: 'learning_outcomes', title: '5. ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
                                         { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
@@ -1148,7 +1164,7 @@ export default function AdminDashboard() {
                             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
                                 <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> เชื่อมโยงรายวิชากับผลลัพธ์การเรียนรู้</h2>
+                                        <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> กำหนดผลลัพธ์การเรียนรู้ของวิชา</h2>
                                         <p className="text-slate-500 font-medium mt-1 text-sm">เลือกรายวิชาและผลลัพธ์การเรียนรู้ (LO) ที่ครูผู้สอนต้องประเมินในภาคเรียนนี้</p>
                                     </div>
                                     <div className="w-full md:w-1/3">

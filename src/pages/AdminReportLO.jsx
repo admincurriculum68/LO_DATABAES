@@ -71,7 +71,7 @@ export default function AdminReportLO() {
             // 1. Find all subjects mapped to this LO
             const { data: mappings } = await supabase
                 .from('subject_lo_mapping')
-                .select('subject_id, subjects(subject_id, subject_code, subject_name, grade_level, semester, academic_year)')
+                .select('subject_id, subjects(subject_id, subject_name, grade_level, semester, academic_year)')
                 .eq('lo_id', loId);
 
             const mappedSubjects = (mappings || []).map(m => m.subjects).filter(Boolean);

@@ -56,6 +56,7 @@ export default function LearningContextManager() {
     const [saving, setSaving] = useState(false);
     const [mappingSaving, setMappingSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [taskMode, setTaskMode] = useState('create');
 
     const loadData = useCallback(async () => {
         if (!currentUser?.school_id || !academicYear || !semester) return;
@@ -94,7 +95,7 @@ export default function LearningContextManager() {
                     source: 'subject',
                     recordId: subject.subject_id,
                     context_type: 'subject',
-                    context_code: subject.subject_code,
+                    context_code: null,
                     context_name: subject.subject_name,
                     description: subject.subject_group ? `กลุ่มสาระหรือกลุ่มวิชา: ${subject.subject_group}` : '',
                     grade_level: subject.grade_level,
@@ -161,11 +162,6 @@ export default function LearningContextManager() {
             toast.error(`กรุณาระบุชื่อ${formatLabel}`);
             return;
         }
-        if (form.context_type === 'subject' && !form.context_code.trim()) {
-            toast.error('กรุณาระบุรหัสวิชา');
-            return;
-        }
-
         setSaving(true);
         try {
             let createdItem;
@@ -174,7 +170,7 @@ export default function LearningContextManager() {
                     school_id: currentUser.school_id,
                     academic_year: academicYear,
                     semester,
-                    subject_code: form.context_code.trim(),
+                    subject_code: null,
                     subject_name: form.context_name.trim(),
                     grade_level: form.grade_level.trim() || null,
                     subject_group: form.subject_group.trim() || null,
@@ -213,6 +209,7 @@ export default function LearningContextManager() {
             toast.success(`เพิ่ม${learningFormatLabel(createdItem.type)}แล้ว กรุณาเลือกผลลัพธ์การเรียนรู้ที่ต้องการประเมิน`);
             await loadData();
             setSelectedItemKey(itemKey(createdItem.source, createdItem.id));
+            setTaskMode('manage');
         } catch (error) {
             toast.error('ไม่สามารถเพิ่มรูปแบบการจัดการเรียนรู้ได้: ' + error.message);
         } finally {
@@ -279,7 +276,28 @@ export default function LearningContextManager() {
                 <p className="mt-2 max-w-[70ch] text-base leading-7 text-slate-600">สถานศึกษาจัดการเรียนรู้ได้ 4 รูปแบบ ได้แก่ วิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม โดยแต่ละรูปแบบสามารถเชื่อมโยงผลลัพธ์การเรียนรู้ (LO) ที่ต้องการประเมิน และใช้ LO เดียวกันร่วมกันได้</p>
             </header>
 
-            <section className="mb-7" aria-labelledby="learning-format-heading">
+            <nav className="mb-7 grid max-w-3xl gap-3 sm:grid-cols-2" aria-label="เลือกงานที่ต้องการทำ">
+                <button
+                    type="button"
+                    onClick={() => setTaskMode('create')}
+                    aria-pressed={taskMode === 'create'}
+                    className={`min-h-16 rounded-2xl border px-5 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${taskMode === 'create' ? 'border-indigo-500 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300'}`}
+                >
+                    <span className="block font-extrabold">1. เพิ่มรูปแบบการจัดการเรียนรู้</span>
+                    <span className="mt-1 block text-sm">สร้างวิชา หน่วยการเรียนรู้ โครงงาน หรือกิจกรรม</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTaskMode('manage')}
+                    aria-pressed={taskMode === 'manage'}
+                    className={`min-h-16 rounded-2xl border px-5 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${taskMode === 'manage' ? 'border-indigo-500 bg-indigo-50 text-indigo-950' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300'}`}
+                >
+                    <span className="block font-extrabold">2. กำหนด LO ที่ใช้ประเมิน</span>
+                    <span className="mt-1 block text-sm">เลือกรายการเดิม แล้วเชื่อมโยงผลลัพธ์การเรียนรู้</span>
+                </button>
+            </nav>
+
+            <section className={`mb-7 ${taskMode === 'create' ? '' : 'hidden'}`} aria-labelledby="learning-format-heading">
                 <h3 id="learning-format-heading" className="mb-3 text-sm font-extrabold text-slate-700">เลือกรูปแบบที่ต้องการเพิ่ม</h3>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {LEARNING_FORMAT_ORDER.map(type => {
@@ -304,16 +322,20 @@ export default function LearningContextManager() {
             {errorMessage ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900" role="alert"><strong>ไม่สามารถแสดงข้อมูลได้:</strong> {errorMessage}</div>
             ) : (
-                <div className="grid gap-7 xl:grid-cols-[380px_minmax(0,1fr)]">
+                <div className={`grid gap-7 ${taskMode === 'manage' ? 'xl:grid-cols-[380px_minmax(0,1fr)]' : 'max-w-2xl'}`}>
                     <div className="space-y-6">
-                        <form onSubmit={createLearningFormat} className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <form onSubmit={createLearningFormat} className={`rounded-2xl border border-slate-200 bg-white p-5 ${taskMode === 'create' ? '' : 'hidden'}`}>
                             <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-indigo-100 p-2 text-indigo-700"><Plus className="h-5 w-5" /></div><div><h3 className="font-extrabold text-slate-900">เพิ่มรูปแบบการจัดการเรียนรู้</h3><p className="text-sm text-slate-600">{learningFormatLabel(form.context_type)} · ภาคเรียนที่ {semester}/{academicYear}</p></div></div>
                             <div className="space-y-4">
                                 <label className="block"><span className="mb-1.5 block text-sm font-bold text-slate-700">รูปแบบการจัดการเรียนรู้</span><select value={form.context_type} onChange={event => updateForm('context_type', event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200">{LEARNING_FORMAT_ORDER.map(value => <option key={value} value={value}>{learningFormatLabel(value)}</option>)}</select></label>
-                                <div className="grid grid-cols-[120px_1fr] gap-3">
-                                    <label><span className="mb-1.5 block text-sm font-bold text-slate-700">รหัส{isSubjectForm ? 'วิชา' : 'รายการ'}</span><input required={isSubjectForm} value={form.context_code} onChange={event => updateForm('context_code', event.target.value)} placeholder={isSubjectForm ? 'เช่น ท11101' : 'เช่น PRJ-01'} className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
-                                    <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ชื่อ{learningFormatLabel(form.context_type)}</span><input required value={form.context_name} onChange={event => updateForm('context_name', event.target.value)} placeholder={isSubjectForm ? 'เช่น ภาษาไทย' : 'เช่น ตลาดนัดพอเพียง'} className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
-                                </div>
+                                {isSubjectForm ? (
+                                    <label className="block"><span className="mb-1.5 block text-sm font-bold text-slate-700">ชื่อวิชา</span><input required value={form.context_name} onChange={event => updateForm('context_name', event.target.value)} placeholder="เช่น ภาษาไทย" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
+                                ) : (
+                                    <div className="grid grid-cols-[120px_1fr] gap-3">
+                                        <label><span className="mb-1.5 block text-sm font-bold text-slate-700">รหัสรายการ</span><input value={form.context_code} onChange={event => updateForm('context_code', event.target.value)} placeholder="ไม่บังคับ" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
+                                        <label><span className="mb-1.5 block text-sm font-bold text-slate-700">ชื่อ{learningFormatLabel(form.context_type)}</span><input required value={form.context_name} onChange={event => updateForm('context_name', event.target.value)} placeholder="เช่น ตลาดนัดพอเพียง" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
+                                    </div>
+                                )}
                                 {isSubjectForm ? (
                                     <label className="block"><span className="mb-1.5 block text-sm font-bold text-slate-700">กลุ่มสาระหรือกลุ่มวิชา</span><input value={form.subject_group} onChange={event => updateForm('subject_group', event.target.value)} placeholder="เช่น ภาษาไทย" className="min-h-12 w-full rounded-xl border border-slate-300 px-3 text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label>
                                 ) : (
@@ -327,16 +349,16 @@ export default function LearningContextManager() {
                             </div>
                         </form>
 
-                        <section aria-label="รายการรูปแบบการจัดการเรียนรู้">
+                        <section className={taskMode === 'manage' ? '' : 'hidden'} aria-label="รายการรูปแบบการจัดการเรียนรู้">
                             <h3 className="mb-3 text-sm font-extrabold text-slate-700">รูปแบบการจัดการเรียนรู้ในภาคเรียนนี้ ({learningFormats.length})</h3>
                             {loading ? <div className="h-36 animate-pulse rounded-2xl bg-slate-200" /> : learningFormats.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-7 text-center text-slate-600">ยังไม่มีรูปแบบการจัดการเรียนรู้ในภาคเรียนนี้ กรุณาเลือกหนึ่งใน 4 รูปแบบและเพิ่มข้อมูลจากแบบฟอร์มด้านบน</div> : <div className="space-y-2">{learningFormats.map(item => { const meta = TYPE_META[item.context_type] || TYPE_META.project; const Icon = meta.icon; return <button key={item.key} onClick={() => setSelectedItemKey(item.key)} className={`w-full rounded-2xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${selectedItemKey === item.key ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'} ${!item.is_active ? 'opacity-60' : ''}`}><div className="flex items-start gap-3"><div className={`rounded-xl border p-2 ${meta.className}`}><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="truncate font-extrabold text-slate-900">{item.context_name}</p><p className="mt-1 text-sm text-slate-600">{learningFormatLabel(item.context_type)} · {item.grade_level || 'ทุกระดับชั้น'} · {(mappedByItem[item.key] || []).length} LO</p></div></div></button>; })}</div>}
                         </section>
                     </div>
 
-                    <section className="rounded-2xl border border-slate-200 bg-white">
+                    <section className={`rounded-2xl border border-slate-200 bg-white ${taskMode === 'manage' ? '' : 'hidden'}`}>
                         {!selectedItem ? <div className="flex min-h-[620px] items-center justify-center p-8 text-center text-slate-600">เพิ่มหรือเลือกรูปแบบการจัดการเรียนรู้เพื่อเชื่อมโยงผลลัพธ์การเรียนรู้</div> : <>
                             <header className="border-b border-slate-200 p-6">
-                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><Sparkles className="h-4 w-4" /> {selectedLabel}</div><h3 className="mt-1 text-2xl font-extrabold text-slate-900">{selectedItem.context_name}</h3><p className="mt-2 max-w-[70ch] leading-6 text-slate-600">{selectedItem.description || `รหัส${selectedLabel} ${selectedItem.context_code || '-'}`}</p></div>{selectedItem.source === 'context' && <button onClick={() => toggleContextActive(selectedItem)} className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">{selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}</button>}</div>
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><Sparkles className="h-4 w-4" /> {selectedLabel}</div><h3 className="mt-1 text-2xl font-extrabold text-slate-900">{selectedItem.context_name}</h3><p className="mt-2 max-w-[70ch] leading-6 text-slate-600">{selectedItem.description || `ระดับชั้น ${selectedItem.grade_level || 'ทุกระดับชั้น'}`}</p></div>{selectedItem.source === 'context' && <button onClick={() => toggleContextActive(selectedItem)} className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">{selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}</button>}</div>
                             </header>
                             <div className="p-6">
                                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="flex items-center gap-2 font-extrabold text-slate-900"><Link2 className="h-5 w-5 text-indigo-600" /> ผลลัพธ์การเรียนรู้ที่ใช้ประเมิน</h4><p className="mt-1 text-sm text-slate-600">LO เดียวกันสามารถเชื่อมโยงกับวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรมได้มากกว่าหนึ่งรายการ</p></div><button onClick={saveMapping} disabled={mappingSaving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 font-extrabold text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 disabled:opacity-50">{mappingSaving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Save className="h-4 w-4" />} บันทึกการเชื่อมโยง {selectedLOs.length} ข้อ</button></div>

@@ -87,7 +87,7 @@ export default function AdminReportCompetency() {
             // 2. Get all subject_lo_mapping for these LOs
             const { data: mappings } = await supabase
                 .from('subject_lo_mapping')
-                .select('lo_id, subject_id, subjects(subject_id, subject_code, subject_name, grade_level, semester, academic_year)')
+                .select('lo_id, subject_id, subjects(subject_id, subject_name, grade_level, semester, academic_year)')
                 .in('lo_id', loIds);
 
             // Build subjectLoMap: lo_id -> Set of subject_ids

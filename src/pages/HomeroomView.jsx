@@ -60,7 +60,7 @@ export default function HomeroomView() {
                 .select(`
 enrollment_id, room, student_id, subject_id,
     users_students(student_code, prefix, first_name, last_name),
-    subjects(subject_code, subject_name)
+    subjects(subject_name)
         `)
                 .eq('room', room.trim());
 

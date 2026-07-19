@@ -423,7 +423,7 @@ export default function EvalView() {
                             <FileText className="w-8 h-8 text-slate-400" />
                         </div>
                         <p className="text-xl font-bold text-slate-700">ไม่มีนักเรียนในรายวิชานี้</p>
-                        <p className="text-slate-500 mt-2">กรุณาแจ้งฝ่ายวิชาการเพื่อจัดนักเรียนเข้ารายวิชาก่อนเริ่มประเมินผลลัพธ์การเรียนรู้</p>
+                        <p className="text-slate-500 mt-2">กรุณาแจ้งฝ่ายวิชาการเพื่อจัดนักเรียนเข้ากลุ่มเรียนก่อนเริ่มประเมินผลลัพธ์การเรียนรู้</p>
                     </div>
                 ) : (
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

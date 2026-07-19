@@ -6,6 +6,10 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- หลักสูตรฐานสมรรถนะ พ.ศ. 2568 ไม่ใช้รหัสวิชา
+-- คงคอลัมน์เดิมไว้เพื่อรองรับข้อมูลเก่า แต่ระบบไม่แสดงและไม่บังคับกรอก
+ALTER TABLE subjects ALTER COLUMN subject_code DROP NOT NULL;
+
 -- --------------------------------------------------------------------------
 -- 1) Harden existing evaluation records and preserve qualitative evidence.
 -- --------------------------------------------------------------------------

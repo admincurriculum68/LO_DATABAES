@@ -29,7 +29,7 @@ export default function TeacherDashboard() {
                 if (error) throw error;
                 setAllSubjects(data || []);
             } catch (err) {
-                toast.error('ไม่สามารถดึงข้อมูลรายวิชาได้: ' + err.message);
+                toast.error('ไม่สามารถดึงข้อมูลวิชาได้: ' + err.message);
             } finally {
                 setLoading(false);
             }
@@ -224,9 +224,6 @@ export default function TeacherDashboard() {
                                     </div>
 
                                     <div className="space-y-2 mb-4">
-                                        <span className="inline-block text-sm font-extrabold text-slate-400 font-mono tracking-widest uppercase">
-                                            {sub.subject_code || sub.subject_name}
-                                        </span>
                                         <h3 className="text-2xl font-extrabold text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors line-clamp-2">
                                             {sub.subject_name}
                                         </h3>

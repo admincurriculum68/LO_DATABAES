@@ -27,7 +27,7 @@ export default function StudentDashboard() {
                     .from('student_enrollments')
                     .select(`
             enrollment_id, room,
-            subjects(subject_id, subject_code, subject_name, academic_year, semester)
+            subjects(subject_id, subject_name, academic_year, semester)
           `)
                     .eq('student_id', currentUser.student_id);
 
@@ -72,7 +72,6 @@ export default function StudentDashboard() {
 
                     return {
                         subject_id: subject.subject_id,
-                        subject_code: subject.subject_code,
                         subject_name: subject.subject_name,
                         term: `${subject.semester}/${subject.academic_year}`,
                         room: enroll.room,
@@ -219,9 +218,6 @@ export default function StudentDashboard() {
                                     </div>
                                     <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-3 mb-1.5">
-                                            <span className="text-xs font-black text-emerald-950 bg-emerald-400 px-3 py-1 rounded-lg tracking-wider">
-                                                {sub.subject_code}
-                                            </span>
                                             <span className="text-xs font-bold text-slate-300 bg-white/10 px-3 py-1 rounded-lg border border-white/10">
                                                 ห้อง {sub.room}
                                             </span>
