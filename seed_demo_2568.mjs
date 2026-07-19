@@ -122,11 +122,19 @@ async function run() {
     );
     const oldLoIds = [...oldLos, ...orphanLos].map(x => x.lo_id);
     const oldContexts = await must('อ่านบริบทเดิม', supabase.from('learning_contexts').select('context_id').eq('school_id', SCHOOL_ID));
+    const oldYearlyResults = await bestEffort(
+        'อ่านผลรายปีเดิม',
+        supabase.from('student_yearly_results').select('result_id').eq('school_id', SCHOOL_ID)
+    );
     const oldEnrollments = oldSubjects.length
         ? await must('อ่านการลงทะเบียนเดิม', supabase.from('student_enrollments').select('enrollment_id').in('subject_id', oldSubjects.map(x => x.subject_id)))
         : [];
 
     await must('ล้าง audit', supabase.from('audit_logs').delete().eq('school_id', SCHOOL_ID));
+    await optionalDelete('student_yearly_competency_evaluations', 'result_id', oldYearlyResults.map(x => x.result_id));
+    await bestEffort('ล้างผลรายปีเดิม', supabase.from('student_yearly_results').delete().eq('school_id', SCHOOL_ID));
+    await bestEffort('ล้างคำบรรยายรายชั้นปีเดิม', supabase.from('yearly_behavior_templates').delete().eq('school_id', SCHOOL_ID));
+    await bestEffort('ล้างความคาดหวังรายชั้นปีเดิม', supabase.from('yearly_competencies').delete().eq('school_id', SCHOOL_ID));
     await must('ล้างผลรับรอง', supabase.from('lo_final_decisions').delete().eq('school_id', SCHOOL_ID));
     await must('ล้างผลรูปแบบอื่น', supabase.from('learning_context_evaluations').delete().eq('school_id', SCHOOL_ID));
     await optionalDelete('learning_context_lo_mappings', 'context_id', oldContexts.map(x => x.context_id));
@@ -271,6 +279,65 @@ async function run() {
     })));
     await must('เพิ่มคำบรรยาย 8x4', supabase.from('behavior_templates').insert(behaviors));
 
+    const abilityKeys = [
+        'reading', 'writing', 'numeracy', 'science_environment_technology',
+        'society_citizenship', 'economics_finance', 'physical_mental_health',
+        'arts_culture_aesthetics',
+    ];
+    const legacyAbilityKeys = ['math', 'applied', 'language', 'science', 'social', 'economics', 'health', 'arts'];
+    await bestEffort(
+        'ล้างคำบรรยายจบช่วงชั้นเดิม',
+        supabase.from('central_phase_behaviors').delete().in('ability_key', [...abilityKeys, ...legacyAbilityKeys])
+    );
+    const phaseBehaviors = ['ตอนต้น', 'ตอนปลาย'].flatMap(phase =>
+        abilityKeys.flatMap(ability_key => levelDescriptions.map(([competency_level, behavior_text]) => ({
+            phase, ability_key, competency_level, behavior_text,
+        })))
+    );
+    await bestEffort('เพิ่มคำบรรยายจบช่วงชั้น 8x4x2', supabase.from('central_phase_behaviors').insert(phaseBehaviors));
+
+    const yearlyCompetencies = capabilities.map(lo => ({
+        competency_id: lo.lo_id, school_id: SCHOOL_ID, grade_level: 'ป.1',
+        competency_no: lo.ability_no, description: lo.lo_description,
+        expected_level: lo.ability_no <= 3 ? 'พัฒนา' : 'เริ่มต้น',
+    }));
+    const savedYearlyCompetencies = await bestEffort(
+        'เพิ่มความคาดหวังรายชั้นปี',
+        supabase.from('yearly_competencies').insert(yearlyCompetencies).select('*')
+    );
+    if (savedYearlyCompetencies.length) {
+        const yearlyBehaviors = savedYearlyCompetencies.flatMap(comp =>
+            levelDescriptions.map(([competency_level, behavior_text]) => ({
+                school_id: SCHOOL_ID, grade_level: 'ป.1', competency_no: comp.competency_no,
+                competency_level, behavior_text,
+            }))
+        );
+        await bestEffort('เพิ่มคำบรรยายรายชั้นปี', supabase.from('yearly_behavior_templates').insert(yearlyBehaviors));
+
+        const yearlyResults = students.map((student, index) => ({
+            school_id: SCHOOL_ID, student_id: student.student_id, academic_year: 2569,
+            grade_level: 'ป.1', attendance_percent: [96, 96, 96, 95, 94, 91.5, 88, 82.5][index],
+            learner_activities: index === 7 ? 'ไม่ผ่าน' : 'ผ่าน', desirable_chars: 'ผ่าน',
+        }));
+        const savedYearlyResults = await bestEffort(
+            'เพิ่มผลรายปี',
+            supabase.from('student_yearly_results').insert(yearlyResults).select('*')
+        );
+        if (savedYearlyResults.length) {
+            const yearlyEvaluations = savedYearlyResults.flatMap(result => {
+                const studentIndex = students.findIndex(student => student.student_id === result.student_id);
+                return savedYearlyCompetencies.map(comp => ({
+                    result_id: result.result_id, competency_id: comp.competency_id,
+                    achieved_level: levelFor(studentIndex, comp.competency_no),
+                }));
+            });
+            await bestEffort(
+                'เพิ่มระดับความสามารถรายปี',
+                supabase.from('student_yearly_competency_evaluations').insert(yearlyEvaluations)
+            );
+        }
+    }
+
     await must('เพิ่ม audit', supabase.from('audit_logs').insert({
         audit_id: crypto.randomUUID(), school_id: SCHOOL_ID, actor_id: teachers[0].teacher_id,
         actor_role: 'admin', action: 'IMPORT_DEMO_DATA_2568', entity_type: 'school',
@@ -282,7 +349,7 @@ async function run() {
         subjects: subjects.length, learning_outcomes: capabilities.length,
         learning_contexts: contexts.length, subject_evaluations: evaluations.length,
         context_evaluations: contextEvaluations.length, final_decisions: decisions.length,
-        behavior_templates: behaviors.length,
+        behavior_templates: behaviors.length, phase_behavior_templates: phaseBehaviors.length,
     }, null, 2));
 }
 
