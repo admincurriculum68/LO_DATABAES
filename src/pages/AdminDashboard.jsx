@@ -21,6 +21,8 @@ const WORKSPACE_TABS = [
     { id: 'promotion', label: 'เลื่อนชั้นและจัดห้อง', shortLabel: 'เลื่อนชั้น', description: 'ปรับระดับชั้นและห้องเรียนสำหรับปีการศึกษาถัดไป', icon: ArrowUpCircle },
 ];
 
+const SCHOOL_SCOPED_TABLES = ['users_students', 'users_teachers', 'subjects', 'learning_outcomes'];
+
 const FIELD_LABELS = {
     citizen_id: 'เลขประจำตัวประชาชน', student_code: 'รหัสนักเรียน', prefix: 'คำนำหน้า', first_name: 'ชื่อ', last_name: 'นามสกุล',
     current_grade_level: 'ระดับชั้น', current_room: 'ห้องเรียน', student_status: 'สถานภาพ', role: 'บทบาท', homeroom: 'ห้องประจำชั้น',
@@ -156,6 +158,8 @@ export default function AdminDashboard() {
         if (table !== selectedTable) {
             setSearchTerm(''); // Clear search when switching tables
             setCurrentPage(1);
+            setTableData([]);
+            setEditingRow(null);
             page = 1;
         }
         setSelectedTable(table);
@@ -168,11 +172,12 @@ export default function AdminDashboard() {
             const to = from + limit - 1;
 
             let query = supabase.from(table).select('*', { count: 'exact' });
-            if (['users_students', 'users_teachers', 'subjects'].includes(table)) {
+            if (SCHOOL_SCOPED_TABLES.includes(table)) {
                 query = query.eq('school_id', currentUser.school_id);
             }
             if (table === 'learning_outcomes') query.order('ability_no', { ascending: true });
             else if (table === 'users_students') query.order('student_code', { ascending: true });
+            else if (table === 'behavior_templates') query.order('competency_area', { ascending: true }).order('competency_level', { ascending: true });
             else query.order('created_at', { ascending: false });
 
             const { data, count, error } = await query.range(from, to);
@@ -182,6 +187,8 @@ export default function AdminDashboard() {
             setTotalPages(Math.ceil((count || 0) / limit) || 1);
             setCurrentPage(page);
         } catch (err) {
+            setTableData([]);
+            setTotalPages(1);
             toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
         } finally {
             setLoadingData(false);
@@ -191,7 +198,11 @@ export default function AdminDashboard() {
     const handleDelete = async (idValue, idCol) => {
         if (!window.confirm('ยืนยันการลบข้อมูลรายการนี้ หากมีผลการประเมินเชื่อมโยงอยู่ ระบบจะไม่อนุญาตให้ลบ')) return;
         try {
-            const { error } = await supabase.from(selectedTable).delete().eq(idCol, idValue);
+            let query = supabase.from(selectedTable).delete().eq(idCol, idValue);
+            if (SCHOOL_SCOPED_TABLES.includes(selectedTable)) {
+                query = query.eq('school_id', currentUser.school_id);
+            }
+            const { error } = await query;
             if (error) throw error;
             toast.success('ลบข้อมูลสำเร็จ');
             loadTableData(selectedTable);
@@ -208,7 +219,11 @@ export default function AdminDashboard() {
                 delete payload.new_password;
             }
 
-            const { error } = await supabase.from(selectedTable).update(payload).eq(idCol, idValue);
+            let query = supabase.from(selectedTable).update(payload).eq(idCol, idValue);
+            if (SCHOOL_SCOPED_TABLES.includes(selectedTable)) {
+                query = query.eq('school_id', currentUser.school_id);
+            }
+            const { error } = await query;
             if (error) throw error;
             toast.success('อัปเดตข้อมูลสำเร็จ');
             setEditingRow(null);
@@ -1043,7 +1058,7 @@ export default function AdminDashboard() {
                                                     if (selectedTable === 'learning_outcomes') {idCol = 'lo_id'; idValue = row.lo_id; }
                                                     if (selectedTable === 'behavior_templates') {idCol = 'id'; idValue = row.id; }
 
-                                                    const isEditing = editingRow?.id === idValue;
+                                                    const isEditing = Boolean(editingRow && editingRow.id === idValue);
 
                                                     return (
                                                     <tr key={idx} className="hover:bg-slate-50 py-2 group transition-colors">
