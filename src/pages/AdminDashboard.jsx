@@ -3,13 +3,46 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck } from 'lucide-react';
+import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck, Database, School } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
+
+const WORKSPACE_TABS = [
+    { id: 'overview', label: 'Dashboard', shortLabel: 'หน้าหลัก', description: 'กลับไปดูภาพรวมงานวิชาการ', icon: LayoutDashboard },
+    { id: 'data', label: 'ข้อมูลสถานศึกษา', shortLabel: 'ข้อมูล', description: 'ตรวจสอบและแก้ไขข้อมูลครู นักเรียน วิชา และ LO', icon: Database },
+    { id: 'import', label: 'นำเข้าข้อมูล', shortLabel: 'นำเข้า', description: 'นำเข้าข้อมูลจาก DMC, Excel หรือ CSV', icon: Upload },
+    { id: 'mapping', label: 'กำหนด LO ของวิชา', shortLabel: 'กำหนด LO', description: 'เลือกผลลัพธ์การเรียนรู้ที่ใช้ประเมินในแต่ละวิชา', icon: LinkIcon },
+    { id: 'enrollment', label: 'จัดกลุ่มเรียน', shortLabel: 'กลุ่มเรียน', description: 'จัดนักเรียนเข้าวิชาและตรวจสอบรายชื่อในแต่ละกลุ่ม', icon: Users },
+    { id: 'progress', label: 'ติดตามการประเมิน', shortLabel: 'ติดตามผล', description: 'ตรวจสอบความก้าวหน้าของครูผู้สอนและแต่ละวิชา', icon: CheckCircle },
+    { id: 'promotion', label: 'เลื่อนชั้นและจัดห้อง', shortLabel: 'เลื่อนชั้น', description: 'ปรับระดับชั้นและห้องเรียนสำหรับปีการศึกษาถัดไป', icon: ArrowUpCircle },
+];
+
+const FIELD_LABELS = {
+    citizen_id: 'เลขประจำตัวประชาชน', student_code: 'รหัสนักเรียน', prefix: 'คำนำหน้า', first_name: 'ชื่อ', last_name: 'นามสกุล',
+    current_grade_level: 'ระดับชั้น', current_room: 'ห้องเรียน', student_status: 'สถานภาพ', role: 'บทบาท', homeroom: 'ห้องประจำชั้น',
+    is_active: 'สถานะใช้งาน', academic_year: 'ปีการศึกษา', semester: 'ภาคเรียน', subject_name: 'ชื่อวิชา', grade_level: 'ระดับชั้น',
+    subject_group: 'กลุ่มสาระ/กลุ่มวิชา', teacher_id: 'ครูผู้สอน', lo_code: 'รหัส LO', ability_no: 'ข้อที่', level_group: 'ช่วงชั้น',
+    competency_area: 'ด้านความสามารถ', lo_description: 'รายละเอียดผลลัพธ์การเรียนรู้', competency_level: 'ระดับความสามารถ', behavior_text: 'คำบรรยายพฤติกรรม',
+    new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด',
+};
+
+const hiddenField = (key, table) => ['password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'subject_id', 'lo_id', 'id'].includes(key)
+    || (table === 'subjects' && key === 'subject_code');
+
+const VALUE_LABELS = {
+    active: 'ใช้งาน', inactive: 'ไม่ใช้งาน', admin: 'ฝ่ายวิชาการ', teacher: 'ครูผู้สอน', executive: 'ผู้บริหาร', student: 'นักเรียน',
+};
+
+const displayValue = value => {
+    if (value === true) return 'ใช้งาน';
+    if (value === false) return 'ไม่ใช้งาน';
+    if (VALUE_LABELS[value]) return VALUE_LABELS[value];
+    return value?.toString() || '-';
+};
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
@@ -716,12 +749,18 @@ export default function AdminDashboard() {
         }
     };
 
+    const openWorkspaceTab = tabId => {
+        setActiveTab(tabId);
+        if (tabId === 'data' && !selectedTable) loadTableData('users_students');
+    };
+    const activeWorkspace = WORKSPACE_TABS.find(tab => tab.id === activeTab) || WORKSPACE_TABS[1];
+
     if (activeTab === 'overview') {
         return (
             <Layout title="ฝ่ายวิชาการ">
                 <AcademicDashboardHome
                     stats={stats}
-                    onOpenTab={setActiveTab}
+                    onOpenTab={openWorkspaceTab}
                     onNavigate={navigate}
                 />
             </Layout>
@@ -729,7 +768,7 @@ export default function AdminDashboard() {
     }
 
     return (
-        <Layout title="ระบบบริหารจัดการข้อมูลวิชาการ">
+        <Layout title="งานบริหารวิชาการ">
             {/* Overview Stats Dashboard */}
             <div className="hidden">
                 <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
@@ -902,43 +941,39 @@ export default function AdminDashboard() {
             </div>
 
 
-            <div className="lg:flex gap-8 mb-10">
-                {/* Modern Sidebar Navigation */}
-                <div className="w-full lg:w-64 flex-shrink-0 mb-6 lg:mb-0">
-                    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-3 flex flex-row lg:flex-col overflow-x-auto gap-2 lg:sticky lg:top-24">
-                        {[
-                            { id: 'overview', label: 'กลับหน้าเริ่มต้น', icon: LayoutDashboard },
-                            { id: 'data', label: 'ข้อมูลพื้นฐานสถานศึกษา', icon: Search },
-                            { id: 'import', label: 'นำเข้าข้อมูล', icon: Upload },
-                            { id: 'mapping', label: 'กำหนด LO ของวิชา', icon: LinkIcon },
-                            { id: 'enrollment', label: 'จัดนักเรียนเข้ากลุ่มเรียน', icon: Users },
-                            { id: 'progress', label: 'ติดตามการประเมิน', icon: CheckCircle },
-                            { id: 'promotion', label: 'เลื่อนชั้นและจัดห้องเรียน', icon: ArrowUpCircle }
-                        ].map(tab => (
+            <div className="academic-workspace mb-10 space-y-5">
+                <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div><button onClick={() => openWorkspaceTab('overview')} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><LayoutDashboard className="h-4 w-4" /> กลับ Dashboard</button><h2 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h2><p className="mt-1 text-sm text-slate-600">{activeWorkspace.description}</p></div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600">ภาคเรียนที่ <strong className="text-slate-900">{semester}/{academicYear}</strong></div>
+                </header>
+
+                <nav className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm" aria-label="เมนูงานบริหารวิชาการ">
+                    <div className="flex min-w-max gap-1">
+                        {WORKSPACE_TABS.map(tab => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-bold whitespace-nowrap ${
+                                onClick={() => openWorkspaceTab(tab.id)}
+                                className={`flex min-h-11 items-center gap-2 rounded-xl px-3.5 text-sm font-bold whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                                     activeTab === tab.id 
-                                    ? 'bg-slate-900 text-white shadow-md' 
+                                    ? 'bg-indigo-700 text-white'
                                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                                 }`}
                             >
-                                <tab.icon className="w-5 h-5 flex-shrink-0" />
-                                <span>{tab.label}</span>
+                                <tab.icon className="h-4 w-4 flex-shrink-0" />
+                                <span>{tab.shortLabel}</span>
                             </button>
                         ))}
                     </div>
-                </div>
+                </nav>
 
                 {/* Main Content Area */}
-                <div className="flex-1 bg-transparent min-w-0">
-                    <div className="animate-in fade-in slide-in-from-right-8 duration-500">
+                <div className="min-w-0">
+                    <div>
 
                         {/* --- TAB 1: DATA TABLE --- */}
                         {activeTab === 'data' && (
-                            <div className="bg-white p-1 sm:p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                <h2 className="text-xl font-extrabold text-slate-800 mb-6 flex items-center px-4 sm:px-0"><Search className="w-5 h-5 mr-3 text-indigo-500" /> ข้อมูลพื้นฐานของสถานศึกษา</h2>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                                <div className="mb-5"><h3 className="font-extrabold text-slate-900">เลือกชุดข้อมูลที่ต้องการตรวจสอบ</h3><p className="mt-1 text-sm text-slate-600">ชื่อคอลัมน์และข้อมูลทางเทคนิคที่ไม่จำเป็นถูกซ่อนไว้ เพื่อให้อ่านและแก้ไขได้ง่ายขึ้น</p></div>
                                 
                                 <div className="flex flex-col md:flex-row gap-4 mb-6 px-4 sm:px-0">
                                     <select
@@ -993,8 +1028,8 @@ export default function AdminDashboard() {
                                             <thead className="bg-slate-100 text-slate-600 sticky top-0 z-10 shadow-sm uppercase tracking-wider text-xs">
                                                 <tr>
                                                     <th className="px-5 py-4 font-extrabold w-12 text-center border-b border-slate-200">#</th>
-                                                    {Object.keys(filteredTableData[0]).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k) && !(selectedTable === 'subjects' && k === 'subject_code')).map(key => (
-                                                        <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{key}</th>
+                                                    {Object.keys(filteredTableData[0]).filter(k => !hiddenField(k, selectedTable)).map(key => (
+                                                        <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{FIELD_LABELS[key] || key}</th>
                                                     ))}
                                                     <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">การดำเนินการ</th>
                                                 </tr>
@@ -1013,7 +1048,7 @@ export default function AdminDashboard() {
                                                     return (
                                                     <tr key={idx} className="hover:bg-slate-50 py-2 group transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                                                    {Object.keys(row).filter(k => !['password_hash', 'plain_password', 'school_id'].includes(k) && !(selectedTable === 'subjects' && k === 'subject_code')).map(key => (
+                                                    {Object.keys(row).filter(k => !hiddenField(k, selectedTable)).map(key => (
                                                         <td key={key} className="px-5 py-3 text-slate-700 max-w-[200px] truncate">
                                                             {isEditing ? (
                                                                 <input
@@ -1023,7 +1058,7 @@ export default function AdminDashboard() {
                                                                 />
                                                             ) : (
                                                                 <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
-                                                                    {row[key]?.toString() || '-'}
+                                                                    {displayValue(row[key])}
                                                                 </span>
                                                             )}
                                                         </td>
@@ -1078,28 +1113,23 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 2: CSV IMPORT --- */}
                         {activeTab === 'import' && (
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-                                <div className="mb-8">
-                                    <h2 className="text-xl font-extrabold text-slate-800 mb-2 flex items-center"><Upload className="w-6 h-6 mr-3 text-indigo-500" /> นำเข้าข้อมูลสถานศึกษา</h2>
-                                    <p className="text-slate-500 font-medium">ดาวน์โหลดไฟล์แม่แบบ บันทึกข้อมูลให้ครบถ้วน แล้วนำไฟล์กลับเข้าสู่ระบบ</p>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                                <div className="mb-6">
+                                    <h3 className="font-extrabold text-slate-900">เลือกข้อมูลที่ต้องการนำเข้า</h3>
+                                    <p className="mt-1 text-sm text-slate-600">สำหรับข้อมูลนักเรียน แนะนำให้นำเข้าไฟล์ DMC โดยตรง ส่วนข้อมูลอื่นดาวน์โหลดแม่แบบก่อนกรอกข้อมูล</p>
                                 </div>
 
                                 {/* 🏫 DMC Import Card (Prominent) */}
-                                <div className="mb-8 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-indigo-300 rounded-3xl p-6">
+                                <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
                                     <div className="flex flex-col md:flex-row md:items-start gap-5 mb-5 md:mb-0">
                                         <div className="flex items-start gap-4 flex-1">
-                                            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shrink-0 text-white text-3xl shadow-md border-b-4 border-indigo-800">🏫</div>
+                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-700 text-white"><School className="h-6 w-6" /></div>
                                             <div>
-                                                <h3 className="font-extrabold text-xl text-indigo-900">นำเข้านักเรียนจากระบบ DMC โดยตรง</h3>
-                                                <p className="text-sm text-indigo-700 font-medium mt-1 leading-relaxed">รองรับไฟล์ Excel <span className="font-bold">(.xlsx, .xls)</span> ที่ส่งออกจากระบบ DMC <br className="hidden md:block" />โดยระบบจะจัดรูปแบบวันเกิดให้สามารถใช้เป็นรหัสผ่านได้ทันที</p>
-                                                <div className="flex flex-wrap gap-2 mt-3">
-                                                    {['เลขประจำตัว → citizen_id', 'วันเกิดในรูปแบบ พ.ศ. → รหัสผ่าน', 'รหัสนักเรียน', 'ชื่อ/สกุล', 'ห้องเรียน (current_room)'].map(t => (
-                                                        <span key={t} className="text-xs bg-white/70 border border-indigo-200 text-indigo-800 font-bold px-3 py-1.5 rounded-full shadow-sm">✓ {t}</span>
-                                                    ))}
-                                                </div>
+                                                <h3 className="font-extrabold text-blue-950">ข้อมูลนักเรียนจาก DMC</h3>
+                                                <p className="mt-1 text-sm leading-6 text-blue-900">รองรับไฟล์ Excel (.xlsx, .xls) จาก DMC ระบบจะนำเข้าชื่อ รหัสนักเรียน ระดับชั้น ห้องเรียน และกำหนดรหัสผ่านเริ่มต้นจากวันเดือนปีเกิด</p>
                                             </div>
                                         </div>
-                                        <label className="md:self-center shrink-0 flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-5 rounded-2xl font-extrabold text-[15px] cursor-pointer shadow-lg transition-all w-full md:w-auto transform hover:-translate-y-1">
+                                        <label className="flex min-h-11 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-extrabold text-white hover:bg-blue-800 md:w-auto md:self-center">
                                             <Upload className="w-6 h-6" />
                                             อัปโหลดไฟล์ Excel ของ DMC
                                             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDMCImport} />
@@ -1107,25 +1137,25 @@ export default function AdminDashboard() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                                <div className="overflow-hidden rounded-2xl border border-slate-200">
                                     {[
-                                        { id: 'students', title: '1. ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
-                                        { id: 'teachers', title: '2. ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: '3. ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ภาษาไทย,ป.1,ภาษาไทย,เลขบัตรประชาชนครู 13 หลัก' },
-                                        { id: 'enrollments', title: '4. การลงทะเบียนรายวิชา', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและรายวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
-                                        { id: 'learning_outcomes', title: '5. ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
-                                        { id: 'behaviors', title: '6. คลังพฤติกรรม (Behaviors)', desc: 'มาตรฐานการประเมินพฤติกรรม', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
-                                        { id: 'yearly_competencies', title: '7. ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
-                                        { id: 'yearly_behavior_templates', title: '8. คลังพฤติกรรมรายชั้นปี (ปพ.๖)', desc: 'พฤติกรรมเปรียบเทียบในแต่ละระดับแยกตามข้อ', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
+                                        { id: 'students', title: 'ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
+                                        { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
+                                        { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ภาษาไทย,ป.1,ภาษาไทย,เลขบัตรประชาชนครู 13 หลัก' },
+                                        { id: 'enrollments', title: 'ข้อมูลกลุ่มเรียน', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
+                                        { id: 'learning_outcomes', title: 'ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nM1,1,ป.ต้น,การคิดคำนวณ,ผู้เรียนสามารถบวก ลบ เลขได้' },
+                                        { id: 'behaviors', title: 'คำบรรยายระดับความสามารถ', desc: 'คำบรรยายพฤติกรรมสำหรับแต่ละระดับความสามารถ', template: 'competency_area,competency_level,behavior_text\nการคิดคำนวณ,พัฒนา,เข้าใจตัวเลขได้บ้างต้องพยายามอีกนิด' },
+                                        { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
+                                        { id: 'yearly_behavior_templates', title: 'คำบรรยายรายชั้นปี (ปพ.๖)', desc: 'คำบรรยายพฤติกรรมในแต่ละระดับ แยกตามข้อและชั้นปี', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
                                     ].map(card => (
-                                        <div key={card.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-6 hover:shadow-lg transition-all group flex flex-col">
-                                            <div className="flex justify-between items-start mb-4">
+                                        <div key={card.id} className="flex flex-col gap-4 border-b border-slate-200 bg-white p-5 last:border-b-0 sm:flex-row sm:items-center">
+                                            <div className="min-w-0 flex-1">
                                                 <div>
                                                     <h3 className="font-extrabold text-lg text-slate-800">{card.title}</h3>
                                                     <p className="text-sm text-slate-500 font-medium mt-1">{card.desc}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-col sm:flex-row gap-3 mt-auto pt-6 border-t border-slate-200">
+                                            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                                                 <button
                                                     onClick={() => {
                                                         // Build XLSX with Text-formatted columns
@@ -1149,12 +1179,12 @@ export default function AdminDashboard() {
                                                         XLSX.utils.book_append_sheet(wb, ws, 'data');
                                                         XLSX.writeFile(wb, `แม่แบบ_${card.id}.xlsx`);
                                                     }}
-                                                    className="flex-1 bg-white border-2 border-slate-300 hover:border-indigo-600 hover:text-indigo-600 text-slate-600 px-4 py-3 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 group/btn"
+                                                    className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
                                                 >
                                                     <Download className="w-4 h-4 group-hover/btn:-translate-y-1 transition-transform" />
                                                     <span>ไฟล์ Excel แม่แบบ (.xlsx)</span>
                                                 </button>
-                                                <label className="flex-1 bg-slate-900 hover:bg-black border-2 border-slate-900 hover:border-black text-white px-4 py-3 rounded-2xl font-bold text-sm cursor-pointer shadow-md transition-all flex items-center justify-center gap-2 relative overflow-hidden group/btn2">
+                                                <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800">
                                                     <Upload className="w-4 h-4 group-hover/btn2:-translate-y-1 transition-transform" />
                                                     <span>อัปโหลดข้อมูล</span>
                                                     <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} />
@@ -1168,11 +1198,11 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 3: SUBJECT - LO MAPPING --- */}
                         {activeTab === 'mapping' && (
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> กำหนดผลลัพธ์การเรียนรู้ของวิชา</h2>
-                                        <p className="text-slate-500 font-medium mt-1 text-sm">เลือกรายวิชาและผลลัพธ์การเรียนรู้ (LO) ที่ครูผู้สอนต้องประเมินในภาคเรียนนี้</p>
+                                        <p className="text-slate-600 mt-1 text-sm">เลือกวิชา แล้วทำเครื่องหมาย LO ที่ครูผู้สอนต้องประเมิน</p>
                                     </div>
                                     <div className="w-full md:w-1/3">
                                         <select
@@ -1180,8 +1210,8 @@ export default function AdminDashboard() {
                                             onChange={(e) => loadMappingData(e.target.value)}
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-extrabold outline-none"
                                         >
-                                            <option value="" disabled>เลือกรายวิชา</option>
-                                            {subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) ภาคเรียนที่ {s.semester}</option>)}
+                                            <option value="" disabled>เลือกวิชา</option>
+                                            {subjects.filter(s => s.academic_year === academicYear && s.semester === semester).map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} · {s.grade_level || 'ไม่ระบุชั้น'}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -1192,7 +1222,7 @@ export default function AdminDashboard() {
                                     ) : !mappingSubject ? (
                                         <div className="text-center py-24 text-slate-400 font-medium flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                                             <FileText className="w-16 h-16 text-slate-200 mb-4" />
-                                            กรุณาเลือกรายวิชาที่ช่องตัวเลือกด้านบนขวา
+                                            เลือกวิชาจากช่องด้านบนเพื่อแสดงรายการ LO
                                         </div>
                                     ) : allLOs.length === 0 ? (
                                         <div className="text-center py-10 text-red-700 bg-red-50 rounded-2xl border border-red-100 font-bold">ยังไม่มีข้อมูลผลลัพธ์การเรียนรู้ กรุณานำเข้าข้อมูล LO ก่อนดำเนินการ</div>
@@ -1209,15 +1239,15 @@ export default function AdminDashboard() {
                                                     className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 flex items-center transition-all"
                                                 >
                                                     {savingMapping ? <div className="loader w-4 h-4 !border-2 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                                    บันทึกโครงสร้างรายวิชานี้
+                                                    บันทึก LO ของวิชานี้
                                                 </button>
                                             </div>
 
-                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                            <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200">
                                                 {allLOs.map(lo => {
                                                     const isChecked = mappedLOs.includes(lo.lo_id);
                                                     return (
-                                                        <label key={lo.lo_id} className={`flex items-start p-5 rounded-2xl border bg-white transition-all cursor-pointer ${isChecked ? 'border-indigo-500 ring-2 ring-indigo-100 shadow-sm' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>
+                                                        <label key={lo.lo_id} className={`flex cursor-pointer items-start p-4 transition-colors ${isChecked ? 'bg-indigo-50' : 'bg-white hover:bg-slate-50'}`}>
                                                             <input
                                                                 type="checkbox"
                                                                 checked={isChecked}
@@ -1249,10 +1279,10 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 4: ENROLLMENT MANAGEMENT --- */}
                         {activeTab === 'enrollment' && (
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
+                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดนักเรียนเข้าชั้นเรียนและรายวิชา</h2>
-                                    <p className="text-slate-500 font-medium text-sm">เลือกรายวิชาเพื่อดูรายชื่อนักเรียน นำเข้า หรือนำออกจากการประเมินในวิชานี้</p>
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดนักเรียนเข้ากลุ่มเรียน</h2>
+                                    <p className="text-slate-600 text-sm">เลือกวิชา จากนั้นเพิ่มนักเรียนเป็นรายคนหรือเพิ่มพร้อมกันทั้งห้อง</p>
                                 </div>
 
                                 <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -1271,9 +1301,9 @@ export default function AdminDashboard() {
                                         }}
                                         className="flex-1 bg-white border border-slate-200 text-slate-800 py-3.5 px-4 rounded-xl font-extrabold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm"
                                     >
-                                        <option value="" disabled>- 1. เลือกรายวิชาต้นทาง -</option>
-                                        {subjects.map(s => (
-                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({s.grade_level}) ภาคเรียนที่ {s.semester}</option>
+                                        <option value="" disabled>เลือกวิชา</option>
+                                        {subjects.filter(s => s.academic_year === academicYear && s.semester === semester).map(s => (
+                                            <option key={s.subject_id} value={s.subject_id}>{s.subject_name} · {s.grade_level || 'ไม่ระบุชั้น'}</option>
                                         ))}
                                     </select>
 
@@ -1282,7 +1312,7 @@ export default function AdminDashboard() {
                                             <input
                                                 type="text"
                                                 disabled={!enrollSubject}
-                                                placeholder={!enrollSubject ? "เลือกวิชาก่อน..." : "+ 2. พิมพ์ชื่อหรือรหัส เพื่อค้นหาเพิ่มทีละคน..."}
+                                                placeholder={!enrollSubject ? "เลือกวิชาก่อน" : "ค้นหาชื่อหรือรหัสนักเรียนเพื่อเพิ่มรายคน"}
                                                 value={studentSearchInput}
                                                 onChange={(e) => {
                                                     setStudentSearchInput(e.target.value);
@@ -1344,14 +1374,14 @@ export default function AdminDashboard() {
                                     </div>
 
                                     {/* 🔥 Bulk Enrollment: เพิ่มทั้งห้อง */}
-                                    <div className="w-full bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                    <div className="flex w-full flex-col items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center">
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
                                                 <UsersRound className="w-5 h-5 text-emerald-600" />
                                             </div>
                                             <div>
-                                                <p className="font-extrabold text-sm text-emerald-900">จัดนักเรียนเข้ารายวิชาทั้งห้อง</p>
-                                                <p className="text-xs text-emerald-600">เลือกห้อง → เพิ่มนักเรียนทุกคนในห้องนั้นเข้าวิชาที่เลือกทันที</p>
+                                                <p className="font-extrabold text-sm text-emerald-900">เพิ่มนักเรียนพร้อมกันทั้งห้อง</p>
+                                                <p className="text-xs text-emerald-800">เลือกห้อง แล้วเพิ่มนักเรียนทุกคนเข้าวิชาที่เลือก</p>
                                             </div>
                                         </div>
                                         <div className="flex gap-2 items-center w-full sm:w-auto">
@@ -1408,7 +1438,7 @@ export default function AdminDashboard() {
                                                 }}
                                                 className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition-all disabled:opacity-50 whitespace-nowrap"
                                             >
-                                                ⚡ เพิ่มทั้งห้อง
+                                                เพิ่มทั้งห้อง
                                             </button>
                                         </div>
                                     </div>
@@ -1464,7 +1494,7 @@ export default function AdminDashboard() {
                         )}
                         {/* --- TAB 5: EVALUATION PROGRESS --- */}
                         {activeTab === 'progress' && (
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
+                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
                                     <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> ความก้าวหน้าการประเมินผลรายวิชา</h2>
                                     <p className="text-slate-500 font-medium text-sm">ติดตามความครบถ้วนของการประเมิน จำแนกตามครูผู้สอนและรายวิชา</p>
@@ -1538,7 +1568,7 @@ export default function AdminDashboard() {
                                         className="mt-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
                                     >
                                         <CheckCircle className="w-4 h-4" />
-                                        โหลดข้อมูลความก้าวหน้าการประเมิน
+                                        แสดงสถานะล่าสุด
                                     </button>
                                 </div>
 
@@ -1546,7 +1576,7 @@ export default function AdminDashboard() {
                                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
                                 ) : evalProgress.length === 0 ? (
                                     <div className="text-center py-20 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                        เลือก “โหลดข้อมูลความก้าวหน้าการประเมิน” เพื่อแสดงสถานะล่าสุด
+                                        เลือก “แสดงสถานะล่าสุด” เพื่อดูความก้าวหน้าของทุกวิชา
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
@@ -1613,7 +1643,7 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 6: STUDENT PROMOTION --- */}
                         {activeTab === 'promotion' && (
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm min-h-[500px]">
+                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
                                     <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><ArrowUpCircle className="w-6 h-6 mr-3 text-indigo-500" /> เลื่อนชั้นและจัดห้องเรียนสำหรับปีการศึกษาถัดไป</h2>
                                     <p className="text-slate-500 font-medium text-sm">ปรับระดับชั้นและห้องเรียนของนักเรียนเป็นกลุ่มเมื่อสิ้นสุดปีการศึกษา</p>
