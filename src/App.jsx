@@ -81,12 +81,12 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/admin/report-lo" element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'executive']}>
             <AdminReportLO />
           </ProtectedRoute>
         } />
         <Route path="/admin/report-competency" element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'executive']}>
             <AdminReportCompetency />
           </ProtectedRoute>
         } />

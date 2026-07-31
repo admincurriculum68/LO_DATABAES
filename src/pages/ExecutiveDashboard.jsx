@@ -1,61 +1,140 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import Layout from '../components/Layout';
-import { BarChart3, Users, BookOpenCheck, Activity, Award, GraduationCap, TrendingUp, Sparkles } from 'lucide-react';
+import {
+    BarChart3,
+    Users,
+    BookOpenCheck,
+    Award,
+    GraduationCap,
+    TrendingUp,
+    ClipboardCheck,
+    AlertTriangle,
+    FileBarChart2,
+    LayoutGrid,
+    ArrowRight,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formalLevelLabel } from '../lib/terminology';
+
+const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
+const PASSING_LEVELS = ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
+
+const levelTone = {
+    เริ่มต้น: { bar: 'bg-rose-500', text: 'text-rose-700', chip: 'bg-rose-50 text-rose-800 border-rose-200' },
+    พัฒนา: { bar: 'bg-amber-500', text: 'text-amber-700', chip: 'bg-amber-50 text-amber-800 border-amber-200' },
+    ชำนาญ: { bar: 'bg-blue-500', text: 'text-blue-700', chip: 'bg-blue-50 text-blue-800 border-blue-200' },
+    เชี่ยวชาญ: { bar: 'bg-emerald-500', text: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+};
+
+const submissionMeta = {
+    draft: { label: 'ครูยังไม่ส่ง', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+    submitted: { label: 'ส่งให้วิชาการแล้ว', className: 'bg-blue-50 text-blue-800 border-blue-200' },
+    under_review: { label: 'วิชาการกำลังตรวจ', className: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+    returned: { label: 'ส่งกลับให้แก้ไข', className: 'bg-rose-50 text-rose-800 border-rose-200' },
+    approved: { label: 'รับรองผลแล้ว', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+};
+
+const teacherName = teacher => (teacher ? `${teacher.prefix || ''}${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() : 'ยังไม่กำหนดครูผู้สอน');
+
+function SectionCard({ title, description, icon: Icon, action, children }) {
+    return (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+                <div className="flex items-start gap-3">
+                    <span className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700"><Icon className="h-5 w-5" /></span>
+                    <div>
+                        <h3 className="font-extrabold text-slate-950">{title}</h3>
+                        <p className="mt-0.5 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
+                    </div>
+                </div>
+                {action}
+            </div>
+            {children}
+        </section>
+    );
+}
+
+function EmptyRow({ children }) {
+    return <p className="px-5 py-10 text-center text-sm font-semibold text-slate-500 lg:px-6">{children}</p>;
+}
 
 export default function ExecutiveDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function loadData() {
             if (!currentUser?.school_id || !academicYear || !semester) return;
+            setLoading(true);
             try {
-                const [
-                    { count: studentCount },
-                    { count: teacherCount },
-                    { count: subjectCount },
-                    { data: activeEnrollments }
-                ] = await Promise.all([
-                    supabase.from('users_students').select('*', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
-                    supabase.from('users_teachers').select('*', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
-                    supabase.from('subjects').select('*', { count: 'exact', head: true })
-                        .eq('school_id', currentUser.school_id)
-                        .eq('academic_year', academicYear)
-                        .eq('semester', semester),
-                    supabase.from('student_enrollments')
-                        .select('enrollment_id, subjects!inner(school_id, academic_year, semester)')
-                        .eq('subjects.school_id', currentUser.school_id)
-                        .eq('subjects.academic_year', academicYear)
-                        .eq('subjects.semester', semester)
+                const schoolId = currentUser.school_id;
+                const [subjectsRes, teachersRes, studentsRes, losRes, contextsRes, decisionsRes] = await Promise.all([
+                    supabase.from('subjects').select('subject_id, subject_name, grade_level, teacher_id')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
+                    supabase.from('users_teachers').select('teacher_id, prefix, first_name, last_name')
+                        .eq('school_id', schoolId),
+                    supabase.from('users_students').select('student_id, current_room, current_grade_level')
+                        .eq('school_id', schoolId),
+                    supabase.from('learning_outcomes').select('lo_id, competency_area, ability_no')
+                        .eq('school_id', schoolId),
+                    supabase.from('learning_contexts').select('context_id, context_type')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
+                    supabase.from('lo_final_decisions').select('student_id, lo_id, final_level, decision_status')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
                 ]);
 
-                const enrollmentIds = (activeEnrollments || []).map(item => item.enrollment_id);
-                const { data: evals, error: evalError } = enrollmentIds.length > 0
-                    ? await supabase.from('lo_evaluations')
-                        .select('competency_level')
-                        .in('enrollment_id', enrollmentIds)
-                    : { data: [], error: null };
-                if (evalError) throw evalError;
+                const firstError = [subjectsRes, teachersRes, studentsRes, losRes, contextsRes, decisionsRes].find(r => r.error)?.error;
+                if (firstError) throw firstError;
 
-                let counts = { 'เริ่มต้น': 0, 'พัฒนา': 0, 'ชำนาญ': 0, 'เชี่ยวชาญ': 0 };
-                (evals || []).forEach(e => {
-                    if (counts[e.competency_level] !== undefined) counts[e.competency_level]++;
-                });
+                const subjects = subjectsRes.data || [];
+                const contexts = contextsRes.data || [];
+                const subjectIds = subjects.map(item => item.subject_id);
+                const contextIds = contexts.map(item => item.context_id);
+
+                const [enrollmentsRes, mappingsRes, submissionsRes] = await Promise.all([
+                    subjectIds.length
+                        ? supabase.from('student_enrollments').select('enrollment_id, subject_id, student_id').in('subject_id', subjectIds)
+                        : Promise.resolve({ data: [] }),
+                    subjectIds.length
+                        ? supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', subjectIds)
+                        : Promise.resolve({ data: [] }),
+                    supabase.from('assessment_submissions').select('subject_id, status')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
+                ]);
+
+                const enrollments = enrollmentsRes.data || [];
+                const mappings = mappingsRes.data || [];
+                const enrollmentIds = enrollments.map(item => item.enrollment_id);
+
+                const [evaluationsRes, contextEvaluationsRes] = await Promise.all([
+                    enrollmentIds.length
+                        ? supabase.from('lo_evaluations').select('enrollment_id, lo_id, competency_level, workflow_status').in('enrollment_id', enrollmentIds)
+                        : Promise.resolve({ data: [] }),
+                    contextIds.length
+                        ? supabase.from('learning_context_evaluations').select('student_id, lo_id, competency_level, workflow_status').in('context_id', contextIds)
+                        : Promise.resolve({ data: [] }),
+                ]);
 
                 setData({
-                    total_students: studentCount || 0,
-                    total_teachers: teacherCount || 0,
-                    total_subjects: subjectCount || 0,
-                    eval_stats: counts,
-                    total_evals: evals?.length || 0
+                    subjects,
+                    contexts,
+                    teachers: teachersRes.data || [],
+                    students: studentsRes.data || [],
+                    los: losRes.data || [],
+                    decisions: decisionsRes.data || [],
+                    enrollments,
+                    mappings,
+                    submissions: submissionsRes.data || [],
+                    evaluations: evaluationsRes.data || [],
+                    contextEvaluations: contextEvaluationsRes.data || [],
                 });
-
             } catch (err) {
                 toast.error('ไม่สามารถโหลดข้อมูลสารสนเทศสำหรับผู้บริหารได้: ' + err.message);
             } finally {
@@ -65,148 +144,427 @@ export default function ExecutiveDashboard() {
         loadData();
     }, [currentUser, academicYear, semester]);
 
-    const StatCard = ({ title, value, icon: Icon, colorClass, borderClass, bgGradient }) => (
-        <div className={`relative bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border ${borderClass} p-8 overflow-hidden group hover:-translate-y-1.5 transition-all duration-300`}>
-            {/* Background glowing orb */}
-            <div className={`absolute -right-12 -top-12 w-40 h-40 rounded-full blur-3xl opacity-20 ${bgGradient} group-hover:scale-150 transition-transform duration-700 ease-out z-0`}></div>
-            
-            <div className="flex items-start justify-between relative z-10 space-x-4">
-                <div className={`w-16 h-16 rounded-[1.25rem] shadow-inner border border-white/20 flex items-center justify-center shrink-0 ${colorClass}`}>
-                    <Icon className="w-8 h-8 text-white drop-shadow-sm" />
-                </div>
-                <div className="flex-1 text-right">
-                    <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
-                    <p className="text-5xl font-black text-slate-800 tracking-tighter leading-none">{loading ? '-' : value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</p>
-                </div>
+    const view = useMemo(() => {
+        if (!data) return null;
+
+        const enrollmentById = new Map(data.enrollments.map(item => [item.enrollment_id, item]));
+        const teacherById = new Map(data.teachers.map(item => [item.teacher_id, item]));
+        const loById = new Map(data.los.map(item => [item.lo_id, item]));
+        const submissionBySubject = new Map(data.submissions.map(item => [item.subject_id, item.status]));
+        const mappedPairs = new Set(data.mappings.map(item => `${item.subject_id}_${item.lo_id}`));
+
+        // ผลรายวิชาที่ยังผูกกับ LO อยู่จริงเท่านั้น เพื่อให้ตัวเลขตรงกับหน้าประเมินของครู
+        const validEvaluations = data.evaluations.filter(item => {
+            const enrollment = enrollmentById.get(item.enrollment_id);
+            return enrollment && mappedPairs.has(`${enrollment.subject_id}_${item.lo_id}`);
+        });
+
+        // 1. ความคืบหน้ารายวิชา
+        const subjectRows = data.subjects.map(subject => {
+            const subjectEnrollments = data.enrollments.filter(item => item.subject_id === subject.subject_id);
+            const subjectLoCount = data.mappings.filter(item => item.subject_id === subject.subject_id).length;
+            const total = subjectEnrollments.length * subjectLoCount;
+            const enrollmentIdSet = new Set(subjectEnrollments.map(item => item.enrollment_id));
+            const filled = validEvaluations.filter(item => enrollmentIdSet.has(item.enrollment_id) && item.competency_level).length;
+            return {
+                id: subject.subject_id,
+                name: subject.subject_name,
+                gradeLevel: subject.grade_level,
+                teacher: teacherName(teacherById.get(subject.teacher_id)),
+                studentCount: subjectEnrollments.length,
+                loCount: subjectLoCount,
+                total,
+                filled,
+                percent: total > 0 ? Math.round((filled / total) * 100) : 0,
+                status: submissionBySubject.get(subject.subject_id) || 'draft',
+                blocked: subjectEnrollments.length === 0 || subjectLoCount === 0,
+            };
+        }).sort((a, b) => a.percent - b.percent || a.name.localeCompare(b.name, 'th'));
+
+        const totalCells = subjectRows.reduce((sum, row) => sum + row.total, 0);
+        const filledCells = subjectRows.reduce((sum, row) => sum + row.filled, 0);
+        const overallPercent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
+
+        // 2. คอขวดการรับรองผล นับเป็นคู่ ผู้เรียน x LO เหมือนศูนย์รับรองผล
+        const pairKeys = new Set();
+        validEvaluations.forEach(item => {
+            const enrollment = enrollmentById.get(item.enrollment_id);
+            if (enrollment) pairKeys.add(`${enrollment.student_id}:${item.lo_id}`);
+        });
+        data.contextEvaluations.forEach(item => pairKeys.add(`${item.student_id}:${item.lo_id}`));
+
+        const decisionByPair = new Map(data.decisions.map(item => [`${item.student_id}:${item.lo_id}`, item]));
+        let approvedCount = 0;
+        let returnedCount = 0;
+        pairKeys.forEach(key => {
+            const status = decisionByPair.get(key)?.decision_status;
+            if (status === 'approved') approvedCount += 1;
+            else if (status === 'returned') returnedCount += 1;
+        });
+        const certification = {
+            total: pairKeys.size,
+            approved: approvedCount,
+            returned: returnedCount,
+            pending: Math.max(0, pairKeys.size - approvedCount - returnedCount),
+        };
+
+        // 3. ผลแยกตามด้านความสามารถ ใช้เฉพาะผลที่รับรองแล้ว
+        const areaMap = new Map();
+        data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
+            const area = loById.get(item.lo_id)?.competency_area || 'ไม่ระบุด้านความสามารถ';
+            if (!areaMap.has(area)) areaMap.set(area, { area, total: 0, passed: 0, counts: { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 } });
+            const entry = areaMap.get(area);
+            entry.total += 1;
+            if (PASSING_LEVELS.includes(item.final_level)) entry.passed += 1;
+            if (entry.counts[item.final_level] !== undefined) entry.counts[item.final_level] += 1;
+        });
+        const competencyAreas = [...areaMap.values()]
+            .map(entry => ({ ...entry, passPercent: entry.total > 0 ? Math.round((entry.passed / entry.total) * 100) : 0 }))
+            .sort((a, b) => a.passPercent - b.passPercent);
+
+        // 4. เทียบรายห้องเรียน
+        const studentById = new Map(data.students.map(item => [item.student_id, item]));
+        const roomMap = new Map();
+        const ensureRoom = room => {
+            if (!roomMap.has(room)) roomMap.set(room, { room, students: new Set(), total: 0, filled: 0, decided: 0, passed: 0 });
+            return roomMap.get(room);
+        };
+        data.enrollments.forEach(enrollment => {
+            const room = studentById.get(enrollment.student_id)?.current_room || 'ไม่ระบุห้อง';
+            const entry = ensureRoom(room);
+            entry.students.add(enrollment.student_id);
+            entry.total += data.mappings.filter(item => item.subject_id === enrollment.subject_id).length;
+        });
+        validEvaluations.forEach(item => {
+            const enrollment = enrollmentById.get(item.enrollment_id);
+            if (!enrollment || !item.competency_level) return;
+            ensureRoom(studentById.get(enrollment.student_id)?.current_room || 'ไม่ระบุห้อง').filled += 1;
+        });
+        data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
+            const room = studentById.get(item.student_id)?.current_room;
+            if (!room) return;
+            const entry = ensureRoom(room);
+            entry.decided += 1;
+            if (PASSING_LEVELS.includes(item.final_level)) entry.passed += 1;
+        });
+        const rooms = [...roomMap.values()]
+            .map(entry => ({
+                room: entry.room,
+                studentCount: entry.students.size,
+                progressPercent: entry.total > 0 ? Math.round((entry.filled / entry.total) * 100) : 0,
+                decided: entry.decided,
+                passPercent: entry.decided > 0 ? Math.round((entry.passed / entry.decided) * 100) : null,
+            }))
+            .sort((a, b) => a.room.localeCompare(b.room, 'th'));
+
+        // 5. การกระจายระดับ แยกผลที่ครูยืนยันแล้วออกจากฉบับร่าง
+        const confirmedCounts = { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 };
+        let confirmedTotal = 0;
+        let draftTotal = 0;
+        [...validEvaluations, ...data.contextEvaluations].forEach(item => {
+            if (!item.competency_level) return;
+            if (['submitted', 'approved'].includes(item.workflow_status)) {
+                if (confirmedCounts[item.competency_level] !== undefined) {
+                    confirmedCounts[item.competency_level] += 1;
+                    confirmedTotal += 1;
+                }
+            } else {
+                draftTotal += 1;
+            }
+        });
+
+        return {
+            teacherCount: data.teachers.length,
+            studentCount: data.students.length,
+            formatCount: data.subjects.length + data.contexts.length,
+            subjectCount: data.subjects.length,
+            contextCount: data.contexts.length,
+            overallPercent,
+            filledCells,
+            totalCells,
+            subjectRows,
+            certification,
+            competencyAreas,
+            rooms,
+            confirmedCounts,
+            confirmedTotal,
+            draftTotal,
+        };
+    }, [data]);
+
+    const StatCard = ({ title, value, unit, icon: Icon, tone }) => (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-3">
+                <span className={`rounded-xl p-2.5 ${tone}`}><Icon className="h-5 w-5" /></span>
+                <span className="text-sm font-bold text-slate-600">{title}</span>
             </div>
-            {/* Minimal decorative line */}
-            <div className={`h-1 w-1/3 mt-8 bg-gradient-to-r ${colorClass} opacity-20 rounded-full`}></div>
+            <p className="mt-3 text-4xl font-black tracking-tight text-slate-900">
+                {loading || !view ? '–' : value}
+                {unit && <span className="ml-1.5 text-base font-bold text-slate-500">{unit}</span>}
+            </p>
         </div>
     );
 
     return (
         <Layout title="สารสนเทศเพื่อการบริหารสถานศึกษา">
-            {/* Hero / Header Section */}
-            <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8 relative">
-                <div className="flex items-center">
-                    <div className="bg-gradient-to-bl from-amber-400 to-orange-600 p-4 rounded-3xl shadow-lg shadow-orange-500/20 border border-orange-400/50 mr-6 hidden sm:block relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-white/20 -skew-x-12 translate-x-[-150%] group-hover:translate-x-[250%] transition-transform duration-700"></div>
-                        <BarChart3 className="w-10 h-10 text-white relative z-10" />
-                    </div>
+            <header className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
+                <div className="flex items-center gap-4">
+                    <span className="hidden rounded-2xl bg-slate-900 p-3.5 text-amber-400 sm:block"><BarChart3 className="h-8 w-8" /></span>
                     <div>
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                            ข้อมูลภาพรวมของสถานศึกษา <Sparkles className="w-6 h-6 text-amber-500 hidden sm:block" />
-                        </h2>
-                        <p className="text-slate-500 font-medium text-lg mt-2 tracking-wide">
-                            <span className="font-bold text-slate-700">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
+                        <h2 className="text-3xl font-black tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h2>
+                        <p className="mt-1.5 text-slate-600">
+                            <span className="font-bold text-slate-800">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
                         </p>
                     </div>
                 </div>
-
-                <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-4 rounded-3xl shadow-lg border border-slate-700 flex items-center gap-4 text-white">
-                    <div className="bg-white/10 p-2.5 rounded-2xl backdrop-blur-sm border border-white/10">
-                        <Award className="w-7 h-7 text-amber-400" />
-                    </div>
-                    <div className="text-right">
-                        <div className="mb-0.5 text-xs font-bold text-slate-300">รอบข้อมูลที่แสดง</div>
-                        <div className="text-sm font-extrabold tracking-wider">ภาคเรียนที่ {semester}/{academicYear}</div>
+                <div className="flex w-fit items-center gap-3 rounded-2xl bg-slate-900 px-5 py-3 text-white">
+                    <Award className="h-6 w-6 text-amber-400" />
+                    <div>
+                        <div className="text-xs font-bold text-slate-300">รอบข้อมูลที่แสดง</div>
+                        <div className="text-sm font-extrabold">ภาคเรียนที่ {semester}/{academicYear}</div>
                     </div>
                 </div>
-            </div>
+            </header>
 
             {loading ? (
-                <div className="py-32 flex flex-col items-center justify-center space-y-4">
-                    <div className="loader scale-150 border-4 border-amber-100 border-t-amber-600"></div>
-                    <p className="text-slate-400 font-medium animate-pulse mt-4">กำลังประมวลผลสถิติของโรงเรียน...</p>
+                <div className="flex flex-col items-center justify-center gap-4 py-32">
+                    <div className="loader scale-150 border-4 border-amber-100 border-t-amber-600" />
+                    <p className="mt-4 font-medium text-slate-500">กำลังประมวลผลสถิติของโรงเรียน...</p>
                 </div>
-            ) : !data ? null : (
-                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pt-2">
-                    {/* Top Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <StatCard
-                            title="ครูและบุคลากร"
-                            value={data.total_teachers}
-                            icon={Users}
-                            colorClass="bg-gradient-to-br from-blue-500 to-indigo-600"
-                            borderClass="border-blue-100"
-                            bgGradient="bg-blue-400"
-                        />
-                        <StatCard
-                            title="จำนวนนักเรียน"
-                            value={data.total_students}
-                            icon={GraduationCap}
-                            colorClass="bg-gradient-to-br from-emerald-500 to-teal-600"
-                            borderClass="border-emerald-100"
-                            bgGradient="bg-emerald-400"
-                        />
-                        <StatCard
-                            title="รายวิชาที่เปิดสอน"
-                            value={data.total_subjects}
-                            icon={BookOpenCheck}
-                            colorClass="bg-gradient-to-br from-violet-500 to-fuchsia-600"
-                            borderClass="border-violet-100"
-                            bgGradient="bg-violet-400"
-                        />
+            ) : !view ? null : (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <StatCard title="ครูและบุคลากร" value={view.teacherCount} unit="คน" icon={Users} tone="bg-blue-50 text-blue-700" />
+                        <StatCard title="จำนวนนักเรียน" value={view.studentCount} unit="คน" icon={GraduationCap} tone="bg-emerald-50 text-emerald-700" />
+                        <StatCard title="รูปแบบการจัดการเรียนรู้" value={view.formatCount} unit="รายการ" icon={BookOpenCheck} tone="bg-violet-50 text-violet-700" />
+                        <StatCard title="ความคืบหน้าการประเมิน" value={`${view.overallPercent}%`} icon={TrendingUp} tone="bg-amber-50 text-amber-700" />
                     </div>
 
-                    {/* Complex Analytics Section */}
-                    <div className="bg-white rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.06)] border border-slate-200 overflow-hidden relative">
-                        {/* Title Bar */}
-                        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-8 py-6 flex items-center justify-between border-b border-slate-800 relative overflow-hidden">
-                            <div className="absolute right-0 top-0 w-64 h-64 bg-amber-500 opacity-5 rounded-full blur-3xl"></div>
-                            <div className="flex items-center relative z-10">
-                                <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/5 mr-4">
-                                    <TrendingUp className="w-7 h-7 text-amber-400" />
+                    {/* 1. คอขวดของกระบวนการ */}
+                    <SectionCard
+                        icon={ClipboardCheck}
+                        title="สถานะการรับรองผลลัพธ์การเรียนรู้"
+                        description="นับเป็นคู่ ผู้เรียน × LO ที่มีผลประเมินแล้ว ตัวเลขชุดนี้ตรงกับศูนย์ตรวจสอบและรับรองผลของฝ่ายวิชาการ"
+                    >
+                        <div className="grid grid-cols-2 divide-slate-200 border-b border-slate-200 sm:grid-cols-4 sm:divide-x">
+                            {[
+                                { label: 'รอฝ่ายวิชาการรับรอง', value: view.certification.pending, tone: 'text-amber-700' },
+                                { label: 'รับรองแล้ว', value: view.certification.approved, tone: 'text-emerald-700' },
+                                { label: 'ส่งกลับให้แก้ไข', value: view.certification.returned, tone: 'text-rose-700' },
+                                { label: 'ทั้งหมด', value: view.certification.total, tone: 'text-slate-900' },
+                            ].map(item => (
+                                <div key={item.label} className="px-5 py-4">
+                                    <p className={`text-3xl font-black ${item.tone}`}>{item.value.toLocaleString()}</p>
+                                    <p className="mt-1 text-sm font-bold text-slate-600">{item.label}</p>
                                 </div>
-                                <div>
-                                    <h3 className="text-2xl font-black text-white tracking-wide">ผลการประเมินภาพรวมระดับสถานศึกษา</h3>
-                                    <p className="text-slate-300 font-medium text-sm mt-1">จำแนกตามระดับความสามารถของผู้เรียนในภาคเรียนที่เลือก</p>
-                                </div>
-                            </div>
-                            <div className="hidden md:block text-right relative z-10">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1">จำนวนการประเมินทั้งหมด</span>
-                                <span className="text-2xl font-black text-amber-400">{data.total_evals.toLocaleString()} <span className="text-sm text-slate-400 font-bold">รายการ</span></span>
-                            </div>
+                            ))}
                         </div>
+                        {view.certification.total > 0 && (
+                            <div className="px-5 py-4 lg:px-6">
+                                <div className="flex h-3 overflow-hidden rounded-full bg-slate-200">
+                                    <div className="bg-emerald-500" style={{ width: `${(view.certification.approved / view.certification.total) * 100}%` }} />
+                                    <div className="bg-rose-500" style={{ width: `${(view.certification.returned / view.certification.total) * 100}%` }} />
+                                </div>
+                                <p className="mt-2.5 text-sm font-semibold text-slate-600">
+                                    รับรองแล้ว {Math.round((view.certification.approved / view.certification.total) * 100)}% ของรายการที่ครูประเมินไว้
+                                </p>
+                            </div>
+                        )}
+                    </SectionCard>
 
-                        {/* Chart / Bars Section */}
-                        <div className="p-8 lg:p-14 bg-slate-50/50">
-                            <div className="max-w-5xl mx-auto space-y-12">
-                                {[
-                                    { label: 'ระดับเชี่ยวชาญ', count: data.eval_stats['เชี่ยวชาญ'], colorClass: 'text-emerald-700', bgClass: 'bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]', borderClass: 'border-emerald-200' },
-                                    { label: 'ระดับชำนาญ', count: data.eval_stats['ชำนาญ'], colorClass: 'text-blue-700', bgClass: 'bg-gradient-to-r from-blue-500 to-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.4)]', borderClass: 'border-blue-200' },
-                                    { label: 'ระดับพัฒนา', count: data.eval_stats['พัฒนา'], colorClass: 'text-amber-700', bgClass: 'bg-gradient-to-r from-amber-500 to-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.4)]', borderClass: 'border-amber-200' },
-                                    { label: 'ระดับเริ่มต้น', count: data.eval_stats['เริ่มต้น'], colorClass: 'text-rose-700', bgClass: 'bg-gradient-to-r from-rose-500 to-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)]', borderClass: 'border-rose-200' }
-                                ].map((stat, idx) => {
-                                    const pct = Math.round((stat.count / (data.total_evals || 1)) * 100) || 0;
-                                    return (
-                                        <div key={idx} className="relative group">
-                                            <div className="flex justify-between items-end mb-4 px-1">
-                                                <div className="flex items-center">
-                                                    <span className={`w-3 h-3 rounded-full mr-3 border ${stat.borderClass} ${stat.bgClass.split(' ')[0]}`}></span>
-                                                    <span className={`text-xl font-black tracking-wide ${stat.colorClass}`}>{stat.label}</span>
-                                                </div>
-                                                <div className="text-right flex file:items-baseline items-end">
-                                                    <span className="text-3xl font-black text-slate-800 mr-3">{stat.count.toLocaleString()}</span>
-                                                    <span className="text-sm font-extrabold text-slate-500 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm min-w-[4rem] text-center inline-block translate-y-[-2px]">{pct}%</span>
-                                                </div>
-                                            </div>
-                                            
-                                            {/* Beautiful Glowing Progress Bar */}
-                                            <div className={`w-full bg-slate-200/80 rounded-full h-6 border ${stat.borderClass} shadow-inner p-1 overflow-hidden relative`}>
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-1000 ease-out ${stat.bgClass} relative overflow-hidden`}
-                                                    style={{ width: `${Math.max(pct, 1)}%` }} // Ensure at least a sliver shows if > 0
-                                                >
-                                                    {/* Animated shine effect on the bar */}
-                                                    <div className="absolute top-0 bottom-0 left-[-20%] w-[120%] bg-gradient-to-r from-transparent via-white/30 to-transparent -skew-x-12 translate-x-[-150%] group-hover:translate-x-[150%] transition-transform duration-1000"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                    {/* 2. ความคืบหน้ารายวิชา */}
+                    <SectionCard
+                        icon={LayoutGrid}
+                        title="ความคืบหน้าการประเมินรายวิชาและรายครู"
+                        description="เรียงจากวิชาที่ค้างมากที่สุด ใช้ติดตามว่าควรเข้าไปสนับสนุนครูคนใดก่อน"
+                    >
+                        {view.subjectRows.length === 0 ? (
+                            <EmptyRow>ยังไม่มีรายวิชาในภาคเรียนนี้</EmptyRow>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[760px] text-left text-sm">
+                                    <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
+                                        <tr>
+                                            <th className="px-5 py-3">รายวิชา</th>
+                                            <th className="px-4 py-3">ครูผู้สอน</th>
+                                            <th className="w-24 px-4 py-3 text-center">ผู้เรียน</th>
+                                            <th className="w-20 px-4 py-3 text-center">LO</th>
+                                            <th className="w-56 px-4 py-3">ประเมินแล้ว</th>
+                                            <th className="w-44 px-4 py-3">สถานะ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {view.subjectRows.map(row => {
+                                            const meta = submissionMeta[row.status] || submissionMeta.draft;
+                                            return (
+                                                <tr key={row.id} className="align-middle hover:bg-slate-50/70">
+                                                    <td className="px-5 py-3.5">
+                                                        <p className="font-bold text-slate-900">{row.name}</p>
+                                                        {row.gradeLevel && <p className="mt-0.5 text-xs text-slate-500">ระดับชั้น {row.gradeLevel}</p>}
+                                                    </td>
+                                                    <td className="px-4 py-3.5 text-slate-700">{row.teacher}</td>
+                                                    <td className="px-4 py-3.5 text-center font-bold text-slate-800">{row.studentCount}</td>
+                                                    <td className="px-4 py-3.5 text-center font-bold text-slate-800">{row.loCount}</td>
+                                                    <td className="px-4 py-3.5">
+                                                        {row.blocked ? (
+                                                            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">
+                                                                <AlertTriangle className="h-3.5 w-3.5" />
+                                                                {row.studentCount === 0 ? 'ยังไม่ได้จัดนักเรียนเข้ากลุ่มเรียน' : 'ยังไม่ได้กำหนด LO'}
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="h-2.5 w-24 overflow-hidden rounded-full bg-slate-200">
+                                                                    <div className={`h-full rounded-full ${row.percent === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${row.percent}%` }} />
+                                                                </div>
+                                                                <span className="text-sm font-extrabold text-slate-800">{row.percent}%</span>
+                                                                <span className="text-xs font-semibold text-slate-500">{row.filled}/{row.total}</span>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3.5">
+                                                        <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-bold ${meta.className}`}>{meta.label}</span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
-                        </div>
+                        )}
+                    </SectionCard>
+
+                    {/* 3. ผลรายด้านความสามารถ */}
+                    <SectionCard
+                        icon={FileBarChart2}
+                        title="ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรองแล้ว"
+                        description="เรียงจากด้านที่ผู้เรียนผ่านเกณฑ์น้อยที่สุด ใช้กำหนดทิศทางการพัฒนาคุณภาพของสถานศึกษา"
+                        action={
+                            <button
+                                onClick={() => navigate('/admin/report-competency')}
+                                className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                เปิดรายงานฉบับเต็ม <ArrowRight className="h-4 w-4" />
+                            </button>
+                        }
+                    >
+                        {view.competencyAreas.length === 0 ? (
+                            <EmptyRow>ยังไม่มีผลที่ฝ่ายวิชาการรับรอง จึงยังไม่สามารถสรุปรายด้านความสามารถได้</EmptyRow>
+                        ) : (
+                            <ul className="divide-y divide-slate-100">
+                                {view.competencyAreas.map(area => (
+                                    <li key={area.area} className="px-5 py-4 lg:px-6">
+                                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                            <p className="font-bold text-slate-900">{area.area}</p>
+                                            <p className="text-sm font-semibold text-slate-600">
+                                                ผ่านเกณฑ์ <strong className={area.passPercent >= 80 ? 'text-emerald-700' : area.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}>{area.passPercent}%</strong>
+                                                <span className="ml-1 text-slate-500">({area.passed}/{area.total} ผลการรับรอง)</span>
+                                            </p>
+                                        </div>
+                                        <div className="mt-2.5 flex h-3 overflow-hidden rounded-full bg-slate-100">
+                                            {LEVELS.map(level => {
+                                                const width = area.total > 0 ? (area.counts[level] / area.total) * 100 : 0;
+                                                if (!width) return null;
+                                                return <div key={level} className={levelTone[level].bar} style={{ width: `${width}%` }} title={`${formalLevelLabel(level)} ${area.counts[level]}`} />;
+                                            })}
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {LEVELS.map(level => (
+                                                <span key={level} className={`rounded-md border px-1.5 py-0.5 text-xs font-bold ${levelTone[level].chip}`}>
+                                                    {formalLevelLabel(level)} {area.counts[level]}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </SectionCard>
+
+                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                        {/* 4. เทียบรายห้องเรียน */}
+                        <SectionCard
+                            icon={Users}
+                            title="เปรียบเทียบรายห้องเรียน"
+                            description="ใช้ดูว่าห้องใดควรได้รับการสนับสนุนก่อน"
+                        >
+                            {view.rooms.length === 0 ? (
+                                <EmptyRow>ยังไม่มีการจัดนักเรียนเข้ากลุ่มเรียน</EmptyRow>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[440px] text-left text-sm">
+                                        <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-600">
+                                            <tr>
+                                                <th className="px-5 py-3">ห้องเรียน</th>
+                                                <th className="w-24 px-4 py-3 text-center">ผู้เรียน</th>
+                                                <th className="w-32 px-4 py-3 text-center">ประเมินแล้ว</th>
+                                                <th className="w-36 px-4 py-3 text-center">ผ่านเกณฑ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {view.rooms.map(room => (
+                                                <tr key={room.room} className="hover:bg-slate-50/70">
+                                                    <td className="px-5 py-3 font-bold text-slate-900">{room.room}</td>
+                                                    <td className="px-4 py-3 text-center font-bold text-slate-800">{room.studentCount}</td>
+                                                    <td className="px-4 py-3 text-center font-extrabold text-slate-800">{room.progressPercent}%</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        {room.passPercent === null ? (
+                                                            <span className="text-xs font-semibold text-slate-400">ยังไม่รับรอง</span>
+                                                        ) : (
+                                                            <span className={`font-extrabold ${room.passPercent >= 80 ? 'text-emerald-700' : room.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
+                                                                {room.passPercent}%
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </SectionCard>
+
+                        {/* 5. การกระจายระดับ */}
+                        <SectionCard
+                            icon={TrendingUp}
+                            title="การกระจายระดับความสามารถ"
+                            description="นับเฉพาะผลที่ครูยืนยันส่งตรวจแล้ว ผลที่ยังเป็นฉบับร่างไม่ถูกนำมาคิด"
+                            action={
+                                <button
+                                    onClick={() => navigate('/admin/report-lo')}
+                                    className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    ผลราย LO <ArrowRight className="h-4 w-4" />
+                                </button>
+                            }
+                        >
+                            <div className="space-y-5 px-5 py-5 lg:px-6">
+                                {view.confirmedTotal === 0 ? (
+                                    <p className="py-6 text-center text-sm font-semibold text-slate-500">ยังไม่มีผลที่ครูส่งตรวจในภาคเรียนนี้</p>
+                                ) : (
+                                    [...LEVELS].reverse().map(level => {
+                                        const count = view.confirmedCounts[level];
+                                        const percent = Math.round((count / view.confirmedTotal) * 100);
+                                        return (
+                                            <div key={level}>
+                                                <div className="mb-1.5 flex items-baseline justify-between">
+                                                    <span className={`font-extrabold ${levelTone[level].text}`}>{formalLevelLabel(level)}</span>
+                                                    <span className="text-sm font-bold text-slate-700">{count.toLocaleString()} <span className="text-slate-500">({percent}%)</span></span>
+                                                </div>
+                                                <div className="h-4 overflow-hidden rounded-full bg-slate-100">
+                                                    <div className={`h-full rounded-full ${levelTone[level].bar}`} style={{ width: `${percent}%` }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                                {view.draftTotal > 0 && (
+                                    <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-600">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                        มีอีก {view.draftTotal.toLocaleString()} รายการที่ครูยังบันทึกเป็นฉบับร่าง ยังไม่นับรวมในสัดส่วนด้านบน
+                                    </p>
+                                )}
+                            </div>
+                        </SectionCard>
                     </div>
                 </div>
             )}
