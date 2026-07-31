@@ -295,6 +295,9 @@ export default function AdminDashboard() {
     // Fix decimal suffix: 1234567890123.00 → "1234567890123"
     // ค่าที่ Excel ย่อจนเลขหายไปแล้ว เช่น 1.43E+12 กู้คืนไม่ได้ ต้องให้ผู้ใช้แก้ไฟล์
     const LOSSY_SCIENTIFIC = '__EXCEL_LOSSY__';
+    // ข้อความนี้จะขึ้นเฉพาะกรณีที่ตัวเลขหายไปจากไฟล์จริงแล้ว
+    // ถ้าเซลล์ยังเป็นชนิดตัวเลข ระบบอ่านค่าเต็มได้เองและไม่แจ้งเตือน
+    const LOSSY_HELP = 'เลขประจำตัวประชาชนในไฟล์เหลือแค่ตัวเลขย่อ (เช่น 1.23457E+12) ไม่ใช่แค่การแสดงผล แต่ตัวเลขหายจากไฟล์แล้วและกู้คืนไม่ได้ วิธีแก้: ส่งออกจาก DMC เป็น .xlsx โดยตรง หรือถ้าเป็นไฟล์ CSV ให้เปิด Excel เปล่าแล้วใช้ Data › From Text/CSV และตั้งคอลัมน์เลขบัตรเป็น Text ก่อนกด Load ห้ามดับเบิลคลิกเปิดไฟล์ CSV แล้วกดบันทึก';
 
     // Excel เก็บเลขบัตรเป็น "ตัวเลข" ได้ ซึ่งค่าที่เก็บไว้ยังครบทุกหลัก
     // แต่ SheetJS จะจัดรูปแบบเป็น 1.4299E+12 ตอนอ่านเป็นข้อความ
@@ -358,7 +361,7 @@ export default function AdminDashboard() {
     const validateCitizenRow = (cleanId, cleanDob, rowNum) => {
         const errors = [];
         if (!cleanId) errors.push(`แถว ${rowNum}: citizen_id ว่างเปล่า`);
-        else if (cleanId === LOSSY_SCIENTIFIC) errors.push(`แถว ${rowNum}: citizen_id ถูก Excel ย่อเป็นตัวเลขวิทยาศาสตร์ (เช่น 1.43E+12) ทำให้เลขหายไป กรุณาตั้งรูปแบบคอลัมน์เป็น "ข้อความ" (Text) แล้วส่งออกไฟล์ใหม่`);
+        else if (cleanId === LOSSY_SCIENTIFIC) errors.push(`แถว ${rowNum}: ${LOSSY_HELP}`);
         else if (cleanId.length !== 13) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ต้องมี 13 หลัก (มี ${cleanId.length} หลัก)`);
         else if (/^(1{13}|2{13}|3{13}|0{13})$/.test(cleanId)) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ดูเหมือนเป็นข้อมูลทดสอบ`);
         if (!cleanDob) errors.push(`แถว ${rowNum}: dob ว่างเปล่า`);
@@ -457,7 +460,7 @@ export default function AdminDashboard() {
                 const currentRoom       = gradeRaw && roomRaw ? `${gradeRaw}/${roomRaw}` : (gradeRaw || null); // เช่น "ป.3/2"
                 const currentGradeLevel = gradeRaw || null; // เช่น "ป.3" แยกเก็บสำหรับฟีเจอร์เลื่อนชั้น
                 const errs = [];
-                if (cleanId === LOSSY_SCIENTIFIC) errs.push(`citizen_id "${row[COL.CITIZEN]}" ถูก Excel ย่อเป็นตัวเลขวิทยาศาสตร์ ทำให้เลขหายไป กรุณาตั้งรูปแบบคอลัมน์เป็น "ข้อความ" (Text) แล้วส่งออกไฟล์ใหม่`);
+                if (cleanId === LOSSY_SCIENTIFIC) errs.push(LOSSY_HELP);
                 else if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
                 if (!dobStr) errs.push(`วันเกิด "${row[COL.DOB]}" ไม่ถูกต้อง`);
                 if (!fname) errs.push('ไม่มีชื่อ');
@@ -465,8 +468,20 @@ export default function AdminDashboard() {
                 else validRows.push({ citizen_id: cleanId, dob: dobStr, student_code: code, prefix, first_name: fname, last_name: lname, current_room: currentRoom, current_grade_level: currentGradeLevel });
             }
 
-            if (validRows.length === 0) { toast.error(`ไม่มีแถวที่ถูกต้อง (${invalidRows.length} แถวผิด)`, { id: 'dmc' }); return; }
-            if (invalidRows.length > 0) { toast.error(`ไม่นำเข้าข้อมูลที่ไม่ถูกต้อง ${invalidRows.length} แถว`); console.warn('[DMC Invalid]', invalidRows); }
+            // ถ้าสาเหตุคือเลขบัตรหายจากไฟล์ ต้องอธิบายวิธีแก้ให้เห็นบนหน้าจอ ไม่ใช่ซ่อนไว้ใน console
+            const lossyCount = invalidRows.filter(r => r.errors.some(e => e === LOSSY_HELP)).length;
+            if (lossyCount > 0) {
+                toast.error(`${lossyCount} แถวมีปัญหาเลขประจำตัวประชาชน\n\n${LOSSY_HELP}`, { id: 'dmc-lossy', duration: 30000 });
+            }
+            if (validRows.length === 0) {
+                toast.error(`ไม่มีแถวที่นำเข้าได้เลย (ผิดทั้งหมด ${invalidRows.length} แถว)`, { id: 'dmc' });
+                console.warn('[DMC Invalid]', invalidRows);
+                return;
+            }
+            if (invalidRows.length > 0) {
+                toast.error(`ข้ามแถวที่ข้อมูลไม่ครบ ${invalidRows.length} แถว จะนำเข้า ${validRows.length} แถวที่ถูกต้อง`, { duration: 8000 });
+                console.warn('[DMC Invalid]', invalidRows);
+            }
 
             const payload = await Promise.all(validRows.map(async r => ({
                 school_id: currentUser.school_id, citizen_id: r.citizen_id,
