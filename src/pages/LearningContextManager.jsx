@@ -32,6 +32,7 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
+import { CBE_SUBJECT_GROUPS_2568 } from '../constants/curriculum2568';
 
 const TYPE_META = {
     subject: { icon: BookOpen, className: 'border-indigo-200 bg-indigo-50 text-indigo-700', activeBadge: 'bg-indigo-600 text-white' },
@@ -40,19 +41,6 @@ const TYPE_META = {
     activity: { icon: Users, className: 'border-emerald-200 bg-emerald-50 text-emerald-800', activeBadge: 'bg-emerald-600 text-white' },
     integrated_unit: { icon: ClipboardList, className: 'border-amber-200 bg-amber-50 text-amber-800', activeBadge: 'bg-amber-600 text-white' },
 };
-
-const STANDARD_SUBJECT_GROUPS = [
-    'ภาษาไทย',
-    'คณิตศาสตร์',
-    'วิทยาศาสตร์และเทคโนโลยี',
-    'สังคมศึกษา ศาสนา และวัฒนธรรม',
-    'สุขศึกษาและพลศึกษา',
-    'ศิลปะ',
-    'การงานอาชีพ',
-    'ภาษาต่างประเทศ',
-    'กิจกรรมพัฒนาผู้เรียน',
-    'บูรณาการหลายกลุ่มสาระ',
-];
 
 const EMPTY_FORM = {
     context_type: 'subject',
@@ -148,7 +136,7 @@ export default function LearningContextManager() {
                     context_type: 'subject',
                     context_name: subject.subject_name,
                     subject_group: subject.subject_group || '',
-                    description: subject.description || (subject.subject_group ? `กลุ่มสาระ/กลุ่มวิชา: ${subject.subject_group}` : ''),
+                    description: subject.description || (subject.subject_group ? `กลุ่มวิชา: ${subject.subject_group}` : ''),
                     grade_level: subject.grade_level,
                     responsible_teacher_id: subject.teacher_id,
                     is_active: true,
@@ -377,9 +365,9 @@ export default function LearningContextManager() {
         <Layout title="รูปแบบการจัดการเรียนรู้">
             <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
                 
-                {/* Datalist for Subject Groups autocomplete */}
-                <datalist id="subject-groups-list">
-                    {STANDARD_SUBJECT_GROUPS.map(g => <option key={g} value={g} />)}
+                {/* Datalist for CBE 2568 Subject Groups autocomplete */}
+                <datalist id="cbe-subject-groups-list">
+                    {CBE_SUBJECT_GROUPS_2568.map(g => <option key={g} value={g} />)}
                 </datalist>
 
                 {/* Top Header Hero Banner */}
@@ -397,14 +385,14 @@ export default function LearningContextManager() {
                                     <ArrowLeft className="h-3.5 w-3.5" /> กลับ Dashboard วิชาการ
                                 </button>
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-200 border border-indigo-400/20 backdrop-blur-md">
-                                    <Compass className="h-3.5 w-3.5 text-indigo-300" /> จัดการโครงสร้างรูปแบบการเรียนรู้
+                                    <Compass className="h-3.5 w-3.5 text-indigo-300" /> หลักสูตรฐานสมรรถนะ พ.ศ. 2568
                                 </span>
                             </div>
                             <h1 className="text-2xl font-black tracking-tight sm:text-3xl text-white">
                                 รูปแบบการจัดการเรียนรู้ (Learning Contexts)
                             </h1>
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                จัดการรายวิชา, หน่วยการเรียนรู้บูรณาการ, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุกลุ่มสาระ/กลุ่มวิชา และเชื่อมโยงผลลัพธ์การเรียนรู้ (LO)
+                                จัดการรายวิชา, หน่วยการเรียนรู้, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> ตามหลักสูตร 2568 และเชื่อมโยง LO ที่ใช้ประเมิน
                             </p>
                         </div>
 
@@ -506,7 +494,7 @@ export default function LearningContextManager() {
                                             type="text"
                                             value={itemQuery}
                                             onChange={e => setItemQuery(e.target.value)}
-                                            placeholder="ค้นหาชื่อ, กลุ่มสาระ/กลุ่มวิชา, ชั้นเรียน, ครู..."
+                                            placeholder="ค้นหาชื่อ, กลุ่มวิชา, ชั้นเรียน, ครู..."
                                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
                                     </div>
@@ -610,7 +598,7 @@ export default function LearningContextManager() {
                                         <div className="flex items-center justify-between border-b border-slate-100 p-6">
                                             <div>
                                                 <h3 className="text-lg font-extrabold text-slate-900">เพิ่มรูปแบบการจัดการเรียนรู้ใหม่</h3>
-                                                <p className="mt-0.5 text-xs text-slate-500">กรอกข้อมูลพื้นฐานและเลือกกลุ่มสาระ/กลุ่มวิชา แล้วระบบจะพาไปเลือก LO ต่อทันที</p>
+                                                <p className="mt-0.5 text-xs text-slate-500">กรอกข้อมูลพื้นฐานและเลือกกลุ่มวิชาตามหลักสูตร 2568 แล้วระบบจะพาไปเลือก LO ต่อทันที</p>
                                             </div>
                                             <button
                                                 type="button"
@@ -659,21 +647,21 @@ export default function LearningContextManager() {
                                                         autoFocus
                                                         value={form.context_name}
                                                         onChange={e => updateForm('context_name', e.target.value)}
-                                                        placeholder={isSubjectForm ? 'เช่น ภาษาไทย: การอ่านและการเขียน' : 'เช่น ตลาดนัดเรียนรู้พอเพียง'}
+                                                        placeholder={isSubjectForm ? 'เช่น ภาษาและการสื่อสาร 1' : 'เช่น ตลาดนัดเรียนรู้พอเพียง'}
                                                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </div>
 
-                                                {/* Subject Group Input / Selection (Now available for ALL 4 types) */}
+                                                {/* Subject Group Input / Selection (CBE 2568 กลุ่มวิชา) */}
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-extrabold text-slate-800">
-                                                        กลุ่มสาระการเรียนรู้ / กลุ่มวิชา
+                                                        กลุ่มวิชา (หลักสูตร 2568)
                                                     </label>
                                                     <input
-                                                        list="subject-groups-list"
+                                                        list="cbe-subject-groups-list"
                                                         value={form.subject_group}
                                                         onChange={e => updateForm('subject_group', e.target.value)}
-                                                        placeholder="เลือกหรือพิมพ์ เช่น ภาษาไทย, บูรณาการ..."
+                                                        placeholder="เลือกหรือพิมพ์ เช่น ภาษาและการสื่อสาร, การคิดคำนวณ..."
                                                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </div>
@@ -764,7 +752,7 @@ export default function LearningContextManager() {
                                                         </span>
                                                         {selectedItem.subject_group && (
                                                             <span className="rounded-lg bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
-                                                                กลุ่มสาระ/กลุ่มวิชา: {selectedItem.subject_group}
+                                                                กลุ่มวิชา: {selectedItem.subject_group}
                                                             </span>
                                                         )}
                                                         <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
