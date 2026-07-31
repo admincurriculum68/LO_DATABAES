@@ -35,11 +35,36 @@ import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '..
 import { CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
 const TYPE_META = {
-    subject: { icon: BookOpen, className: 'border-indigo-200 bg-indigo-50 text-indigo-700', activeBadge: 'bg-indigo-600 text-white' },
-    learning_unit: { icon: ClipboardList, className: 'border-amber-200 bg-amber-50 text-amber-800', activeBadge: 'bg-amber-600 text-white' },
-    project: { icon: FolderKanban, className: 'border-sky-200 bg-sky-50 text-sky-800', activeBadge: 'bg-sky-600 text-white' },
-    activity: { icon: Users, className: 'border-emerald-200 bg-emerald-50 text-emerald-800', activeBadge: 'bg-emerald-600 text-white' },
-    integrated_unit: { icon: ClipboardList, className: 'border-amber-200 bg-amber-50 text-amber-800', activeBadge: 'bg-amber-600 text-white' },
+    subject: {
+        icon: BookOpen,
+        className: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+        activeBadge: 'bg-indigo-600 text-white',
+        colorTone: 'indigo',
+    },
+    learning_unit: {
+        icon: ClipboardList,
+        className: 'border-amber-200 bg-amber-50 text-amber-800',
+        activeBadge: 'bg-amber-600 text-white',
+        colorTone: 'amber',
+    },
+    project: {
+        icon: FolderKanban,
+        className: 'border-sky-200 bg-sky-50 text-sky-800',
+        activeBadge: 'bg-sky-600 text-white',
+        colorTone: 'sky',
+    },
+    activity: {
+        icon: Users,
+        className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+        activeBadge: 'bg-emerald-600 text-white',
+        colorTone: 'emerald',
+    },
+    integrated_unit: {
+        icon: ClipboardList,
+        className: 'border-amber-200 bg-amber-50 text-amber-800',
+        activeBadge: 'bg-amber-600 text-white',
+        colorTone: 'amber',
+    },
 };
 
 const EMPTY_FORM = {
@@ -54,6 +79,13 @@ const EMPTY_FORM = {
 const GRADE_LEVELS = ['ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'];
 const itemKey = (source, id) => `${source}:${id}`;
 const sameIds = (left, right) => [...left].sort().join('|') === [...right].sort().join('|');
+
+const getPhaseLabel = (gradeLevel) => {
+    if (!gradeLevel) return null;
+    if (['ป.1', 'ป.2', 'ป.3'].includes(gradeLevel)) return 'ป.ต้น';
+    if (['ป.4', 'ป.5', 'ป.6'].includes(gradeLevel)) return 'ป.ปลาย';
+    return null;
+};
 
 function LoadingRows() {
     return (
@@ -196,6 +228,10 @@ export default function LearningContextManager() {
         learningFormats.forEach(item => { counts[item.context_type] = (counts[item.context_type] || 0) + 1; });
         return counts;
     }, [learningFormats]);
+
+    const totalMappedItems = useMemo(() => {
+        return learningFormats.filter(item => (mappedByItem[item.key] || []).length > 0).length;
+    }, [learningFormats, mappedByItem]);
 
     const filteredFormats = useMemo(() => {
         const normalized = itemQuery.trim().toLowerCase();
@@ -376,27 +412,34 @@ export default function LearningContextManager() {
                     <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
 
                     <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="space-y-2 max-w-3xl">
-                            <div className="flex flex-wrap items-center gap-3">
+                        <div className="space-y-3 max-w-3xl">
+                            <div className="flex flex-wrap items-center gap-2.5">
                                 <button
                                     onClick={() => navigate('/admin')}
-                                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20 hover:text-white"
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
                                 >
                                     <ArrowLeft className="h-3.5 w-3.5" /> กลับ Dashboard วิชาการ
                                 </button>
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-200 border border-indigo-400/20 backdrop-blur-md">
-                                    <Compass className="h-3.5 w-3.5 text-indigo-300" /> หลักสูตรฐานสมรรถนะ พ.ศ. 2568
+                                    <Sparkles className="h-3.5 w-3.5 text-indigo-300" /> หลักสูตรฐานสมรรถนะ พ.ศ. 2568
                                 </span>
                             </div>
+
                             <h1 className="text-2xl font-black tracking-tight sm:text-3xl text-white">
                                 รูปแบบการจัดการเรียนรู้ (Learning Contexts)
                             </h1>
+
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                จัดการรายวิชา, หน่วยการเรียนรู้, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> ตามหลักสูตร 2568 และเชื่อมโยง LO ที่ใช้ประเมิน
+                                จัดการรายวิชา, หน่วยการเรียนรู้บูรณาการ, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> แยกช่วงชั้น ป.ต้น/ป.ปลาย และเชื่อมโยง LO สำหรับประเมิน
                             </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3">
+                            <div className="hidden sm:flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 text-xs text-white backdrop-blur-md border border-white/15">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                                <span>กำหนด LO แล้ว <strong className="font-extrabold">{totalMappedItems}</strong>/{learningFormats.length} รายการ</span>
+                            </div>
+
                             <button
                                 type="button"
                                 onClick={() => openCreate('subject')}
@@ -444,12 +487,12 @@ export default function LearningContextManager() {
                                             onClick={() => applyFormatFilter(type)}
                                             className={`flex items-center gap-3.5 p-5 text-left transition-all ${
                                                 active
-                                                    ? 'bg-gradient-to-br from-slate-900 to-indigo-950 text-white shadow-md'
+                                                    ? 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md'
                                                     : 'bg-white hover:bg-slate-50 text-slate-900'
                                             }`}
                                         >
-                                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-2xs ${
-                                                active ? 'border-white/20 bg-white/10 text-white' : meta.className
+                                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-2xs transition-transform ${
+                                                active ? 'border-white/20 bg-white/10 text-white scale-105' : meta.className
                                             }`}>
                                                 <Icon className="h-5 w-5" />
                                             </span>
@@ -523,6 +566,7 @@ export default function LearningContextManager() {
                                             const Icon = meta.icon;
                                             const isActiveItem = selectedItemKey === item.key && viewMode === 'manage';
                                             const loCount = (mappedByItem[item.key] || []).length;
+                                            const phaseTag = getPhaseLabel(item.grade_level);
 
                                             return (
                                                 <button
@@ -568,7 +612,7 @@ export default function LearningContextManager() {
                                                                 )}
                                                                 <span className={isActiveItem ? 'text-indigo-200' : 'text-slate-300'}>·</span>
                                                                 <span className={isActiveItem ? 'text-indigo-100' : 'text-slate-500'}>
-                                                                    {item.grade_level || 'ทุกระดับชั้น'}
+                                                                    {item.grade_level || 'ทุกชั้น'} {phaseTag ? `(${phaseTag})` : ''}
                                                                 </span>
                                                                 <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-black border shadow-2xs ${
                                                                     isActiveItem ? 'bg-white/20 text-white border-white/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100'
@@ -652,6 +696,36 @@ export default function LearningContextManager() {
                                                     />
                                                 </div>
 
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-extrabold text-slate-800">ระดับชั้น</label>
+                                                    <select
+                                                        value={form.grade_level}
+                                                        onChange={e => updateForm('grade_level', e.target.value)}
+                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">ทุกระดับชั้น</option>
+                                                        {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
+                                                    </select>
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-extrabold text-slate-800">
+                                                        {isSubjectForm ? 'ครูผู้สอน' : 'ครูผู้รับผิดชอบ'}
+                                                    </label>
+                                                    <select
+                                                        value={form.responsible_teacher_id}
+                                                        onChange={e => updateForm('responsible_teacher_id', e.target.value)}
+                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    >
+                                                        <option value="">ยังไม่กำหนด</option>
+                                                        {teachers.map(t => (
+                                                            <option key={t.teacher_id} value={t.teacher_id}>
+                                                                {teacherById[t.teacher_id]}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
                                                 {/* Subject Group Input / Selection (CBE 2568 กลุ่มวิชา) */}
                                                 <div className="space-y-2 sm:col-span-2">
                                                     <div className="flex items-center justify-between">
@@ -674,11 +748,11 @@ export default function LearningContextManager() {
                                                     />
 
                                                     {/* Quick Choice Chips by Phase */}
-                                                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-2.5 text-xs">
+                                                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 space-y-3 text-xs">
                                                         {/* ป.ต้น */}
                                                         {(!form.grade_level || ['ป.1', 'ป.2', 'ป.3'].includes(form.grade_level)) && (
-                                                            <div className="space-y-1">
-                                                                <span className="block text-[11px] font-extrabold text-indigo-900">
+                                                            <div className="space-y-1.5">
+                                                                <span className="block text-[11px] font-black text-indigo-900">
                                                                     — กลุ่มวิชาสำหรับ ป.ต้น (ป.1 - ป.3) —
                                                                 </span>
                                                                 {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ต้น'].map(group => (
@@ -705,8 +779,8 @@ export default function LearningContextManager() {
 
                                                         {/* ป.ปลาย */}
                                                         {(!form.grade_level || ['ป.4', 'ป.5', 'ป.6'].includes(form.grade_level)) && (
-                                                            <div className="space-y-1 pt-1 border-t border-slate-200/60">
-                                                                <span className="block text-[11px] font-extrabold text-indigo-900">
+                                                            <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
+                                                                <span className="block text-[11px] font-black text-indigo-900">
                                                                     — กลุ่มวิชาสำหรับ ป.ปลาย (ป.4 - ป.6) —
                                                                 </span>
                                                                 {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ปลาย'].map(group => (
@@ -731,7 +805,7 @@ export default function LearningContextManager() {
                                                             </div>
                                                         )}
 
-                                                        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60">
+                                                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-200/60">
                                                             <span className="text-[10px] font-bold text-slate-500">กลุ่มรูปแบบอื่น:</span>
                                                             {['บูรณาการหลายกลุ่มวิชา', 'กิจกรรมพัฒนาผู้เรียน'].map(item => (
                                                                 <button
@@ -749,36 +823,6 @@ export default function LearningContextManager() {
                                                             ))}
                                                         </div>
                                                     </div>
-                                                </div>
-
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-extrabold text-slate-800">ระดับชั้น</label>
-                                                    <select
-                                                        value={form.grade_level}
-                                                        onChange={e => updateForm('grade_level', e.target.value)}
-                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">ทุกระดับชั้น</option>
-                                                        {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
-                                                    </select>
-                                                </div>
-
-                                                <div className="sm:col-span-2 space-y-1">
-                                                    <label className="text-xs font-extrabold text-slate-800">
-                                                        {isSubjectForm ? 'ครูผู้สอน' : 'ครูผู้รับผิดชอบ'}
-                                                    </label>
-                                                    <select
-                                                        value={form.responsible_teacher_id}
-                                                        onChange={e => updateForm('responsible_teacher_id', e.target.value)}
-                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    >
-                                                        <option value="">ยังไม่กำหนด</option>
-                                                        {teachers.map(t => (
-                                                            <option key={t.teacher_id} value={t.teacher_id}>
-                                                                {teacherById[t.teacher_id]}
-                                                            </option>
-                                                        ))}
-                                                    </select>
                                                 </div>
 
                                                 {!isSubjectForm && (
@@ -829,19 +873,19 @@ export default function LearningContextManager() {
                                         
                                         {/* Selected Item Header */}
                                         <header className="border-b border-slate-100 p-6">
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                                <div className="space-y-2">
+                                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="space-y-2.5">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <span className={`rounded-lg border px-2.5 py-0.5 text-xs font-black ${(TYPE_META[selectedItem.context_type] || TYPE_META.project).className}`}>
+                                                        <span className={`rounded-xl border px-3 py-1 text-xs font-black ${(TYPE_META[selectedItem.context_type] || TYPE_META.project).className}`}>
                                                             {learningFormatLabel(selectedItem.context_type)}
                                                         </span>
                                                         {selectedItem.subject_group && (
-                                                            <span className="rounded-lg bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
+                                                            <span className="rounded-xl bg-indigo-50 px-3 py-1 text-xs font-extrabold text-indigo-700 border border-indigo-100">
                                                                 กลุ่มวิชา: {selectedItem.subject_group}
                                                             </span>
                                                         )}
-                                                        <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
-                                                            ระดับชั้น {selectedItem.grade_level || 'ทุกระดับชั้น'}
+                                                        <span className="rounded-xl bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                                                            ชั้น {selectedItem.grade_level || 'ทุกชั้น'} {getPhaseLabel(selectedItem.grade_level) ? `(${getPhaseLabel(selectedItem.grade_level)})` : ''}
                                                         </span>
                                                     </div>
 
@@ -849,15 +893,18 @@ export default function LearningContextManager() {
                                                         {selectedItem.context_name}
                                                     </h2>
 
-                                                    <p className="text-xs font-medium text-slate-500">
-                                                        ผู้รับผิดชอบ: <strong className="text-slate-800">{teacherById[selectedItem.responsible_teacher_id] || 'ยังไม่กำหนด'}</strong>
-                                                    </p>
+                                                    <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                                                            <User className="h-3.5 w-3.5" />
+                                                        </span>
+                                                        <span>ผู้รับผิดชอบ: <strong className="text-slate-800 font-extrabold">{teacherById[selectedItem.responsible_teacher_id] || 'ยังไม่กำหนด'}</strong></span>
+                                                    </div>
                                                 </div>
 
                                                 {selectedItem.source === 'context' && (
                                                     <button
                                                         onClick={() => toggleContextActive(selectedItem)}
-                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50"
+                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
                                                     >
                                                         {selectedItem.is_active ? <PauseCircle className="h-4 w-4 text-amber-600" /> : <PlayCircle className="h-4 w-4 text-emerald-600" />}
                                                         {selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}
@@ -894,7 +941,7 @@ export default function LearningContextManager() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowSelectedOnly(v => !v)}
-                                                    className={`rounded-2xl border px-3 py-2 text-xs font-extrabold transition-all ${
+                                                    className={`rounded-2xl border px-3.5 py-2 text-xs font-extrabold transition-all ${
                                                         showSelectedOnly
                                                             ? 'bg-indigo-700 text-white border-indigo-700 shadow-sm'
                                                             : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
