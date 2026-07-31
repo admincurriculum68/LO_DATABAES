@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     AlertCircle,
     ArrowLeft,
+    ArrowLeftCircle,
+    ArrowRightCircle,
     Award,
     BookOpen,
     Check,
@@ -14,6 +16,7 @@ import {
     Filter,
     FolderKanban,
     GraduationCap,
+    Grid,
     HelpCircle,
     History,
     Info,
@@ -26,9 +29,11 @@ import {
     Search,
     ShieldCheck,
     Sparkles,
+    Table,
     User,
     UserCheck,
     UserRound,
+    Users,
     XCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -61,12 +66,6 @@ const PRESET_REASONS_APPROVE = [
     'หลักฐานเชิงประจักษ์ครบถ้วนและสอดคล้อง',
     'ผลการประเมินจากทุกรูปแบบผ่านเกณฑ์เป้าหมาย',
     'มีพัฒนาการโดดเด่นและแสดงผลงานชัดเจน',
-];
-
-const PRESET_REASONS_RETURN = [
-    'ขอเพิ่มหลักฐานเชิงคุณภาพหรือบันทึกข้อสังเกตเพิ่มเติม',
-    'ระดับประเมินจากหลายแหล่งยังมีความขัดแย้งกัน',
-    'ยังขาดผลประเมินในบางรูปแบบการจัดการเรียนรู้',
 ];
 
 function fullName(student) {
@@ -178,8 +177,15 @@ export default function AcademicApprovalCenter() {
 
     const [allLoEntries, setAllLoEntries] = useState([]);
     const [selectedStudentId, setSelectedStudentId] = useState('');
+    
+    // Multi-level Filters for 500-2,000 students
+    const [gradeFilter, setGradeFilter] = useState('all');
+    const [roomFilter, setRoomFilter] = useState('all');
     const [query, setQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    
+    // View Mode Toggle: 'individual' (รายบุคคล) | 'matrix' (ตารางภาพรวมห้องเรียน)
+    const [viewMode, setViewMode] = useState('individual');
 
     // Local decision state: key = student_id:lo_id → { level, reason }
     const [localDecisions, setLocalDecisions] = useState({});
@@ -324,6 +330,7 @@ export default function AcademicApprovalCenter() {
         loadApprovalData();
     }, [loadApprovalData]);
 
+    // Build deduplicated student list
     const studentList = useMemo(() => {
         const map = new Map();
         allLoEntries.forEach(entry => {
@@ -341,7 +348,7 @@ export default function AcademicApprovalCenter() {
                 const returned = entries.filter(e => e.decision?.decision_status === 'returned').length;
                 const pending = total - approved - returned;
                 const percent = total > 0 ? Math.round((approved / total) * 100) : 0;
-                return { student, total, approved, returned, pending, percent };
+                return { student, total, approved, returned, pending, percent, entries };
             })
             .sort((a, b) => {
                 const roomCmp = (a.student.current_room || '').localeCompare(b.student.current_room || '', 'th');
@@ -349,19 +356,49 @@ export default function AcademicApprovalCenter() {
             });
     }, [allLoEntries]);
 
+    // Extract available Grade Levels & Rooms dynamically for filtering 500-2,000 students
+    const availableGrades = useMemo(() => {
+        const set = new Set();
+        studentList.forEach(item => {
+            if (item.student.current_grade_level) set.add(item.student.current_grade_level);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, 'th'));
+    }, [studentList]);
+
+    const availableRooms = useMemo(() => {
+        const set = new Set();
+        studentList.forEach(item => {
+            if (gradeFilter !== 'all' && item.student.current_grade_level !== gradeFilter) return;
+            if (item.student.current_room) set.add(item.student.current_room);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, 'th'));
+    }, [studentList, gradeFilter]);
+
+    // Multi-level filtered Student List
     const filteredStudentList = useMemo(() => {
         const normalized = query.trim().toLowerCase();
         return studentList.filter(item => {
+            // Grade level filter
+            if (gradeFilter !== 'all' && item.student.current_grade_level !== gradeFilter) return false;
+            // Room filter
+            if (roomFilter !== 'all' && item.student.current_room !== roomFilter) return false;
+            // Status filter
             if (statusFilter === 'pending' && item.pending === 0) return false;
             if (statusFilter === 'approved' && item.approved === 0) return false;
             if (statusFilter === 'returned' && item.returned === 0) return false;
+            // Search text
             if (normalized) {
                 const haystack = `${item.student.student_code || ''} ${fullName(item.student)} ${item.student.current_room || ''}`.toLowerCase();
                 if (!haystack.includes(normalized)) return false;
             }
             return true;
         });
-    }, [studentList, query, statusFilter]);
+    }, [studentList, gradeFilter, roomFilter, statusFilter, query]);
+
+    // Index of currently selected student in the filtered list (for Next/Prev student navigation)
+    const currentStudentIndex = useMemo(() => {
+        return filteredStudentList.findIndex(s => s.student.student_id === selectedStudentId);
+    }, [filteredStudentList, selectedStudentId]);
 
     const overallStats = useMemo(() => {
         const totalStudents = studentList.length;
@@ -382,6 +419,17 @@ export default function AcademicApprovalCenter() {
             percentApproved,
         };
     }, [allLoEntries, studentList]);
+
+    // Extract list of all unique LOs in the dataset for Class Matrix view
+    const allLOsList = useMemo(() => {
+        const map = new Map();
+        allLoEntries.forEach(entry => {
+            if (!map.has(entry.lo.lo_id)) {
+                map.set(entry.lo.lo_id, entry.lo);
+            }
+        });
+        return [...map.values()].sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
+    }, [allLoEntries]);
 
     const selectedStudentData = useMemo(() => {
         if (!selectedStudentId) return null;
@@ -562,6 +610,15 @@ export default function AcademicApprovalCenter() {
         }
     }, [loadApprovalData, localDecisions, saveDecisionForEntry, selectedStudentData]);
 
+    // Student Navigation Shortcuts
+    const navigateStudent = useCallback((direction) => {
+        if (currentStudentIndex === -1 || filteredStudentList.length === 0) return;
+        const nextIndex = currentStudentIndex + direction;
+        if (nextIndex >= 0 && nextIndex < filteredStudentList.length) {
+            setSelectedStudentId(filteredStudentList[nextIndex].student.student_id);
+        }
+    }, [currentStudentIndex, filteredStudentList]);
+
     useEffect(() => {
         if (loading) return;
         if (filteredStudentList.length === 0) {
@@ -575,9 +632,9 @@ export default function AcademicApprovalCenter() {
 
     return (
         <Layout title="ศูนย์การรับรองผลลัพธ์การเรียนรู้">
-            <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
+            <div className="mx-auto w-full max-w-[1720px] space-y-6 pb-12">
                 
-                {/* Top Modern Header Hero Banner */}
+                {/* Top Header Hero Banner */}
                 <header className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl ring-1 ring-white/10">
                     <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
                     <div className="absolute -left-12 -bottom-12 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
@@ -599,7 +656,7 @@ export default function AcademicApprovalCenter() {
                                 ศูนย์การตรวจสอบและรับรองผลลัพธ์การเรียนรู้
                             </h1>
                             <p className="text-sm leading-relaxed text-indigo-100/80">
-                                การพิจารณารับรองระดับความสามารถรายบุคคลโดยฝ่ายวิชาการ รวบรวมหลักฐานเชิงประจักษ์จาก 4 รูปแบบการจัดการเรียนรู้
+                                การพิจารณารับรองระดับความสามารถรายบุคคลโดยฝ่ายวิชาการ รองรับโรงเรียนขนาดใหญ่ 500-2,000 คน ด้วยระบบคัดกรองตามระดับชั้น/ห้องเรียน
                             </p>
                         </div>
 
@@ -610,7 +667,7 @@ export default function AcademicApprovalCenter() {
                                     <GraduationCap className="h-6 w-6" />
                                 </div>
                                 <div>
-                                    <div className="text-xs font-medium text-indigo-200">ผู้เรียนทั้งหมด</div>
+                                    <div className="text-xs font-medium text-indigo-200">นักเรียนในระบบ</div>
                                     <div className="text-lg font-black text-white">{overallStats.totalStudents} <span className="text-xs font-normal text-slate-300">คน</span></div>
                                 </div>
                             </div>
@@ -657,574 +714,725 @@ export default function AcademicApprovalCenter() {
                         </div>
                     </section>
                 ) : (
-                    <div className="grid overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-lg shadow-slate-200/50 xl:grid-cols-[400px_minmax(0,1fr)]">
+                    <div className="space-y-4">
                         
-                        {/* ═══ Left Sidebar: Modern Student Directory ═══ */}
-                        <aside className="flex flex-col border-b border-slate-200/80 bg-slate-50/50 xl:border-b-0 xl:border-r" aria-label="คิวตรวจสอบรายชื่อผู้เรียน">
+                        {/* Scale-Ready Multi-Level Toolbar */}
+                        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-md sm:flex-row sm:items-center sm:justify-between">
                             
-                            {/* Search and Tabs */}
-                            <div className="space-y-3.5 border-b border-slate-200/80 bg-white p-5">
-                                <div className="flex items-center justify-between">
+                            {/* Filter Selectors: Grade Level + Class Room */}
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-extrabold text-slate-700">
+                                    <Filter className="h-4 w-4 text-indigo-600" /> คัดกรองกลุ่ม:
+                                </div>
+
+                                {/* Grade Level Selector */}
+                                <select
+                                    value={gradeFilter}
+                                    onChange={e => {
+                                        setGradeFilter(e.target.value);
+                                        setRoomFilter('all'); // reset room when grade changes
+                                    }}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 shadow-2xs transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                    <option value="all">ทุกระดับชั้น ({studentList.length} คน)</option>
+                                    {availableGrades.map(g => (
+                                        <option key={g} value={g}>ระดับชั้น {g}</option>
+                                    ))}
+                                </select>
+
+                                {/* Room Selector */}
+                                <select
+                                    value={roomFilter}
+                                    onChange={e => setRoomFilter(e.target.value)}
+                                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 shadow-2xs transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                >
+                                    <option value="all">ทุกห้องเรียน</option>
+                                    {availableRooms.map(r => (
+                                        <option key={r} value={r}>ห้องเรียน {r}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* View Mode Switcher: Individual vs Class Matrix */}
+                            <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                                <button
+                                    onClick={() => setViewMode('individual')}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all ${
+                                        viewMode === 'individual'
+                                            ? 'bg-white text-indigo-700 shadow-sm'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <UserRound className="h-4 w-4" /> มุมมองรายบุคคล
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('matrix')}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold transition-all ${
+                                        viewMode === 'matrix'
+                                            ? 'bg-white text-indigo-700 shadow-sm'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <Table className="h-4 w-4" /> มุมมองตารางภาพรวมห้องเรียน
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* VIEW MODE 1: CLASS MATRIX VIEW (ตารางภาพรวมสำหรับห้องเรียน) */}
+                        {viewMode === 'matrix' ? (
+                            <div className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-lg space-y-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
                                     <div>
                                         <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                                            <UserRound className="h-4 w-4 text-indigo-600" /> รายชื่อผู้เรียน
+                                            <Table className="h-5 w-5 text-indigo-600" /> ตารางสรุปการรับรองผลรายห้องเรียน
                                         </h3>
-                                        <p className="mt-0.5 text-xs text-slate-500">แสดงผล {filteredStudentList.length} จาก {studentList.length} คน</p>
+                                        <p className="text-xs text-slate-500">
+                                            กำลังแสดงผล {filteredStudentList.length} คน (ระดับชั้น: {gradeFilter === 'all' ? 'ทั้งหมด' : gradeFilter} · ห้อง: {roomFilter === 'all' ? 'ทั้งหมด' : roomFilter})
+                                        </p>
                                     </div>
-                                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                        ภาค {semester}/{academicYear}
+                                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
+                                        คลิกที่ชื่อผู้เรียนเพื่อสลับไปตรวจอย่างละเอียด
                                     </span>
                                 </div>
 
-                                {/* Status Filter Tabs */}
-                                <div className="grid grid-cols-4 rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
-                                    {[
-                                        { key: 'all', label: 'ทั้งหมด', count: studentList.length },
-                                        { key: 'pending', label: 'รอตรวจ', count: overallStats.pendingLOs },
-                                        { key: 'returned', label: 'ส่งกลับ', count: overallStats.returnedLOs },
-                                        { key: 'approved', label: 'รับรองแล้ว', count: overallStats.approvedLOs },
-                                    ].map(tab => (
-                                        <button
-                                            key={tab.key}
-                                            onClick={() => setStatusFilter(tab.key)}
-                                            className={`flex flex-col items-center justify-center rounded-lg py-2 transition-all ${
-                                                statusFilter === tab.key
-                                                    ? 'bg-white text-indigo-700 shadow-sm font-extrabold'
-                                                    : 'hover:text-slate-900 hover:bg-slate-200/50'
-                                            }`}
-                                        >
-                                            <span className="text-xs">{tab.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
+                                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table className="w-full min-w-[900px] text-left text-xs border-collapse">
+                                        <thead className="bg-slate-100/80 text-slate-700 font-extrabold border-b border-slate-200">
+                                            <tr>
+                                                <th className="sticky left-0 bg-slate-100 px-4 py-3 border-r border-slate-200 z-10 w-48">ผู้เรียน</th>
+                                                <th className="px-3 py-3 w-24">รหัส</th>
+                                                <th className="px-3 py-3 w-20">ห้อง</th>
+                                                {allLOsList.map(lo => (
+                                                    <th key={lo.lo_id} className="px-2 py-3 text-center min-w-[90px] border-l border-slate-200">
+                                                        <span className="block text-indigo-700 font-black">{lo.lo_code || `LO ${lo.ability_no}`}</span>
+                                                    </th>
+                                                ))}
+                                                <th className="px-3 py-3 text-center border-l border-slate-200 w-28">ความคืบหน้า</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {filteredStudentList.map((item, idx) => {
+                                                const student = item.student;
+                                                const entriesMap = new Map(item.entries.map(e => [e.lo.lo_id, e]));
 
-                                {/* Search Bar */}
-                                <div className="relative">
-                                    <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        value={query}
-                                        onChange={e => setQuery(e.target.value)}
-                                        placeholder="ค้นหาชื่อ, รหัสนักเรียน, หรือห้องเรียน..."
-                                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2.5 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                    />
-                                    {query && (
-                                        <button
-                                            onClick={() => setQuery('')}
-                                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
-                                        >
-                                            <XCircle className="h-4 w-4" />
-                                        </button>
-                                    )}
+                                                return (
+                                                    <tr key={student.student_id} className="hover:bg-slate-50/80 transition">
+                                                        <td className="sticky left-0 bg-white hover:bg-slate-50 px-4 py-3 font-bold text-slate-900 border-r border-slate-200 z-10">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedStudentId(student.student_id);
+                                                                    setViewMode('individual');
+                                                                }}
+                                                                className="text-left hover:text-indigo-600 hover:underline flex items-center gap-1.5"
+                                                            >
+                                                                <span>{fullName(student)}</span>
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-500 font-mono">{student.student_code}</td>
+                                                        <td className="px-3 py-3 text-slate-600 font-semibold">{student.current_room || '-'}</td>
+
+                                                        {allLOsList.map(lo => {
+                                                            const entry = entriesMap.get(lo.lo_id);
+                                                            if (!entry) {
+                                                                return (
+                                                                    <td key={lo.lo_id} className="px-2 py-3 text-center border-l border-slate-100 text-slate-300">
+                                                                        -
+                                                                    </td>
+                                                                );
+                                                            }
+
+                                                            const isApproved = entry.decision?.decision_status === 'approved';
+                                                            const level = entry.decision?.final_level || entry.recommended_level;
+
+                                                            return (
+                                                                <td key={lo.lo_id} className="px-2 py-3 text-center border-l border-slate-100">
+                                                                    {isApproved ? (
+                                                                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                                                                            ['ชำนาญ', 'เชี่ยวชาญ'].includes(level) ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                                                                        }`}>
+                                                                            {formalLevelLabel(level)}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                            รอรับรอง
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        })}
+
+                                                        <td className="px-3 py-3 text-center border-l border-slate-200">
+                                                            <span className={`font-bold ${item.approved === item.total ? 'text-emerald-600' : 'text-slate-700'}`}>
+                                                                {item.approved}/{item.total}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
-
-                            {/* Student Scroll List */}
-                            <div className="max-h-[760px] flex-1 overflow-y-auto p-3 space-y-2">
-                                {loading ? (
-                                    <LoadingState />
-                                ) : filteredStudentList.length === 0 ? (
-                                    <div className="px-4 py-16 text-center">
-                                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                                            <UserRound className="h-6 w-6" />
-                                        </div>
-                                        <h4 className="mt-3 text-sm font-bold text-slate-800">ไม่พบรายชื่อผู้เรียน</h4>
-                                        <p className="mt-1 text-xs text-slate-500">ลองปรับเปลี่ยนคำค้นหาหรือตัวกรองสถานะ</p>
-                                        <button
-                                            onClick={() => { setQuery(''); setStatusFilter('all'); }}
-                                            className="mt-3 rounded-lg text-xs font-extrabold text-indigo-600 hover:underline"
-                                        >
-                                            ล้างการค้นหา
-                                        </button>
-                                    </div>
-                                ) : (
-                                    filteredStudentList.map(item => {
-                                        const isSelected = selectedStudentId === item.student.student_id;
-                                        const isCompleted = item.approved === item.total && item.total > 0;
-
-                                        return (
-                                            <button
-                                                key={item.student.student_id}
-                                                onClick={() => setSelectedStudentId(item.student.student_id)}
-                                                className={`group relative w-full rounded-2xl p-3.5 text-left transition-all duration-200 ${
-                                                    isSelected
-                                                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-1 ring-indigo-600'
-                                                        : 'bg-white hover:bg-slate-100/80 text-slate-900 border border-slate-200/70 shadow-sm'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    {/* Avatar */}
-                                                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs shadow-inner ${
-                                                        isSelected
-                                                            ? 'bg-white/20 text-white'
-                                                            : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                                                    }`}>
-                                                        {getInitials(item.student)}
-                                                    </div>
-
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center justify-between gap-1">
-                                                            <p className={`truncate text-sm font-extrabold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                                                                {fullName(item.student)}
-                                                            </p>
-                                                            <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${isSelected ? 'text-white translate-x-0.5' : 'text-slate-300 group-hover:text-slate-500'}`} />
-                                                        </div>
-
-                                                        <div className="mt-1 flex items-center justify-between text-xs">
-                                                            <span className={isSelected ? 'text-indigo-100' : 'text-slate-500'}>
-                                                                รหัส {item.student.student_code} · {item.student.current_room || item.student.current_grade_level || '-'}
-                                                            </span>
-                                                            <span className={`font-bold ${isSelected ? 'text-indigo-100' : 'text-slate-700'}`}>
-                                                                {item.approved}/{item.total} LO
-                                                            </span>
-                                                        </div>
-
-                                                        {/* Progress bar per student */}
-                                                        <div className="mt-2 flex items-center gap-2">
-                                                            <div className={`h-1.5 flex-1 overflow-hidden rounded-full ${isSelected ? 'bg-white/20' : 'bg-slate-100'}`}>
-                                                                <div
-                                                                    className={`h-full rounded-full transition-all duration-300 ${
-                                                                        isSelected ? 'bg-white' : isCompleted ? 'bg-emerald-500' : 'bg-indigo-600'
-                                                                    }`}
-                                                                    style={{ width: `${item.percent}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className={`text-[10px] font-bold ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
-                                                                {item.percent}%
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </aside>
-
-                        {/* ═══ Main Content: LO Evaluations grouped by Competency ═══ */}
-                        <main className="flex flex-col min-w-0 bg-slate-50/30 overflow-y-auto" aria-label="รายละเอียดการรับรองผล" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-                            {!selectedStudentData ? (
-                                <div className="flex flex-1 items-center justify-center p-12 text-center">
-                                    <div className="max-w-sm space-y-3">
-                                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100">
-                                            <Compass className="h-8 w-8" />
-                                        </div>
-                                        <h3 className="text-base font-extrabold text-slate-900">เลือกผู้เรียนจากรายการเพื่อเริ่มตรวจรับรอง</h3>
-                                        <p className="text-xs leading-relaxed text-slate-500">
-                                            ระบบจะแสดงผลการประเมิน LO รายข้อที่จัดกลุ่มตามโครงสร้างความสามารถของหลักสูตรฐานสมรรถนะ
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-6 p-6 lg:p-8">
+                        ) : (
+                            /* VIEW MODE 2: INDIVIDUAL DEEP-DIVE VIEW */
+                            <div className="grid overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-lg shadow-slate-200/50 xl:grid-cols-[400px_minmax(0,1fr)]">
+                                
+                                {/* ═══ Left Sidebar: Student List ═══ */}
+                                <aside className="flex flex-col border-b border-slate-200/80 bg-slate-50/50 xl:border-b-0 xl:border-r" aria-label="คิวตรวจสอบรายชื่อผู้เรียน">
                                     
-                                    {/* Selected Student Banner Header */}
-                                    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                        <div className="flex items-center gap-4">
-                                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-lg font-black text-white shadow-md shadow-indigo-600/20">
-                                                {getInitials(selectedStudentData.student)}
-                                            </div>
+                                    {/* Search and Tabs */}
+                                    <div className="space-y-3.5 border-b border-slate-200/80 bg-white p-5">
+                                        <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h2 className="text-xl font-black text-slate-950">{fullName(selectedStudentData.student)}</h2>
-                                                    <span className="rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
-                                                        ช่วงชั้น {selectedStudentData.levelGroup}
-                                                    </span>
+                                                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                                    <UserRound className="h-4 w-4 text-indigo-600" /> รายชื่อผู้เรียน
+                                                </h3>
+                                                <p className="mt-0.5 text-xs text-slate-500">แสดงผล {filteredStudentList.length} จาก {studentList.length} คน</p>
+                                            </div>
+                                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                                ภาค {semester}/{academicYear}
+                                            </span>
+                                        </div>
+
+                                        {/* Status Filter Tabs */}
+                                        <div className="grid grid-cols-4 rounded-xl bg-slate-100 p-1 text-xs font-semibold text-slate-600">
+                                            {[
+                                                { key: 'all', label: 'ทั้งหมด', count: studentList.length },
+                                                { key: 'pending', label: 'รอตรวจ', count: overallStats.pendingLOs },
+                                                { key: 'returned', label: 'ส่งกลับ', count: overallStats.returnedLOs },
+                                                { key: 'approved', label: 'รับรองแล้ว', count: overallStats.approvedLOs },
+                                            ].map(tab => (
+                                                <button
+                                                    key={tab.key}
+                                                    onClick={() => setStatusFilter(tab.key)}
+                                                    className={`flex flex-col items-center justify-center rounded-lg py-2 transition-all ${
+                                                        statusFilter === tab.key
+                                                            ? 'bg-white text-indigo-700 shadow-sm font-extrabold'
+                                                            : 'hover:text-slate-900 hover:bg-slate-200/50'
+                                                    }`}
+                                                >
+                                                    <span className="text-xs">{tab.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Search Bar */}
+                                        <div className="relative">
+                                            <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                value={query}
+                                                onChange={e => setQuery(e.target.value)}
+                                                placeholder="ค้นหาชื่อ, รหัสนักเรียน..."
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2.5 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            />
+                                            {query && (
+                                                <button
+                                                    onClick={() => setQuery('')}
+                                                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                                                >
+                                                    <XCircle className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Student Scroll List */}
+                                    <div className="max-h-[760px] flex-1 overflow-y-auto p-3 space-y-2">
+                                        {loading ? (
+                                            <LoadingState />
+                                        ) : filteredStudentList.length === 0 ? (
+                                            <div className="px-4 py-16 text-center">
+                                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                                                    <UserRound className="h-6 w-6" />
                                                 </div>
-                                                <p className="mt-0.5 text-xs font-medium text-slate-500">
-                                                    รหัสนักเรียน <strong className="text-slate-800">{selectedStudentData.student.student_code}</strong> · ห้องเรียน <strong className="text-slate-800">{selectedStudentData.student.current_room || selectedStudentData.student.current_grade_level || '-'}</strong>
+                                                <h4 className="mt-3 text-sm font-bold text-slate-800">ไม่พบรายชื่อผู้เรียน</h4>
+                                                <p className="mt-1 text-xs text-slate-500">ลองปรับเปลี่ยนคำค้นหาหรือตัวกรองระดับชั้น/ห้องเรียน</p>
+                                                <button
+                                                    onClick={() => { setQuery(''); setStatusFilter('all'); setGradeFilter('all'); setRoomFilter('all'); }}
+                                                    className="mt-3 rounded-lg text-xs font-extrabold text-indigo-600 hover:underline"
+                                                >
+                                                    ล้างการค้นหาและตัวกรองทั้งหมด
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            filteredStudentList.map(item => {
+                                                const isSelected = selectedStudentId === item.student.student_id;
+                                                const isCompleted = item.approved === item.total && item.total > 0;
+
+                                                return (
+                                                    <button
+                                                        key={item.student.student_id}
+                                                        onClick={() => setSelectedStudentId(item.student.student_id)}
+                                                        className={`group relative w-full rounded-2xl p-3.5 text-left transition-all duration-200 ${
+                                                            isSelected
+                                                                ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-1 ring-indigo-600'
+                                                                : 'bg-white hover:bg-slate-100/80 text-slate-900 border border-slate-200/70 shadow-sm'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-xs shadow-inner ${
+                                                                isSelected
+                                                                    ? 'bg-white/20 text-white'
+                                                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                                            }`}>
+                                                                {getInitials(item.student)}
+                                                            </div>
+
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center justify-between gap-1">
+                                                                    <p className={`truncate text-sm font-extrabold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                                                        {fullName(item.student)}
+                                                                    </p>
+                                                                    <ChevronRight className={`h-4 w-4 shrink-0 transition-transform ${isSelected ? 'text-white translate-x-0.5' : 'text-slate-300 group-hover:text-slate-500'}`} />
+                                                                </div>
+
+                                                                <div className="mt-1 flex items-center justify-between text-xs">
+                                                                    <span className={isSelected ? 'text-indigo-100' : 'text-slate-500'}>
+                                                                        รหัส {item.student.student_code} · {item.student.current_room || item.student.current_grade_level || '-'}
+                                                                    </span>
+                                                                    <span className={`font-bold ${isSelected ? 'text-indigo-100' : 'text-slate-700'}`}>
+                                                                        {item.approved}/{item.total} LO
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="mt-2 flex items-center gap-2">
+                                                                    <div className={`h-1.5 flex-1 overflow-hidden rounded-full ${isSelected ? 'bg-white/20' : 'bg-slate-100'}`}>
+                                                                        <div
+                                                                            className={`h-full rounded-full transition-all duration-300 ${
+                                                                                isSelected ? 'bg-white' : isCompleted ? 'bg-emerald-500' : 'bg-indigo-600'
+                                                                            }`}
+                                                                            style={{ width: `${item.percent}%` }}
+                                                                        />
+                                                                    </div>
+                                                                    <span className={`text-[10px] font-bold ${isSelected ? 'text-indigo-100' : 'text-slate-500'}`}>
+                                                                        {item.percent}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </aside>
+
+                                {/* ═══ Main Content: LO Evaluations grouped by Competency ═══ */}
+                                <main className="flex flex-col min-w-0 bg-slate-50/30 overflow-y-auto" aria-label="รายละเอียดการรับรองผล" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+                                    {!selectedStudentData ? (
+                                        <div className="flex flex-1 items-center justify-center p-12 text-center">
+                                            <div className="max-w-sm space-y-3">
+                                                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100">
+                                                    <Compass className="h-8 w-8" />
+                                                </div>
+                                                <h3 className="text-base font-extrabold text-slate-900">เลือกผู้เรียนจากรายการเพื่อเริ่มตรวจรับรอง</h3>
+                                                <p className="text-xs leading-relaxed text-slate-500">
+                                                    ระบบจะแสดงผลการประเมิน LO รายข้อที่จัดกลุ่มตามโครงสร้างความสามารถของหลักสูตรฐานสมรรถนะ
                                                 </p>
                                             </div>
                                         </div>
-
-                                        {/* Student Progress Overview */}
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-4 py-2.5 border border-slate-200/70">
-                                                <div className="text-right">
-                                                    <div className="text-[11px] font-semibold text-slate-500">ความคืบหน้าการรับรอง</div>
-                                                    <div className="text-sm font-black text-indigo-700">
-                                                        {selectedStudentData.approved} / {selectedStudentData.total} LO
-                                                    </div>
-                                                </div>
-                                                <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
-                                                    {selectedStudentData.percent}%
-                                                </div>
-                                            </div>
-
-                                            {/* Expand/Collapse All Buttons */}
-                                            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-                                                <button
-                                                    onClick={() => toggleAllLOsForStudent(true)}
-                                                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                                                    title="ขยายทุก LO เพื่อดูหลักฐาน"
-                                                >
-                                                    <Maximize2 className="h-3.5 w-3.5 text-indigo-600" /> ขยายทั้งหมด
-                                                </button>
-                                                <div className="h-4 w-px bg-slate-200" />
-                                                <button
-                                                    onClick={() => toggleAllLOsForStudent(false)}
-                                                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition"
-                                                    title="ย่อทุก LO"
-                                                >
-                                                    <Minimize2 className="h-3.5 w-3.5 text-slate-500" /> ย่อทั้งหมด
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Competency Groups Accordion / Cards */}
-                                    <div className="space-y-6">
-                                        {selectedStudentData.competencyGroups.map((group, groupIndex) => {
-                                            const allEntriesInGroup = group.areas.flatMap(a => a.entries);
-                                            const approvedInGroup = allEntriesInGroup.filter(e => e.decision?.decision_status === 'approved').length;
-                                            const isGroupDone = approvedInGroup === allEntriesInGroup.length && allEntriesInGroup.length > 0;
-
-                                            return (
-                                                <section
-                                                    key={groupIndex}
-                                                    className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm transition hover:shadow-md"
-                                                >
-                                                    {/* Competency Group Header */}
-                                                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-gradient-to-r from-indigo-50/80 via-slate-50 to-white px-6 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-                                                                <Layers className="h-5 w-5" />
-                                                            </div>
-                                                            <div>
-                                                                <h3 className="text-base font-extrabold text-slate-900">{group.groupName}</h3>
-                                                                <p className="text-xs text-slate-500">
-                                                                    ประกอบด้วย {group.areas.length} ด้านความสามารถ · รวม {allEntriesInGroup.length} LO
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold border ${
-                                                                isGroupDone
-                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                            }`}>
-                                                                {isGroupDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
-                                                                รับรองแล้ว {approvedInGroup} / {allEntriesInGroup.length} LO
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Areas and LO cards */}
-                                                    <div className="divide-y divide-slate-100">
-                                                        {group.areas.map((area, areaIndex) => (
-                                                            <div key={areaIndex} className="p-5 space-y-4">
-                                                                
-                                                                {/* Area Label if multiple */}
-                                                                {group.areas.length > 1 && (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="h-2 w-2 rounded-full bg-indigo-600" />
-                                                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
-                                                                            {area.areaName}
-                                                                        </h4>
-                                                                        <div className="h-px flex-1 bg-slate-100" />
-                                                                    </div>
-                                                                )}
-
-                                                                {/* LO Cards List */}
-                                                                <div className="space-y-4">
-                                                                    {area.entries.map(entry => {
-                                                                        const decisionStatus = entry.decision?.decision_status || 'pending';
-                                                                        const meta = statusMeta[decisionStatus] || statusMeta.pending;
-                                                                        const isExpanded = expandedLOs.has(entry.key);
-                                                                        const isSaving = savingLOs.has(entry.key);
-                                                                        const local = localDecisions[entry.key] || {};
-                                                                        const recommended = entry.recommended_level;
-                                                                        const isApproved = decisionStatus === 'approved';
-
-                                                                        return (
-                                                                            <div
-                                                                                key={entry.key}
-                                                                                className={`relative overflow-hidden rounded-2xl border transition-all duration-200 ${
-                                                                                    isApproved
-                                                                                        ? 'border-emerald-200 bg-emerald-50/20 shadow-sm'
-                                                                                        : decisionStatus === 'returned'
-                                                                                        ? 'border-rose-200 bg-rose-50/20 shadow-sm'
-                                                                                        : 'border-slate-200/90 bg-white hover:border-slate-300 shadow-sm'
-                                                                                }`}
-                                                                            >
-                                                                                {/* Status Indicator Bar (Left border accent) */}
-                                                                                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-                                                                                    isApproved ? 'bg-emerald-500' : decisionStatus === 'returned' ? 'bg-rose-500' : 'bg-amber-400'
-                                                                                }`} />
-
-                                                                                <div className="p-5 pl-6 space-y-4">
-                                                                                    {/* LO Header row */}
-                                                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                                                                        <div className="space-y-1.5 flex-1 min-w-0">
-                                                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                                                <span className="rounded-lg bg-indigo-700 px-3 py-1 text-xs font-black text-white shadow-sm">
-                                                                                                    {entry.lo.lo_code || `LO ${entry.lo.ability_no}`}
-                                                                                                </span>
-                                                                                                <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-0.5 text-xs font-bold ${meta.className}`}>
-                                                                                                    {meta.label}
-                                                                                                </span>
-
-                                                                                                {recommended && (
-                                                                                                    <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
-                                                                                                        <Award className="h-3.5 w-3.5 text-indigo-600" />
-                                                                                                        ข้อเสนอจากครู: <strong className="font-extrabold">{formalLevelLabel(recommended)}</strong>
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                            <p className="text-sm font-semibold text-slate-800 leading-relaxed max-w-[80ch]">
-                                                                                                {entry.lo.lo_description}
-                                                                                            </p>
-                                                                                        </div>
-
-                                                                                        {/* Toggle Expand Sources Button */}
-                                                                                        <button
-                                                                                            onClick={() => toggleExpanded(entry.key)}
-                                                                                            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition shrink-0"
-                                                                                        >
-                                                                                            {isExpanded ? (
-                                                                                                <>ซ่อนหลักฐาน <ChevronUp className="h-3.5 w-3.5" /></>
-                                                                                            ) : (
-                                                                                                <>ดูหลักฐานครู ({entry.sources.length}) <ChevronDown className="h-3.5 w-3.5" /></>
-                                                                                            )}
-                                                                                        </button>
-                                                                                    </div>
-
-                                                                                    {/* Expanded Evidence Cards / Sources Table */}
-                                                                                    {isExpanded && (
-                                                                                        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 animate-fadeIn">
-                                                                                            <div className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-                                                                                                <BookOpen className="h-3.5 w-3.5 text-indigo-600" /> หลักฐานการประเมินจากครูผู้สอน ({entry.sources.length} แหล่ง)
-                                                                                            </div>
-
-                                                                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                                                                {entry.sources.map((source, si) => {
-                                                                                                    const statusInfo = sourceStatusMeta(source);
-                                                                                                    return (
-                                                                                                        <div key={si} className="rounded-xl border border-slate-200/90 bg-white p-3 space-y-1.5 shadow-2xs">
-                                                                                                            <div className="flex items-center justify-between text-xs">
-                                                                                                                <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                                                                                                                    {source.source_type === 'subject' ? (
-                                                                                                                        <BookOpen className="h-3.5 w-3.5 text-indigo-600" />
-                                                                                                                    ) : (
-                                                                                                                        <FolderKanban className="h-3.5 w-3.5 text-indigo-600" />
-                                                                                                                    )}
-                                                                                                                    {sourceLabel(source)}
-                                                                                                                </span>
-                                                                                                                <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${statusInfo.className}`}>
-                                                                                                                    {statusInfo.label}
-                                                                                                                </span>
-                                                                                                            </div>
-                                                                                                            <div className="flex items-baseline justify-between text-xs">
-                                                                                                                <span className="text-slate-500">ระดับที่ครูประเมิน:</span>
-                                                                                                                <span className="font-extrabold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                                                                                                                    {source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}
-                                                                                                                </span>
-                                                                                                            </div>
-                                                                                                            {source.evidence_note && (
-                                                                                                                <p className="text-[11px] leading-relaxed text-slate-600 italic border-l-2 border-indigo-300 pl-2">
-                                                                                                                    "{source.evidence_note}"
-                                                                                                                </p>
-                                                                                                            )}
-                                                                                                        </div>
-                                                                                                    );
-                                                                                                })}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )}
-
-                                                                                    {/* Decision Form Container */}
-                                                                                    <div className="rounded-xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-indigo-50/20 p-4 space-y-3">
-                                                                                        
-                                                                                        {/* Radio Level Selector */}
-                                                                                        <div>
-                                                                                            <span className="block text-xs font-extrabold text-slate-700 mb-2">
-                                                                                                ระดับความสามารถสุดท้าย (ฝ่ายวิชาการพิจารณา) <span className="text-rose-500">*</span>
-                                                                                            </span>
-                                                                                            <div className="flex flex-wrap gap-2">
-                                                                                                {LEVELS.map(level => {
-                                                                                                    const isSelectedLevel = (local.level || '') === level;
-                                                                                                    const styling = levelColorMap[level] || levelColorMap['N/A'];
-
-                                                                                                    return (
-                                                                                                        <button
-                                                                                                            type="button"
-                                                                                                            key={level}
-                                                                                                            onClick={() => updateLocalDecision(entry.key, 'level', level)}
-                                                                                                            className={`cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-extrabold transition-all duration-150 shadow-2xs ${
-                                                                                                                isSelectedLevel
-                                                                                                                    ? `${styling.activeBg} ring-2 ${styling.bg.split(' ')[3]} shadow-md scale-[1.02]`
-                                                                                                                    : `${styling.bg} hover:brightness-95`
-                                                                                                            }`}
-                                                                                                        >
-                                                                                                            {formalLevelLabel(level)}
-                                                                                                        </button>
-                                                                                                    );
-                                                                                                })}
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        {/* Reason Input & Quick Presets */}
-                                                                                        <div className="space-y-2">
-                                                                                            <div className="flex items-center justify-between">
-                                                                                                <label className="text-xs font-extrabold text-slate-700">
-                                                                                                    เหตุผลประกอบการตัดสิน / ข้อเสนอแนะ <span className="text-rose-500">*</span>
-                                                                                                </label>
-                                                                                                <span className="text-[11px] text-slate-400">คลิกข้อความสำเร็จรูปเพื่อกรอกรวดเร็ว</span>
-                                                                                            </div>
-
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={local.reason || ''}
-                                                                                                onChange={e => updateLocalDecision(entry.key, 'reason', e.target.value)}
-                                                                                                placeholder="พิมพ์เหตุผล เช่น หลักฐานเชิงประจักษ์ครบถ้วนและสอดคล้องกันทุกแหล่ง..."
-                                                                                                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 shadow-2xs transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                                                            />
-
-                                                                                            {/* Quick Preset Buttons (Academic Officer UX Boost) */}
-                                                                                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                                                                                <span className="text-[10px] font-bold text-slate-400">ตัวเลือกด่วน:</span>
-                                                                                                {PRESET_REASONS_APPROVE.map((preset, pi) => (
-                                                                                                    <button
-                                                                                                        key={pi}
-                                                                                                        type="button"
-                                                                                                        onClick={() => appendPresetReason(entry.key, preset)}
-                                                                                                        className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-2xs hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition"
-                                                                                                    >
-                                                                                                        + {preset}
-                                                                                                    </button>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        {/* Action Buttons Row */}
-                                                                                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/60">
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleSingleDecision(entry, 'returned')}
-                                                                                                disabled={isSaving || isApproved}
-                                                                                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 shadow-2xs hover:bg-rose-50 transition focus:outline-none focus:ring-2 focus:ring-rose-500/20 disabled:opacity-50"
-                                                                                            >
-                                                                                                <RotateCcw className="h-3.5 w-3.5" /> ส่งกลับแก้ไข
-                                                                                            </button>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleSingleDecision(entry, 'approved')}
-                                                                                                disabled={isSaving || isApproved}
-                                                                                                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:from-indigo-700 hover:to-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
-                                                                                            >
-                                                                                                {isSaving ? (
-                                                                                                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                                                                                ) : (
-                                                                                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                                                                                )}
-                                                                                                {isApproved ? 'รับรองแล้ว' : 'บันทึกรับรองข้อนี้'}
-                                                                                            </button>
-                                                                                        </div>
-                                                                                    </div>
-
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </section>
-                                            );
-                                        })}
-
-                                        {/* Competency Group Overall Summary Card */}
-                                        <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-md space-y-4">
-                                            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
-                                                        <ShieldCheck className="h-5 w-5" />
+                                    ) : (
+                                        <div className="space-y-6 p-6 lg:p-8">
+                                            
+                                            {/* Selected Student Header with Next/Prev Shortcuts */}
+                                            <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-lg font-black text-white shadow-md shadow-indigo-600/20">
+                                                        {getInitials(selectedStudentData.student)}
                                                     </div>
                                                     <div>
-                                                        <h3 className="text-base font-extrabold text-slate-900">สรุปผลรวมรายด้านความสามารถ</h3>
-                                                        <p className="text-xs text-slate-500">ผลการประเมินสรุปของ {fullName(selectedStudentData.student)} เมื่อพิจารณาครบรอบ</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <h2 className="text-xl font-black text-slate-950">{fullName(selectedStudentData.student)}</h2>
+                                                            <span className="rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
+                                                                ช่วงชั้น {selectedStudentData.levelGroup}
+                                                            </span>
+                                                        </div>
+                                                        <p className="mt-0.5 text-xs font-medium text-slate-500">
+                                                            รหัสนักเรียน <strong className="text-slate-800">{selectedStudentData.student.student_code}</strong> · ห้องเรียน <strong className="text-slate-800">{selectedStudentData.student.current_room || selectedStudentData.student.current_grade_level || '-'}</strong>
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Fast Next/Prev Navigation Buttons */}
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+                                                        <button
+                                                            onClick={() => navigateStudent(-1)}
+                                                            disabled={currentStudentIndex <= 0}
+                                                            className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:shadow-2xs transition disabled:opacity-40"
+                                                        >
+                                                            <ArrowLeftCircle className="h-4 w-4 text-indigo-600" /> คนก่อนหน้า
+                                                        </button>
+                                                        <span className="text-[11px] font-bold text-slate-400 px-1">
+                                                            {currentStudentIndex + 1} / {filteredStudentList.length}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => navigateStudent(1)}
+                                                            disabled={currentStudentIndex >= filteredStudentList.length - 1}
+                                                            className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-white hover:shadow-2xs transition disabled:opacity-40"
+                                                        >
+                                                            คนถัดไป <ArrowRightCircle className="h-4 w-4 text-indigo-600" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+                                                        <button
+                                                            onClick={() => toggleAllLOsForStudent(true)}
+                                                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                                                            title="ขยายทุก LO"
+                                                        >
+                                                            <Maximize2 className="h-3.5 w-3.5 text-indigo-600" /> ขยาย
+                                                        </button>
+                                                        <div className="h-4 w-px bg-slate-200" />
+                                                        <button
+                                                            onClick={() => toggleAllLOsForStudent(false)}
+                                                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
+                                                            title="ย่อทุก LO"
+                                                        >
+                                                            <Minimize2 className="h-3.5 w-3.5 text-slate-500" /> ย่อ
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div className="grid gap-4 sm:grid-cols-2">
-                                                {selectedStudentData.competencyGroups.map((group, gi) => {
-                                                    const allEntries = group.areas.flatMap(a => a.entries);
-                                                    const approvedEntries = allEntries.filter(e => e.decision?.decision_status === 'approved');
-                                                    const passedEntries = approvedEntries.filter(e => ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(e.decision?.final_level));
+                                            {/* Competency Groups Accordion / Cards */}
+                                            <div className="space-y-6">
+                                                {selectedStudentData.competencyGroups.map((group, groupIndex) => {
+                                                    const allEntriesInGroup = group.areas.flatMap(a => a.entries);
+                                                    const approvedInGroup = allEntriesInGroup.filter(e => e.decision?.decision_status === 'approved').length;
+                                                    const isGroupDone = approvedInGroup === allEntriesInGroup.length && allEntriesInGroup.length > 0;
 
                                                     return (
-                                                        <div key={gi} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <h4 className="text-sm font-black text-slate-900">{group.groupName}</h4>
-                                                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
-                                                                    รับรองแล้ว {approvedEntries.length}/{allEntries.length} LO
-                                                                </span>
+                                                        <section
+                                                            key={groupIndex}
+                                                            className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm transition hover:shadow-md"
+                                                        >
+                                                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-gradient-to-r from-indigo-50/80 via-slate-50 to-white px-6 py-4">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                                                                        <Layers className="h-5 w-5" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <h3 className="text-base font-extrabold text-slate-900">{group.groupName}</h3>
+                                                                        <p className="text-xs text-slate-500">
+                                                                            ประกอบด้วย {group.areas.length} ด้านความสามารถ · รวม {allEntriesInGroup.length} LO
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold border ${
+                                                                        isGroupDone
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                    }`}>
+                                                                        {isGroupDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                                                        รับรองแล้ว {approvedInGroup} / {allEntriesInGroup.length} LO
+                                                                    </span>
+                                                                </div>
                                                             </div>
 
-                                                            <div className="space-y-2">
-                                                                {group.areas.map((area, ai) => {
-                                                                    const areaEntries = area.entries;
-                                                                    const areaDecisions = areaEntries.map(e => e.decision).filter(Boolean).filter(d => d.decision_status === 'approved');
-                                                                    const levels = areaDecisions.map(d => d.final_level).filter(l => l && l !== 'N/A');
-                                                                    const representativeLevel = levels.length > 0 ? levels.sort((a, b) => LEVEL_ORDER[a] - LEVEL_ORDER[b])[0] : null;
+                                                            <div className="divide-y divide-slate-100">
+                                                                {group.areas.map((area, areaIndex) => (
+                                                                    <div key={areaIndex} className="p-5 space-y-4">
+                                                                        {group.areas.length > 1 && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="h-2 w-2 rounded-full bg-indigo-600" />
+                                                                                <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                                                                                    {area.areaName}
+                                                                                </h4>
+                                                                                <div className="h-px flex-1 bg-slate-100" />
+                                                                            </div>
+                                                                        )}
 
-                                                                    return (
-                                                                        <div key={ai} className="flex items-center justify-between text-xs bg-white p-2.5 rounded-lg border border-slate-200/70">
-                                                                            <span className="font-semibold text-slate-700">{area.areaName}</span>
-                                                                            {representativeLevel ? (
-                                                                                <span className={`font-extrabold px-2.5 py-0.5 rounded-md text-[11px] ${
-                                                                                    ['ชำนาญ', 'เชี่ยวชาญ'].includes(representativeLevel)
-                                                                                        ? 'bg-emerald-100 text-emerald-800'
-                                                                                        : representativeLevel === 'พัฒนา'
-                                                                                        ? 'bg-sky-100 text-sky-800'
-                                                                                        : 'bg-amber-100 text-amber-800'
-                                                                                }`}>
-                                                                                    {formalLevelLabel(representativeLevel)}
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
-                                                                                    รอพิจารณา
-                                                                                </span>
-                                                                            )}
+                                                                        <div className="space-y-4">
+                                                                            {area.entries.map(entry => {
+                                                                                const decisionStatus = entry.decision?.decision_status || 'pending';
+                                                                                const meta = statusMeta[decisionStatus] || statusMeta.pending;
+                                                                                const isExpanded = expandedLOs.has(entry.key);
+                                                                                const isSaving = savingLOs.has(entry.key);
+                                                                                const local = localDecisions[entry.key] || {};
+                                                                                const recommended = entry.recommended_level;
+                                                                                const isApproved = decisionStatus === 'approved';
+
+                                                                                return (
+                                                                                    <div
+                                                                                        key={entry.key}
+                                                                                        className={`relative overflow-hidden rounded-2xl border transition-all duration-200 ${
+                                                                                            isApproved
+                                                                                                ? 'border-emerald-200 bg-emerald-50/20 shadow-sm'
+                                                                                                : decisionStatus === 'returned'
+                                                                                                ? 'border-rose-200 bg-rose-50/20 shadow-sm'
+                                                                                                : 'border-slate-200/90 bg-white hover:border-slate-300 shadow-sm'
+                                                                                        }`}
+                                                                                    >
+                                                                                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
+                                                                                            isApproved ? 'bg-emerald-500' : decisionStatus === 'returned' ? 'bg-rose-500' : 'bg-amber-400'
+                                                                                        }`} />
+
+                                                                                        <div className="p-5 pl-6 space-y-4">
+                                                                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                                                <div className="space-y-1.5 flex-1 min-w-0">
+                                                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                                                        <span className="rounded-lg bg-indigo-700 px-3 py-1 text-xs font-black text-white shadow-sm">
+                                                                                                            {entry.lo.lo_code || `LO ${entry.lo.ability_no}`}
+                                                                                                        </span>
+                                                                                                        <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-0.5 text-xs font-bold ${meta.className}`}>
+                                                                                                            {meta.label}
+                                                                                                        </span>
+
+                                                                                                        {recommended && (
+                                                                                                            <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+                                                                                                                <Award className="h-3.5 w-3.5 text-indigo-600" />
+                                                                                                                ข้อเสนอจากครู: <strong className="font-extrabold">{formalLevelLabel(recommended)}</strong>
+                                                                                                            </span>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                    <p className="text-sm font-semibold text-slate-800 leading-relaxed max-w-[80ch]">
+                                                                                                        {entry.lo.lo_description}
+                                                                                                    </p>
+                                                                                                </div>
+
+                                                                                                <button
+                                                                                                    onClick={() => toggleExpanded(entry.key)}
+                                                                                                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition shrink-0"
+                                                                                                >
+                                                                                                    {isExpanded ? (
+                                                                                                        <>ซ่อนหลักฐาน <ChevronUp className="h-3.5 w-3.5" /></>
+                                                                                                    ) : (
+                                                                                                        <>ดูหลักฐานครู ({entry.sources.length}) <ChevronDown className="h-3.5 w-3.5" /></>
+                                                                                                    )}
+                                                                                                </button>
+                                                                                            </div>
+
+                                                                                            {isExpanded && (
+                                                                                                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 animate-fadeIn">
+                                                                                                    <div className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                                                                                                        <BookOpen className="h-3.5 w-3.5 text-indigo-600" /> หลักฐานการประเมินจากครูผู้สอน ({entry.sources.length} แหล่ง)
+                                                                                                    </div>
+
+                                                                                                    <div className="grid gap-2 sm:grid-cols-2">
+                                                                                                        {entry.sources.map((source, si) => {
+                                                                                                            const statusInfo = sourceStatusMeta(source);
+                                                                                                            return (
+                                                                                                                <div key={si} className="rounded-xl border border-slate-200/90 bg-white p-3 space-y-1.5 shadow-2xs">
+                                                                                                                    <div className="flex items-center justify-between text-xs">
+                                                                                                                        <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                                                                                                                            {source.source_type === 'subject' ? (
+                                                                                                                                <BookOpen className="h-3.5 w-3.5 text-indigo-600" />
+                                                                                                                            ) : (
+                                                                                                                                <FolderKanban className="h-3.5 w-3.5 text-indigo-600" />
+                                                                                                                            )}
+                                                                                                                            {sourceLabel(source)}
+                                                                                                                        </span>
+                                                                                                                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${statusInfo.className}`}>
+                                                                                                                            {statusInfo.label}
+                                                                                                                        </span>
+                                                                                                                    </div>
+                                                                                                                    <div className="flex items-baseline justify-between text-xs">
+                                                                                                                        <span className="text-slate-500">ระดับที่ครูประเมิน:</span>
+                                                                                                                        <span className="font-extrabold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
+                                                                                                                            {source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}
+                                                                                                                        </span>
+                                                                                                                    </div>
+                                                                                                                    {source.evidence_note && (
+                                                                                                                        <p className="text-[11px] leading-relaxed text-slate-600 italic border-l-2 border-indigo-300 pl-2">
+                                                                                                                            "{source.evidence_note}"
+                                                                                                                        </p>
+                                                                                                                    )}
+                                                                                                                </div>
+                                                                                                            );
+                                                                                                        })}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            )}
+
+                                                                                            <div className="rounded-xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-indigo-50/20 p-4 space-y-3">
+                                                                                                <div>
+                                                                                                    <span className="block text-xs font-extrabold text-slate-700 mb-2">
+                                                                                                        ระดับความสามารถสุดท้าย (ฝ่ายวิชาการพิจารณา) <span className="text-rose-500">*</span>
+                                                                                                    </span>
+                                                                                                    <div className="flex flex-wrap gap-2">
+                                                                                                        {LEVELS.map(level => {
+                                                                                                            const isSelectedLevel = (local.level || '') === level;
+                                                                                                            const styling = levelColorMap[level] || levelColorMap['N/A'];
+
+                                                                                                            return (
+                                                                                                                <button
+                                                                                                                    type="button"
+                                                                                                                    key={level}
+                                                                                                                    onClick={() => updateLocalDecision(entry.key, 'level', level)}
+                                                                                                                    className={`cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-extrabold transition-all duration-150 shadow-2xs ${
+                                                                                                                        isSelectedLevel
+                                                                                                                            ? `${styling.activeBg} ring-2 ${styling.bg.split(' ')[3]} shadow-md scale-[1.02]`
+                                                                                                                            : `${styling.bg} hover:brightness-95`
+                                                                                                                    }`}
+                                                                                                                >
+                                                                                                                    {formalLevelLabel(level)}
+                                                                                                                </button>
+                                                                                                            );
+                                                                                                        })}
+                                                                                                    </div>
+                                                                                                </div>
+
+                                                                                                <div className="space-y-2">
+                                                                                                    <div className="flex items-center justify-between">
+                                                                                                        <label className="text-xs font-extrabold text-slate-700">
+                                                                                                            เหตุผลประกอบการตัดสิน / ข้อเสนอแนะ <span className="text-rose-500">*</span>
+                                                                                                        </label>
+                                                                                                        <span className="text-[11px] text-slate-400">คลิกข้อความสำเร็จรูปเพื่อกรอกรวดเร็ว</span>
+                                                                                                    </div>
+
+                                                                                                    <input
+                                                                                                        type="text"
+                                                                                                        value={local.reason || ''}
+                                                                                                        onChange={e => updateLocalDecision(entry.key, 'reason', e.target.value)}
+                                                                                                        placeholder="พิมพ์เหตุผล..."
+                                                                                                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 shadow-2xs transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                                                                    />
+
+                                                                                                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                                                                                        <span className="text-[10px] font-bold text-slate-400">ตัวเลือกด่วน:</span>
+                                                                                                        {PRESET_REASONS_APPROVE.map((preset, pi) => (
+                                                                                                            <button
+                                                                                                                key={pi}
+                                                                                                                type="button"
+                                                                                                                onClick={() => appendPresetReason(entry.key, preset)}
+                                                                                                                className="rounded-lg bg-white border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-2xs hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 transition"
+                                                                                                            >
+                                                                                                                + {preset}
+                                                                                                            </button>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                </div>
+
+                                                                                                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/60">
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => handleSingleDecision(entry, 'returned')}
+                                                                                                        disabled={isSaving || isApproved}
+                                                                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 shadow-2xs hover:bg-rose-50 transition focus:outline-none focus:ring-2 focus:ring-rose-500/20 disabled:opacity-50"
+                                                                                                    >
+                                                                                                        <RotateCcw className="h-3.5 w-3.5" /> ส่งกลับแก้ไข
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        type="button"
+                                                                                                        onClick={() => handleSingleDecision(entry, 'approved')}
+                                                                                                        disabled={isSaving || isApproved}
+                                                                                                        className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:from-indigo-700 hover:to-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
+                                                                                                    >
+                                                                                                        {isSaving ? (
+                                                                                                            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                                                                                        ) : (
+                                                                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                                                                        )}
+                                                                                                        {isApproved ? 'รับรองแล้ว' : 'บันทึกรับรองข้อนี้'}
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                         </div>
-                                                                    );
-                                                                })}
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                        </div>
+                                                        </section>
                                                     );
                                                 })}
+
+                                                {/* Competency Group Summary */}
+                                                <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-md space-y-4">
+                                                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
+                                                                <ShieldCheck className="h-5 w-5" />
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="text-base font-extrabold text-slate-900">สรุปผลรวมรายด้านความสามารถ</h3>
+                                                                <p className="text-xs text-slate-500">ผลการประเมินสรุปของ {fullName(selectedStudentData.student)} เมื่อพิจารณาครบรอบ</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid gap-4 sm:grid-cols-2">
+                                                        {selectedStudentData.competencyGroups.map((group, gi) => {
+                                                            const allEntries = group.areas.flatMap(a => a.entries);
+                                                            const approvedEntries = allEntries.filter(e => e.decision?.decision_status === 'approved');
+
+                                                            return (
+                                                                <div key={gi} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <h4 className="text-sm font-black text-slate-900">{group.groupName}</h4>
+                                                                        <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
+                                                                            รับรองแล้ว {approvedEntries.length}/{allEntries.length} LO
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <div className="space-y-2">
+                                                                        {group.areas.map((area, ai) => {
+                                                                            const areaEntries = area.entries;
+                                                                            const areaDecisions = areaEntries.map(e => e.decision).filter(Boolean).filter(d => d.decision_status === 'approved');
+                                                                            const levels = areaDecisions.map(d => d.final_level).filter(l => l && l !== 'N/A');
+                                                                            const representativeLevel = levels.length > 0 ? levels.sort((a, b) => LEVEL_ORDER[a] - LEVEL_ORDER[b])[0] : null;
+
+                                                                            return (
+                                                                                <div key={ai} className="flex items-center justify-between text-xs bg-white p-2.5 rounded-lg border border-slate-200/70">
+                                                                                    <span className="font-semibold text-slate-700">{area.areaName}</span>
+                                                                                    {representativeLevel ? (
+                                                                                        <span className={`font-extrabold px-2.5 py-0.5 rounded-md text-[11px] ${
+                                                                                            ['ชำนาญ', 'เชี่ยวชาญ'].includes(representativeLevel)
+                                                                                                ? 'bg-emerald-100 text-emerald-800'
+                                                                                                : representativeLevel === 'พัฒนา'
+                                                                                                ? 'bg-sky-100 text-sky-800'
+                                                                                                : 'bg-amber-100 text-amber-800'
+                                                                                        }`}>
+                                                                                            {formalLevelLabel(representativeLevel)}
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <span className="font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
+                                                                                            รอพิจารณา
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
+                                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                            <History className="h-4 w-4 text-indigo-600 shrink-0" />
+                                                            <span>ข้อมูลการตัดสินและการอนุมัติทั้งหมดจะถูกบันทึกใน Audit Log อย่างปลอดภัย</span>
+                                                        </div>
+
+                                                        <button
+                                                            onClick={handleBatchApprove}
+                                                            disabled={saving || selectedStudentData.pending === 0}
+                                                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-3 text-sm font-black text-white shadow-lg shadow-emerald-600/20 transition hover:from-emerald-700 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
+                                                        >
+                                                            {saving ? (
+                                                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                                            ) : (
+                                                                <Save className="h-4 w-4" />
+                                                            )}
+                                                            ยืนยันรับรองผลทุก LO ที่พร้อมส่งตรวจ
+                                                        </button>
+                                                    </div>
+                                                </section>
+
                                             </div>
-
-                                            {/* Batch Approve Sticky Action Container */}
-                                            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
-                                                <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                    <History className="h-4 w-4 text-indigo-600 shrink-0" />
-                                                    <span>ข้อมูลการตัดสินและการอนุมัติทั้งหมดจะถูกบันทึกใน Audit Log อย่างปลอดภัย</span>
-                                                </div>
-
-                                                <button
-                                                    onClick={handleBatchApprove}
-                                                    disabled={saving || selectedStudentData.pending === 0}
-                                                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-3 text-sm font-black text-white shadow-lg shadow-emerald-600/20 transition hover:from-emerald-700 hover:to-teal-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
-                                                >
-                                                    {saving ? (
-                                                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                                                    ) : (
-                                                        <Save className="h-4 w-4" />
-                                                    )}
-                                                    ยืนยันรับรองผลทุก LO ที่พร้อมส่งตรวจ
-                                                </button>
-                                            </div>
-                                        </section>
-
-                                    </div>
-                                </div>
-                            )}
-                        </main>
+                                        </div>
+                                    )}
+                                </main>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
