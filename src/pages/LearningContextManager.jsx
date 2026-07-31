@@ -32,7 +32,7 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
-import { CBE_SUBJECT_GROUPS_2568 } from '../constants/curriculum2568';
+import { CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
 const TYPE_META = {
     subject: { icon: BookOpen, className: 'border-indigo-200 bg-indigo-50 text-indigo-700', activeBadge: 'bg-indigo-600 text-white' },
@@ -367,7 +367,7 @@ export default function LearningContextManager() {
                 
                 {/* Datalist for CBE 2568 Subject Groups autocomplete */}
                 <datalist id="cbe-subject-groups-list">
-                    {CBE_SUBJECT_GROUPS_2568.map(g => <option key={g} value={g} />)}
+                    {CBE_SUBJECT_GROUPS_ALL_2568.map(g => <option key={g} value={g} />)}
                 </datalist>
 
                 {/* Top Header Hero Banner */}
@@ -653,17 +653,102 @@ export default function LearningContextManager() {
                                                 </div>
 
                                                 {/* Subject Group Input / Selection (CBE 2568 กลุ่มวิชา) */}
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-extrabold text-slate-800">
-                                                        กลุ่มวิชา (หลักสูตร 2568)
-                                                    </label>
+                                                <div className="space-y-2 sm:col-span-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-extrabold text-slate-800">
+                                                            กลุ่มวิชา (หลักสูตร 2568)
+                                                        </label>
+                                                        {form.subject_group && (
+                                                            <span className="text-[11px] font-bold text-indigo-700">
+                                                                เลือกแล้ว: {form.subject_group}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
                                                     <input
                                                         list="cbe-subject-groups-list"
                                                         value={form.subject_group}
                                                         onChange={e => updateForm('subject_group', e.target.value)}
-                                                        placeholder="เลือกหรือพิมพ์ เช่น ภาษาและการสื่อสาร, การคิดคำนวณ..."
+                                                        placeholder="เลือกจากตัวเลือกด้านล่าง หรือพิมพ์เองได้..."
                                                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
+
+                                                    {/* Quick Choice Chips by Phase */}
+                                                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-2.5 text-xs">
+                                                        {/* ป.ต้น */}
+                                                        {(!form.grade_level || ['ป.1', 'ป.2', 'ป.3'].includes(form.grade_level)) && (
+                                                            <div className="space-y-1">
+                                                                <span className="block text-[11px] font-extrabold text-indigo-900">
+                                                                    — กลุ่มวิชาสำหรับ ป.ต้น (ป.1 - ป.3) —
+                                                                </span>
+                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ต้น'].map(group => (
+                                                                    <div key={group.groupName} className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                                                        <span className="text-[10px] font-bold text-slate-500 shrink-0">{group.groupName}:</span>
+                                                                        {group.items.map(item => (
+                                                                            <button
+                                                                                key={`ton-${item}`}
+                                                                                type="button"
+                                                                                onClick={() => updateForm('subject_group', item)}
+                                                                                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                                                                    form.subject_group === item
+                                                                                        ? 'bg-indigo-700 text-white shadow-xs'
+                                                                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
+                                                                                }`}
+                                                                            >
+                                                                                {item}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        {/* ป.ปลาย */}
+                                                        {(!form.grade_level || ['ป.4', 'ป.5', 'ป.6'].includes(form.grade_level)) && (
+                                                            <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                                                                <span className="block text-[11px] font-extrabold text-indigo-900">
+                                                                    — กลุ่มวิชาสำหรับ ป.ปลาย (ป.4 - ป.6) —
+                                                                </span>
+                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ปลาย'].map(group => (
+                                                                    <div key={group.groupName} className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                                                        <span className="text-[10px] font-bold text-slate-500 shrink-0">{group.groupName}:</span>
+                                                                        {group.items.map(item => (
+                                                                            <button
+                                                                                key={`plai-${item}`}
+                                                                                type="button"
+                                                                                onClick={() => updateForm('subject_group', item)}
+                                                                                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                                                                    form.subject_group === item
+                                                                                        ? 'bg-indigo-700 text-white shadow-xs'
+                                                                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
+                                                                                }`}
+                                                                            >
+                                                                                {item}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60">
+                                                            <span className="text-[10px] font-bold text-slate-500">กลุ่มรูปแบบอื่น:</span>
+                                                            {['บูรณาการหลายกลุ่มวิชา', 'กิจกรรมพัฒนาผู้เรียน'].map(item => (
+                                                                <button
+                                                                    key={`other-${item}`}
+                                                                    type="button"
+                                                                    onClick={() => updateForm('subject_group', item)}
+                                                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                                                        form.subject_group === item
+                                                                            ? 'bg-indigo-700 text-white shadow-xs'
+                                                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
+                                                                    }`}
+                                                                >
+                                                                    {item}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 </div>
 
                                                 <div className="space-y-1">
