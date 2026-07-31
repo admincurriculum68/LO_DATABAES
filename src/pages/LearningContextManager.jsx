@@ -5,6 +5,7 @@ import {
     BookOpen,
     Check,
     CheckCircle2,
+    ChevronDown,
     ChevronRight,
     ClipboardList,
     Compass,
@@ -17,6 +18,7 @@ import {
     PauseCircle,
     PlayCircle,
     Plus,
+    RotateCcw,
     Save,
     Search,
     ShieldCheck,
@@ -116,8 +118,19 @@ export default function LearningContextManager() {
     const [selectedLOs, setSelectedLOs] = useState([]);
     const [form, setForm] = useState(EMPTY_FORM);
     const [viewMode, setViewMode] = useState('manage');
+    
+    // Multi-level Filters for Real School Scale (500-2,000 students / 100+ contexts)
     const [formatFilter, setFormatFilter] = useState('all');
+    const [gradeFilter, setGradeFilter] = useState('all');
+    const [groupFilter, setGroupFilter] = useState('all');
+    const [loStatusFilter, setLoStatusFilter] = useState('all');
     const [itemQuery, setItemQuery] = useState('');
+    const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+
+    // Form Subject Group UI Selection Mode ('select' vs 'custom')
+    const [customGroupInput, setCustomGroupInput] = useState(false);
+    const [formPhaseTab, setFormPhaseTab] = useState('auto'); // 'auto', 'ป.ต้น', 'ป.ปลาย'
+
     const [loQuery, setLoQuery] = useState('');
     const [areaFilter, setAreaFilter] = useState('all');
     const [showSelectedOnly, setShowSelectedOnly] = useState(false);
@@ -233,15 +246,64 @@ export default function LearningContextManager() {
         return learningFormats.filter(item => (mappedByItem[item.key] || []).length > 0).length;
     }, [learningFormats, mappedByItem]);
 
+    // Unique Subject Groups available in existing data for filter dropdown
+    const availableGroupsInSystem = useMemo(() => {
+        const set = new Set();
+        learningFormats.forEach(item => {
+            if (item.subject_group) set.add(item.subject_group);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, 'th'));
+    }, [learningFormats]);
+
+    // Active Filters Counter
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (gradeFilter !== 'all') count++;
+        if (groupFilter !== 'all') count++;
+        if (loStatusFilter !== 'all') count++;
+        if (itemQuery.trim()) count++;
+        return count;
+    }, [gradeFilter, groupFilter, loStatusFilter, itemQuery]);
+
+    const resetFilters = () => {
+        setGradeFilter('all');
+        setGroupFilter('all');
+        setLoStatusFilter('all');
+        setItemQuery('');
+    };
+
+    // Advanced Multi-Level Filtered Learning Formats for Real-World School Scale
     const filteredFormats = useMemo(() => {
         const normalized = itemQuery.trim().toLowerCase();
         return learningFormats.filter(item => {
+            // 1. Format Type filter
             if (formatFilter !== 'all' && item.context_type !== formatFilter) return false;
-            if (!normalized) return true;
-            const teacherName = teacherById[item.responsible_teacher_id] || '';
-            return `${item.context_name || ''} ${item.subject_group || ''} ${item.description || ''} ${item.grade_level || ''} ${teacherName}`.toLowerCase().includes(normalized);
+            
+            // 2. Grade Level / Phase filter
+            if (gradeFilter !== 'all') {
+                if (gradeFilter === 'ป.ต้น' && !['ป.1', 'ป.2', 'ป.3'].includes(item.grade_level)) return false;
+                if (gradeFilter === 'ป.ปลาย' && !['ป.4', 'ป.5', 'ป.6'].includes(item.grade_level)) return false;
+                if (!['ป.ต้น', 'ป.ปลาย'].includes(gradeFilter) && item.grade_level !== gradeFilter) return false;
+            }
+
+            // 3. Subject Group filter
+            if (groupFilter !== 'all' && item.subject_group !== groupFilter) return false;
+
+            // 4. LO Status filter (ผูกแล้ว vs ยังไม่ผูก)
+            const loCount = (mappedByItem[item.key] || []).length;
+            if (loStatusFilter === 'mapped' && loCount === 0) return false;
+            if (loStatusFilter === 'unmapped' && loCount > 0) return false;
+
+            // 5. Search Text Query
+            if (normalized) {
+                const teacherName = teacherById[item.responsible_teacher_id] || '';
+                const haystack = `${item.context_name || ''} ${item.subject_group || ''} ${item.description || ''} ${item.grade_level || ''} ${teacherName}`.toLowerCase();
+                if (!haystack.includes(normalized)) return false;
+            }
+
+            return true;
         });
-    }, [formatFilter, itemQuery, learningFormats, teacherById]);
+    }, [formatFilter, gradeFilter, groupFilter, loStatusFilter, itemQuery, learningFormats, mappedByItem, teacherById]);
 
     const competencyAreas = useMemo(() => [...new Set(los.map(lo => lo.competency_area).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [los]);
     const filteredLOs = useMemo(() => {
@@ -281,6 +343,8 @@ export default function LearningContextManager() {
     const openCreate = type => {
         if (!confirmDiscardMapping()) return;
         setForm({ ...EMPTY_FORM, context_type: type || 'subject' });
+        setCustomGroupInput(false);
+        setFormPhaseTab('auto');
         setViewMode('create');
         window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     };
@@ -397,15 +461,17 @@ export default function LearningContextManager() {
         }
     };
 
+    // Determine current phase for form subject group chips
+    const effectivePhase = useMemo(() => {
+        if (formPhaseTab === 'ป.ต้น') return 'ป.ต้น';
+        if (formPhaseTab === 'ป.ปลาย') return 'ป.ปลาย';
+        return getPhaseLabel(form.grade_level) || 'ป.ต้น';
+    }, [formPhaseTab, form.grade_level]);
+
     return (
         <Layout title="รูปแบบการจัดการเรียนรู้">
             <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
                 
-                {/* Datalist for CBE 2568 Subject Groups autocomplete */}
-                <datalist id="cbe-subject-groups-list">
-                    {CBE_SUBJECT_GROUPS_ALL_2568.map(g => <option key={g} value={g} />)}
-                </datalist>
-
                 {/* Top Header Hero Banner */}
                 <header className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl ring-1 ring-white/10">
                     <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
@@ -430,14 +496,14 @@ export default function LearningContextManager() {
                             </h1>
 
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                จัดการรายวิชา, หน่วยการเรียนรู้บูรณาการ, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> แยกช่วงชั้น ป.ต้น/ป.ปลาย และเชื่อมโยง LO สำหรับประเมิน
+                                จัดการรายวิชา, หน่วยการเรียนรู้, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> แยกช่วงชั้น ป.ต้น/ป.ปลาย และเชื่อมโยง LO สำหรับประเมิน
                             </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="hidden sm:flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 text-xs text-white backdrop-blur-md border border-white/15">
                                 <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                                <span>กำหนด LO แล้ว <strong className="font-extrabold">{totalMappedItems}</strong>/{learningFormats.length} รายการ</span>
+                                <span>กำหนด LO แล้ว <strong className="font-extrabold text-emerald-300">{totalMappedItems}</strong>/{learningFormats.length} รายการ</span>
                             </div>
 
                             <button
@@ -511,36 +577,121 @@ export default function LearningContextManager() {
                         {/* Main Grid: Left Context Items vs Right Mapping Workspace */}
                         <div className="grid items-start gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
                             
-                            {/* Left Sidebar: Context Items List */}
+                            {/* Left Sidebar: Context Items List & Multi-level Filters */}
                             <aside className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm xl:sticky xl:top-6" aria-label="รายการรูปแบบการจัดการเรียนรู้">
-                                <div className="space-y-3.5 border-b border-slate-100 p-5">
+                                <div className="space-y-3 border-b border-slate-100 p-5">
+                                    
+                                    {/* Sidebar Header */}
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <h3 className="text-base font-extrabold text-slate-900">รายการในภาคเรียนนี้</h3>
-                                            <p className="mt-0.5 text-xs text-slate-500">ภาค {semester}/{academicYear} · รวม {learningFormats.length} รายการ</p>
+                                            <p className="mt-0.5 text-xs text-slate-500">
+                                                แสดง <strong className="text-indigo-700 font-extrabold">{filteredFormats.length}</strong> จาก {learningFormats.length} รายการ
+                                            </p>
                                         </div>
-                                        {formatFilter !== 'all' && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormatFilter('all')}
-                                                className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-slate-200"
-                                            >
-                                                แสดงทั้งหมด
-                                            </button>
-                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowFiltersPanel(v => !v)}
+                                            className={`relative inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-extrabold transition ${
+                                                showFiltersPanel || activeFiltersCount > 0
+                                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <Filter className="h-3.5 w-3.5" /> ตัวกรอง
+                                            {activeFiltersCount > 0 && (
+                                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white">
+                                                    {activeFiltersCount}
+                                                </span>
+                                            )}
+                                        </button>
                                     </div>
 
-                                    {/* Search Bar */}
+                                    {/* Search Input Bar */}
                                     <div className="relative">
                                         <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
                                         <input
                                             type="text"
                                             value={itemQuery}
                                             onChange={e => setItemQuery(e.target.value)}
-                                            placeholder="ค้นหาชื่อ, กลุ่มวิชา, ชั้นเรียน, ครู..."
-                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            placeholder="ค้นหาชื่อวิชา, กลุ่มวิชา, ชั้นเรียน, ครู..."
+                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-8 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
+                                        {itemQuery && (
+                                            <button
+                                                onClick={() => setItemQuery('')}
+                                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        )}
                                     </div>
+
+                                    {/* Collapsible Multi-Level Filter Panel (For Real School Scale 500-2,000 Students) */}
+                                    {showFiltersPanel && (
+                                        <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3.5 text-xs">
+                                            <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                                                <span className="font-extrabold text-indigo-950 flex items-center gap-1.5">
+                                                    <SlidersIcon className="h-3.5 w-3.5 text-indigo-600" /> ตัวกรองข้อมูลขั้นสูง
+                                                </span>
+                                                {activeFiltersCount > 0 && (
+                                                    <button
+                                                        onClick={resetFilters}
+                                                        className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1"
+                                                    >
+                                                        <RotateCcw className="h-3 w-3" /> ล้างตัวกรอง
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                {/* Grade Level Filter */}
+                                                <div className="space-y-1">
+                                                    <label className="text-[11px] font-bold text-slate-700">ระดับชั้น / ช่วงชั้น</label>
+                                                    <select
+                                                        value={gradeFilter}
+                                                        onChange={e => setGradeFilter(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none"
+                                                    >
+                                                        <option value="all">ทุกระดับชั้น</option>
+                                                        <option value="ป.ต้น">ป.ต้น (ป.1 - ป.3)</option>
+                                                        <option value="ป.ปลาย">ป.ปลาย (ป.4 - ป.6)</option>
+                                                        {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
+                                                    </select>
+                                                </div>
+
+                                                {/* LO Mapping Status Filter */}
+                                                <div className="space-y-1">
+                                                    <label className="text-[11px] font-bold text-slate-700">สถานะการผูก LO</label>
+                                                    <select
+                                                        value={loStatusFilter}
+                                                        onChange={e => setLoStatusFilter(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none"
+                                                    >
+                                                        <option value="all">ทั้งหมด</option>
+                                                        <option value="mapped">ผูก LO แล้ว</option>
+                                                        <option value="unmapped">ยังไม่ได้ผูก LO</option>
+                                                    </select>
+                                                </div>
+
+                                                {/* Subject Group Filter */}
+                                                <div className="sm:col-span-2 space-y-1">
+                                                    <label className="text-[11px] font-bold text-slate-700">กลุ่มวิชา</label>
+                                                    <select
+                                                        value={groupFilter}
+                                                        onChange={e => setGroupFilter(e.target.value)}
+                                                        className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none"
+                                                    >
+                                                        <option value="all">ทุกกลุ่มวิชา</option>
+                                                        {availableGroupsInSystem.map(g => (
+                                                            <option key={g} value={g}>{g}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Items Scroll Container */}
@@ -553,6 +704,7 @@ export default function LearningContextManager() {
                                                 <BookOpen className="h-6 w-6" />
                                             </div>
                                             <h4 className="text-sm font-bold text-slate-800">ไม่พบรายการที่ตรงกับค้นหา</h4>
+                                            <p className="text-xs text-slate-500">ลองเปลี่ยนตัวกรองหรือเพิ่มรายการใหม่</p>
                                             <button
                                                 onClick={() => openCreate(formatFilter === 'all' ? 'subject' : formatFilter)}
                                                 className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-extrabold text-white shadow-md"
@@ -615,9 +767,13 @@ export default function LearningContextManager() {
                                                                     {item.grade_level || 'ทุกชั้น'} {phaseTag ? `(${phaseTag})` : ''}
                                                                 </span>
                                                                 <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-black border shadow-2xs ${
-                                                                    isActiveItem ? 'bg-white/20 text-white border-white/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                                                    isActiveItem
+                                                                        ? 'bg-white/20 text-white border-white/20'
+                                                                        : loCount > 0
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                 }`}>
-                                                                    {loCount} LO
+                                                                    {loCount > 0 ? `${loCount} LO` : 'ยังไม่ผูก LO'}
                                                                 </span>
                                                             </div>
 
@@ -726,41 +882,83 @@ export default function LearningContextManager() {
                                                     </select>
                                                 </div>
 
-                                                {/* Subject Group Input / Selection (CBE 2568 กลุ่มวิชา) */}
+                                                {/* Subject Group Select & Preset Picker (Clean & Elegant UI) */}
                                                 <div className="space-y-2 sm:col-span-2">
                                                     <div className="flex items-center justify-between">
                                                         <label className="text-xs font-extrabold text-slate-800">
                                                             กลุ่มวิชา (หลักสูตร 2568)
                                                         </label>
-                                                        {form.subject_group && (
-                                                            <span className="text-[11px] font-bold text-indigo-700">
-                                                                เลือกแล้ว: {form.subject_group}
-                                                            </span>
-                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setCustomGroupInput(v => !v)}
+                                                            className="text-[11px] font-bold text-indigo-700 hover:underline"
+                                                        >
+                                                            {customGroupInput ? 'เลือกจากรายการมาตรฐาน' : '+ พิมพ์กลุ่มวิชาเอง'}
+                                                        </button>
                                                     </div>
 
-                                                    <input
-                                                        list="cbe-subject-groups-list"
-                                                        value={form.subject_group}
-                                                        onChange={e => updateForm('subject_group', e.target.value)}
-                                                        placeholder="เลือกจากตัวเลือกด้านล่าง หรือพิมพ์เองได้..."
-                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                    />
+                                                    {customGroupInput ? (
+                                                        <input
+                                                            value={form.subject_group}
+                                                            onChange={e => updateForm('subject_group', e.target.value)}
+                                                            placeholder="พิมพ์ระบุชื่อกลุ่มวิชา..."
+                                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    ) : (
+                                                        <select
+                                                            value={form.subject_group}
+                                                            onChange={e => updateForm('subject_group', e.target.value)}
+                                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        >
+                                                            <option value="">-- เลือกกลุ่มวิชา --</option>
+                                                            <optgroup label="— กลุ่มวิชา ป.ต้น (ป.1 - ป.3) —">
+                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ต้น'].flatMap(g => g.items).map(item => (
+                                                                    <option key={`opt-ton-${item}`} value={item}>{item}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                            <optgroup label="— กลุ่มวิชา ป.ปลาย (ป.4 - ป.6) —">
+                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ปลาย'].flatMap(g => g.items).map(item => (
+                                                                    <option key={`opt-plai-${item}`} value={item}>{item}</option>
+                                                                ))}
+                                                            </optgroup>
+                                                            <optgroup label="— รูปแบบอื่น —">
+                                                                <option value="บูรณาการหลายกลุ่มวิชา">บูรณาการหลายกลุ่มวิชา</option>
+                                                                <option value="กิจกรรมพัฒนาผู้เรียน">กิจกรรมพัฒนาผู้เรียน</option>
+                                                            </optgroup>
+                                                        </select>
+                                                    )}
 
-                                                    {/* Quick Choice Chips by Phase */}
-                                                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 space-y-3 text-xs">
-                                                        {/* ป.ต้น */}
-                                                        {(!form.grade_level || ['ป.1', 'ป.2', 'ป.3'].includes(form.grade_level)) && (
-                                                            <div className="space-y-1.5">
-                                                                <span className="block text-[11px] font-black text-indigo-900">
-                                                                    — กลุ่มวิชาสำหรับ ป.ต้น (ป.1 - ป.3) —
-                                                                </span>
-                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ต้น'].map(group => (
-                                                                    <div key={group.groupName} className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                                        <span className="text-[10px] font-bold text-slate-500 shrink-0">{group.groupName}:</span>
+                                                    {/* Phase Filter Tabs for Quick Chips */}
+                                                    <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-2.5">
+                                                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                                                            <span className="text-[11px] font-extrabold text-slate-700">คลิกเลือกกลุ่มวิชาด่วน:</span>
+                                                            <div className="flex gap-1 rounded-xl bg-white p-0.5 border border-slate-200">
+                                                                {['ป.ต้น', 'ป.ปลาย'].map(phase => (
+                                                                    <button
+                                                                        key={phase}
+                                                                        type="button"
+                                                                        onClick={() => setFormPhaseTab(phase)}
+                                                                        className={`rounded-lg px-2.5 py-0.5 text-[10px] font-black transition ${
+                                                                            effectivePhase === phase
+                                                                                ? 'bg-indigo-700 text-white shadow-2xs'
+                                                                                : 'text-slate-600 hover:bg-slate-100'
+                                                                        }`}
+                                                                    >
+                                                                        {phase}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Phase Specific Quick Chips */}
+                                                        <div className="space-y-2">
+                                                            {CBE_SUBJECT_GROUPS_BY_PHASE_2568[effectivePhase]?.map(group => (
+                                                                <div key={group.groupName} className="space-y-1">
+                                                                    <span className="text-[10px] font-bold text-indigo-900 block">{group.groupName}:</span>
+                                                                    <div className="flex flex-wrap gap-1.5">
                                                                         {group.items.map(item => (
                                                                             <button
-                                                                                key={`ton-${item}`}
+                                                                                key={item}
                                                                                 type="button"
                                                                                 onClick={() => updateForm('subject_group', item)}
                                                                                 className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
@@ -773,53 +971,7 @@ export default function LearningContextManager() {
                                                                             </button>
                                                                         ))}
                                                                     </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        {/* ป.ปลาย */}
-                                                        {(!form.grade_level || ['ป.4', 'ป.5', 'ป.6'].includes(form.grade_level)) && (
-                                                            <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
-                                                                <span className="block text-[11px] font-black text-indigo-900">
-                                                                    — กลุ่มวิชาสำหรับ ป.ปลาย (ป.4 - ป.6) —
-                                                                </span>
-                                                                {CBE_SUBJECT_GROUPS_BY_PHASE_2568['ป.ปลาย'].map(group => (
-                                                                    <div key={group.groupName} className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                                        <span className="text-[10px] font-bold text-slate-500 shrink-0">{group.groupName}:</span>
-                                                                        {group.items.map(item => (
-                                                                            <button
-                                                                                key={`plai-${item}`}
-                                                                                type="button"
-                                                                                onClick={() => updateForm('subject_group', item)}
-                                                                                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                                                                                    form.subject_group === item
-                                                                                        ? 'bg-indigo-700 text-white shadow-xs'
-                                                                                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
-                                                                                }`}
-                                                                            >
-                                                                                {item}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-200/60">
-                                                            <span className="text-[10px] font-bold text-slate-500">กลุ่มรูปแบบอื่น:</span>
-                                                            {['บูรณาการหลายกลุ่มวิชา', 'กิจกรรมพัฒนาผู้เรียน'].map(item => (
-                                                                <button
-                                                                    key={`other-${item}`}
-                                                                    type="button"
-                                                                    onClick={() => updateForm('subject_group', item)}
-                                                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
-                                                                        form.subject_group === item
-                                                                            ? 'bg-indigo-700 text-white shadow-xs'
-                                                                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
-                                                                    }`}
-                                                                >
-                                                                    {item}
-                                                                </button>
+                                                                </div>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -1062,5 +1214,33 @@ export default function LearningContextManager() {
                 )}
             </div>
         </Layout>
+    );
+}
+
+// Helper icon component for Filter Sliders
+function SlidersIcon(props) {
+    return (
+        <svg
+            {...props}
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <line x1="4" x2="4" y1="21" y2="14" />
+            <line x1="4" x2="4" y1="10" y2="3" />
+            <line x1="12" x2="12" y1="21" y2="12" />
+            <line x1="12" x2="12" y1="8" y2="3" />
+            <line x1="20" x2="20" y1="21" y2="16" />
+            <line x1="20" x2="20" y1="12" y2="3" />
+            <line x1="2" x2="6" y1="14" y2="14" />
+            <line x1="10" x2="14" y1="8" y2="8" />
+            <line x1="18" x2="22" y1="16" y2="16" />
+        </svg>
     );
 }
