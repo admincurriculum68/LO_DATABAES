@@ -151,3 +151,10 @@ export const APPROVAL_COMPETENCY_GROUPS = {
         },
     ],
 };
+
+// หมวดกิจกรรมพัฒนาผู้เรียนตามหลักสูตร 51 (Requirement 13)
+export const ACTIVITY_CATEGORIES_51 = [
+    'กิจกรรมแนะแนว',
+    'กิจกรรมนักเรียน',
+    'กิจกรรมเพื่อสังคมและสาธารณประโยชน์',
+];

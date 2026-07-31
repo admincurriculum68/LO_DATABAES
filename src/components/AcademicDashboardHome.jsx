@@ -14,6 +14,7 @@ import {
     Layers,
     Link2,
     School,
+    Scale,
     ShieldCheck,
     Sparkles,
     Upload,
@@ -74,16 +75,19 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
     const readyPercent = Math.round((readyCount / setupChecks.length) * 100);
 
     const managementItems = [
+        { title: 'ศูนย์ตั้งค่าข้อมูลทีละขั้น', description: 'ดูความพร้อมและทำงานตามลำดับที่โรงเรียนใช้งานจริง', icon: CheckCircle2, action: () => onNavigate('/admin/setup'), color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
         { title: 'ข้อมูลพื้นฐานสถานศึกษา', description: 'ครู บุคลากร นักเรียน และโครงสร้างข้อมูล', icon: Database, action: () => onOpenTab('data'), color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
         { title: 'นำเข้าข้อมูลอัตโนมัติ', description: 'นำเข้าจาก DMC, Excel หรือ CSV ได้ใน 1 คลิก', icon: Upload, action: () => onOpenTab('import'), color: 'text-sky-600 bg-sky-50 border-sky-100' },
         { title: 'รูปแบบการจัดการเรียนรู้', description: 'วิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม', icon: BookOpenCheck, action: () => onNavigate('/admin/learning-contexts'), color: 'text-violet-600 bg-violet-50 border-violet-100' },
         { title: 'กำหนด LO ของวิชา', description: 'เลือกผลลัพธ์การเรียนรู้ที่ครูต้องประเมิน', icon: Link2, action: () => onOpenTab('mapping'), color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-        { title: 'จัดนักเรียนเข้ากลุ่มเรียน', description: 'กำหนดรายชื่อนักเรียนสำหรับแต่ละวิชา', icon: UsersRound, action: () => onOpenTab('enrollment'), color: 'text-amber-600 bg-amber-50 border-amber-100' },
+        { title: 'จัดการกลุ่มเรียนแบบยืดหยุ่น', description: 'รวมหลายห้อง แบ่งกลุ่มย่อย และเลือกนักเรียนรายบุคคล', icon: UsersRound, action: () => onNavigate('/admin/learning-groups'), color: 'text-amber-600 bg-amber-50 border-amber-100' },
+        { title: 'กำหนดครูประจำรายวิชา', description: 'มอบหมายครูหลายคนและระบุห้องที่สอน', icon: UserCheck, action: () => onNavigate('/admin/subject-teachers'), color: 'text-blue-600 bg-blue-50 border-blue-100' },
         { title: 'เลื่อนชั้นและจัดห้องเรียน', description: 'ปรับระดับชั้นและเตรียมข้อมูลปีถัดไป', icon: GraduationCap, action: () => onOpenTab('promotion'), color: 'text-rose-600 bg-rose-50 border-rose-100' },
+        { title: 'เทียบผลหลักสูตร 2568 → 2551', description: 'บันทึกหลักฐานและรับรองผลเทียบรายบุคคล', icon: Scale, action: () => onNavigate('/admin/curriculum-equivalency'), color: 'text-violet-600 bg-violet-50 border-violet-100' },
     ];
 
     const reports = [
-        { title: 'ผลการประเมินราย LO', description: 'การกระจายระดับความสามารถแยกรายข้อ', icon: FileBarChart2, path: '/admin/report-lo', color: 'text-indigo-600 bg-indigo-50' },
+        { title: 'ข้อความพฤติกรรมราย LO', description: 'เปรียบเทียบข้อความคุณภาพจากรายวิชาที่ใช้ LO เดียวกัน', icon: FileBarChart2, path: '/admin/report-lo', color: 'text-indigo-600 bg-indigo-50' },
         { title: 'ผลรายด้านความสามารถ', description: 'เปรียบเทียบตามสมรรถนะหลัก 8 ด้าน', icon: BarChart3, path: '/admin/report-competency', color: 'text-sky-600 bg-sky-50' },
         { title: 'รายงานผลการเรียน ปพ.๖', description: 'สมุดรายงานผลพัฒนาการผู้เรียนรายปี', icon: FileSpreadsheet, path: '/admin/yearly-report', color: 'text-emerald-600 bg-emerald-50' },
         { title: 'รายงานจบช่วงชั้น', description: 'สรุปการผ่านเกณฑ์เมื่อจบ ป.3 / ป.6', icon: School, path: '/admin/phase-report', color: 'text-amber-600 bg-amber-50' },
@@ -106,7 +110,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
                             ภาพรวมงานวิชาการและศูนย์รับรองผล
                         </h1>
                         <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                            ตรวจสอบสถานะความพร้อมข้อมูล ติดตามการประเมินครูผู้สอน และดำเนินการรับรองผลลัพธ์การเรียนรู้ขั้นสุดท้าย
+                            ตรวจสอบความพร้อมข้อมูล ติดตามการรายงานผลของครู และดูผล Formative รายด้านความสามารถ
                         </p>
                     </div>
 
@@ -115,7 +119,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
                             onClick={() => onOpenTab('progress')}
                             className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-xs font-bold text-white backdrop-blur-md transition hover:bg-white/20"
                         >
-                            <ClipboardCheck className="h-4 w-4 text-sky-300" /> ติดตามการประเมิน
+                            <ClipboardCheck className="h-4 w-4 text-sky-300" /> ติดตามการรายงานผล
                         </button>
                         <button
                             onClick={() => onNavigate('/admin/approval')}
@@ -229,9 +233,9 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
                                 <ShieldCheck className="h-6 w-6 text-indigo-200" />
                             </div>
                             <div className="space-y-1">
-                                <h3 className="text-base font-black text-white">ศูนย์รับรองผลลัพธ์การเรียนรู้</h3>
+                                <h3 className="text-base font-black text-white">ศูนย์ติดตามการรายงานผลการเรียน</h3>
                                 <p className="text-xs leading-relaxed text-indigo-100/80">
-                                    ตรวจสอบและรับรองระดับความสามารถรายบุคคลโดยฝ่ายวิชาการ แยกช่วงชั้น ป.ต้น / ป.ปลาย
+                                    ตรวจสอบความครบถ้วนของข้อความราย LO และการสรุป Formative รายด้านของครูผู้สอน
                                 </p>
                             </div>
                         </div>
@@ -241,13 +245,13 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
                                 onClick={() => onOpenTab('progress')}
                                 className="rounded-xl border border-white/20 bg-white/10 py-2.5 text-xs font-extrabold text-white backdrop-blur-md transition hover:bg-white/20"
                             >
-                                ติดตามครู
+                                ติดตามรายงาน
                             </button>
                             <button
-                                onClick={() => onNavigate('/admin/approval')}
+                                onClick={() => onOpenTab('progress')}
                                 className="rounded-xl bg-white py-2.5 text-xs font-black text-indigo-900 shadow-md transition hover:bg-indigo-50"
                             >
-                                เข้าศูนย์รับรองผล
+                                ดูความครบถ้วน
                             </button>
                         </div>
                     </section>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { GraduationCap, BookOpen, UserCheck, Compass, CheckCircle2, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
+import { GraduationCap, BookOpen, UserCheck, Compass, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formalLevelLabel } from '../lib/terminology';
 
@@ -10,18 +10,14 @@ export default function StudentDashboard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState([]);
     const [finalResults, setFinalResults] = useState([]);
+    const [formativeResults, setFormativeResults] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         async function fetchDashboard() {
             try {
-                const { data: approvedResults } = await supabase
-                    .from('lo_final_decisions')
-                    .select('decision_id, academic_year, semester, final_level, pass_status, decision_reason, decided_at, learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)')
-                    .eq('student_id', currentUser.student_id)
-                    .eq('decision_status', 'approved')
-                    .order('decided_at', { ascending: false });
-                setFinalResults(approvedResults || []);
+                // ไม่มีการตัดสินคุณภาพราย LO แล้ว คง state ว่างไว้เพื่อไม่แสดงผลรับรองแบบเดิม
+                setFinalResults([]);
 
                 const { data: enrollments, error: enrollErr } = await supabase
                     .from('student_enrollments')
@@ -42,14 +38,18 @@ export default function StudentDashboard() {
                 const subjectIds = enrollments.map(e => e.subjects.subject_id);
                 const enrollmentIds = enrollments.map(e => e.enrollment_id);
 
-                const [{ data: loData }, { data: evalData }] = await Promise.all([
+                const [{ data: loData }, { data: evalData }, { data: areaData }] = await Promise.all([
                     supabase.from('subject_lo_mapping')
                         .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, lo_description)')
                         .in('subject_id', subjectIds),
                     supabase.from('lo_evaluations')
-                        .select('enrollment_id, lo_id, competency_level')
-                        .in('enrollment_id', enrollmentIds)
+                        .select('enrollment_id, lo_id, evidence_note')
+                        .in('enrollment_id', enrollmentIds),
+                    supabase.from('competency_area_evaluations')
+                        .select('enrollment_id, competency_area, competency_level, qualitative_summary')
+                        .in('enrollment_id', enrollmentIds),
                 ]);
+                setFormativeResults(areaData || []);
 
                 const dashboardData = enrollments.map(enroll => {
                     const subject = enroll.subjects;
@@ -68,7 +68,7 @@ export default function StudentDashboard() {
                             lo_code: lo.lo_code,
                             ability_no: lo.ability_no,
                             description: lo.lo_description,
-                            level: evMatch ? evMatch.competency_level : '-'
+                            evidence_text: evMatch?.evidence_note || ''
                         };
                     });
 
@@ -96,17 +96,15 @@ export default function StudentDashboard() {
     const totalSubjects = data.length;
     // LO เดียวกันถูกประเมินได้หลายวิชา ตัวเลขสรุปจึงต้องนับเป็นจำนวน LO ที่ไม่ซ้ำ ไม่ใช่จำนวนช่องประเมิน
     const evaluatedLoIds = new Set();
-    const passedLoIds = new Set();
 
     data.forEach(sub => {
         sub.evaluations.forEach(ev => {
-            if (ev.level !== '-') evaluatedLoIds.add(ev.lo_id);
-            if (['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(ev.level)) passedLoIds.add(ev.lo_id);
+            if (ev.evidence_text?.trim()) evaluatedLoIds.add(ev.lo_id);
         });
     });
 
     const totalEvals = evaluatedLoIds.size;
-    const passedEvals = passedLoIds.size;
+    const passedEvals = formativeResults.filter(result => result.competency_level).length;
 
     return (
         <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">
@@ -165,8 +163,8 @@ export default function StudentDashboard() {
                         <UserCheck className="w-7 h-7" />
                     </div>
                     <div className="z-10">
-                        <p className="font-bold text-slate-600 text-sm mb-1">ผลลัพธ์การเรียนรู้ที่ผ่านเกณฑ์</p>
-                        <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></h4>
+                        <p className="font-bold text-slate-600 text-sm mb-1">ด้านความสามารถที่สรุป Formative</p>
+                        <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ด้าน</span></h4>
                     </div>
                 </div>
             </div>
@@ -242,7 +240,7 @@ export default function StudentDashboard() {
                                                 <tr>
                                                     <th className="py-4 px-5 w-20 text-center">ข้อที่</th>
                                                     <th className="py-4 px-5">ผลลัพธ์การเรียนรู้ (LO)</th>
-                                                    <th className="py-4 px-5 w-36 text-center">ระดับความสามารถ</th>
+                                                    <th className="py-4 px-5 min-w-[280px]">ข้อความสะท้อนพฤติกรรม</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
@@ -254,18 +252,6 @@ export default function StudentDashboard() {
                                                     </tr>
                                                 ) : (
                                                     sub.evaluations.map(ev => {
-                                                        let badgeClass = 'bg-slate-100 text-slate-500 border border-slate-200';
-                                                        let Icon = null;
-                                                        
-                                                        if (ev.level === 'เริ่มต้น') badgeClass = 'bg-red-50 text-red-700 border border-red-200 shadow-sm shadow-red-100';
-                                                        if (ev.level === 'พัฒนา') badgeClass = 'bg-orange-50 text-orange-700 border border-orange-200 shadow-sm shadow-orange-100';
-                                                        if (ev.level === 'ชำนาญ') badgeClass = 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm shadow-blue-100';
-                                                        if (ev.level === 'เชี่ยวชาญ') badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm shadow-emerald-100';
-                                                        
-                                                        if (ev.level === 'เชี่ยวชาญ' || ev.level === 'ชำนาญ') {
-                                                            Icon = <CheckCircle2 className="w-3.5 h-3.5 mr-1 inline-block" />;
-                                                        }
-
                                                         return (
                                                             <tr key={ev.ability_no} className="hover:bg-slate-50 transition-colors group">
                                                                 <td className="py-5 px-5 text-center align-top border-r border-slate-50">
@@ -275,10 +261,10 @@ export default function StudentDashboard() {
                                                                 <td className="py-4 px-5 text-slate-700 font-medium leading-relaxed align-top">
                                                                     {ev.description}
                                                                 </td>
-                                                                <td className="py-4 px-5 text-center align-top border-l border-slate-50">
-                                                                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold inline-flex items-center justify-center w-full ${badgeClass}`}>
-                                                                        {Icon} {ev.level}
-                                                                    </span>
+                                                                <td className="py-4 px-5 align-top border-l border-slate-50">
+                                                                    <p className={`rounded-xl border px-3 py-2 text-sm leading-6 ${ev.evidence_text ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                                                                        {ev.evidence_text || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}
+                                                                    </p>
                                                                 </td>
                                                             </tr>
                                                         );

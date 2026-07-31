@@ -7,20 +7,9 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import AcademicReportShell from '../components/AcademicReportShell';
 
-// Competency level badge
-const LevelBadge = ({ val }) => {
-    if (!val || val === '-') return <span className="text-slate-300 text-xs">-</span>;
-    const map = {
-        'เริ่มต้น': 'bg-red-50 text-red-600 border-red-200',
-        'พัฒนา': 'bg-orange-50 text-orange-600 border-orange-200',
-        'ชำนาญ': 'bg-blue-50 text-blue-600 border-blue-200',
-        'เชี่ยวชาญ': 'bg-green-50 text-green-600 border-green-200',
-    };
-    return (
-        <span className={`inline-block px-2 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap ${map[val] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-            {val}
-        </span>
-    );
+const EvidenceCell = ({ value }) => {
+    if (!value) return <span className="text-xs text-slate-400">ยังไม่มีข้อความ</span>;
+    return <p className="min-w-[240px] whitespace-normal text-left text-xs leading-5 text-slate-700">{value}</p>;
 };
 
 export default function AdminReportLO() {
@@ -98,7 +87,7 @@ export default function AdminReportLO() {
             if (enrollIds.length > 0) {
                 const { data: evals } = await supabase
                     .from('lo_evaluations')
-                    .select('enrollment_id, lo_id, competency_level')
+                    .select('enrollment_id, lo_id, evidence_note, workflow_status')
                     .eq('lo_id', loId)
                     .in('enrollment_id', enrollIds);
                 setEvalsByLO(evals || []);
@@ -112,14 +101,14 @@ export default function AdminReportLO() {
         }
     };
 
-    // Build lookup: studentId + subjectId -> competency_level
+    // Build lookup: studentId + subjectId -> qualitative behavior text
     const evalLookup = useMemo(() => {
         const map = {};
         evalsByLO.forEach(ev => {
             const enrollment = enrollmentMap[ev.enrollment_id];
             if (enrollment) {
                 const key = `${enrollment.student_id}_${enrollment.subject_id}`;
-                map[key] = ev.competency_level;
+                map[key] = ev.evidence_note || '';
             }
         });
         return map;
@@ -132,7 +121,7 @@ export default function AdminReportLO() {
     return (
         <AcademicReportShell
             title="รายงานผลรายผลลัพธ์การเรียนรู้ (LO)"
-            description="เปรียบเทียบระดับความสามารถของผู้เรียนจากทุกวิชาที่เชื่อมโยงกับ LO เดียวกัน"
+            description="เปรียบเทียบข้อความสะท้อนพฤติกรรมจากทุกวิชาที่เชื่อมโยงกับ LO เดียวกัน"
             wide
             actions={<>
                 <button onClick={() => {
@@ -252,7 +241,7 @@ export default function AdminReportLO() {
                                             <tr className="bg-indigo-50 print:bg-transparent">
                                                 {subjects.map(sub => (
                                                     <th key={sub.subject_id} className="px-4 py-2 text-center text-xs font-bold text-indigo-700 border-r border-indigo-100 print:border-black">
-                                                        ระดับผลลัพธ์
+                                                        ข้อความสะท้อนพฤติกรรม
                                                     </th>
                                                 ))}
                                             </tr>
@@ -269,10 +258,10 @@ export default function AdminReportLO() {
                                                     </td>
                                                     {subjects.map(sub => {
                                                         const key = `${st.student_id}_${sub.subject_id}`;
-                                                        const level = evalLookup[key] || '-';
+                                                        const evidenceText = evalLookup[key] || '';
                                                         return (
-                                                            <td key={sub.subject_id} className="px-4 py-3 text-center border-r border-slate-100 print:border-black">
-                                                                <LevelBadge val={level} />
+                                                            <td key={sub.subject_id} className="px-4 py-3 align-top border-r border-slate-100 print:border-black">
+                                                                <EvidenceCell value={evidenceText} />
                                                             </td>
                                                         );
                                                     })}

@@ -25,6 +25,7 @@ export default function TeacherDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
     const [allSubjects, setAllSubjects] = useState([]);
+    const [subjectRooms, setSubjectRooms] = useState([]);
     const [progressMap, setProgressMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [subjectQuery, setSubjectQuery] = useState('');
@@ -35,15 +36,42 @@ export default function TeacherDashboard() {
         async function loadSubjects() {
             if (!currentUser?.teacher_id) return;
             try {
-                const { data, error } = await supabase
+                const { data: primary, error: err1 } = await supabase
                     .from('subjects')
                     .select('*')
                     .eq('teacher_id', currentUser.teacher_id)
                     .order('academic_year', { ascending: false })
                     .order('semester', { ascending: false });
 
-                if (error) throw error;
-                setAllSubjects(data || []);
+                if (err1) throw err1;
+
+                const { data: co, error: err2 } = await supabase
+                    .from('subject_teachers')
+                    .select('room_name, subjects(*)')
+                    .eq('teacher_id', currentUser.teacher_id);
+
+                if (err2) throw err2;
+
+                const subMap = new Map();
+                (primary || []).forEach(s => {
+                    subMap.set(s.subject_id, { ...s, assigned_rooms: null });
+                });
+                (co || []).forEach(c => {
+                    if (c.subjects) {
+                        if (!subMap.has(c.subjects.subject_id)) {
+                            subMap.set(c.subjects.subject_id, { ...c.subjects, assigned_rooms: new Set() });
+                        }
+                        const s = subMap.get(c.subjects.subject_id);
+                        if (c.room_name && s.assigned_rooms === null) {
+                            s.assigned_rooms = new Set();
+                        }
+                        if (s.assigned_rooms && c.room_name) {
+                            s.assigned_rooms.add(c.room_name);
+                        }
+                    }
+                });
+
+                setAllSubjects(Array.from(subMap.values()));
             } catch (err) {
                 toast.error('ไม่สามารถดึงข้อมูลวิชาได้: ' + err.message);
             } finally {
@@ -62,6 +90,7 @@ export default function TeacherDashboard() {
 
     useEffect(() => {
         if (subjects.length === 0) {
+            setSubjectRooms([]);
             setProgressMap({});
             return;
         }
@@ -71,7 +100,7 @@ export default function TeacherDashboard() {
 
             const { data: enrollments } = await supabase
                 .from('student_enrollments')
-                .select('enrollment_id, subject_id')
+                .select('enrollment_id, subject_id, room')
                 .in('subject_id', subjectIds);
 
             const { data: loMappings } = await supabase
@@ -84,48 +113,61 @@ export default function TeacherDashboard() {
             if (enrollIds.length > 0) {
                 const { data } = await supabase
                     .from('lo_evaluations')
-                    .select('enrollment_id, lo_id, competency_level')
+                    .select('enrollment_id, lo_id, evidence_note')
                     .in('enrollment_id', enrollIds);
-                evals = (data || []).filter(e => e.competency_level);
+                evals = (data || []).filter(e => e.evidence_note);
             }
 
             const pMap = {};
-            subjectIds.forEach(sid => {
-                const subEnrolls = (enrollments || []).filter(e => e.subject_id === sid);
-                const subLOs = (loMappings || []).filter(m => m.subject_id === sid);
-                const totalCells = subEnrolls.length * subLOs.length;
+            const newSubjectRooms = [];
 
-                const subEnrollIds = subEnrolls.map(e => e.enrollment_id);
-                const subLoIds = subLOs.map(l => l.lo_id);
-                const filledCells = evals.filter(ev =>
-                    subEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id)
-                ).length;
+            subjects.forEach(sub => {
+                const subEnrolls = (enrollments || []).filter(e => e.subject_id === sub.subject_id);
+                const subLOs = (loMappings || []).filter(m => m.subject_id === sub.subject_id);
+                const uniqueRooms = [...new Set(subEnrolls.map(e => e.room).filter(Boolean))];
 
-                pMap[sid] = {
-                    studentCount: subEnrolls.length,
-                    loCount: subLOs.length,
-                    totalCells,
-                    filledCells,
-                    percent: totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0
-                };
+                uniqueRooms.forEach(room => {
+                    if (sub.assigned_rooms && !sub.assigned_rooms.has(room)) return;
+
+                    const roomEnrolls = subEnrolls.filter(e => e.room === room);
+                    const totalCells = roomEnrolls.length * subLOs.length;
+
+                    const roomEnrollIds = roomEnrolls.map(e => e.enrollment_id);
+                    const subLoIds = subLOs.map(l => l.lo_id);
+                    const filledCells = evals.filter(ev =>
+                        roomEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id)
+                    ).length;
+
+                    const key = `${sub.subject_id}_${room}`;
+                    newSubjectRooms.push({ ...sub, room, key });
+                    pMap[key] = {
+                        studentCount: roomEnrolls.length,
+                        loCount: subLOs.length,
+                        totalCells,
+                        filledCells,
+                        percent: totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0
+                    };
+                });
             });
+
+            setSubjectRooms(newSubjectRooms);
             setProgressMap(pMap);
         };
 
         loadProgress();
     }, [subjects]);
 
-    const totalSubjects = subjects.length;
-    const completedSubjects = subjects.filter(s => progressMap[s.subject_id]?.percent === 100).length;
+    const totalSubjects = subjectRooms.length;
+    const completedSubjects = subjectRooms.filter(sr => progressMap[sr.key]?.percent === 100).length;
     const pendingSubjects = totalSubjects - completedSubjects;
-    const totalStudents = subjects.reduce((sum, subject) => sum + (progressMap[subject.subject_id]?.studentCount || 0), 0);
-    const totalAssessmentItems = subjects.reduce((sum, subject) => sum + (progressMap[subject.subject_id]?.totalCells || 0), 0);
-    const completedAssessmentItems = subjects.reduce((sum, subject) => sum + (progressMap[subject.subject_id]?.filledCells || 0), 0);
+    const totalStudents = subjectRooms.reduce((sum, sr) => sum + (progressMap[sr.key]?.studentCount || 0), 0);
+    const totalAssessmentItems = subjectRooms.reduce((sum, sr) => sum + (progressMap[sr.key]?.totalCells || 0), 0);
+    const completedAssessmentItems = subjectRooms.reduce((sum, sr) => sum + (progressMap[sr.key]?.filledCells || 0), 0);
     const overallPercent = totalAssessmentItems > 0 ? Math.round((completedAssessmentItems / totalAssessmentItems) * 100) : 0;
 
-    const visibleSubjects = subjects.filter(subject => {
-        const progress = progressMap[subject.subject_id] || { percent: 0 };
-        const matchesQuery = `${subject.subject_name || ''} ${subject.grade_level || ''}`.toLowerCase().includes(subjectQuery.trim().toLowerCase());
+    const visibleSubjects = subjectRooms.filter(sr => {
+        const progress = progressMap[sr.key] || { percent: 0 };
+        const matchesQuery = `${sr.subject_name || ''} ${sr.grade_level || ''} ${sr.room || ''}`.toLowerCase().includes(subjectQuery.trim().toLowerCase());
         const matchesStatus = statusFilter === 'all' || (statusFilter === 'complete' ? progress.percent === 100 : progress.percent < 100);
         return matchesQuery && matchesStatus;
     });
@@ -153,7 +195,7 @@ export default function TeacherDashboard() {
                                 สวัสดีครับ/ค่ะ, {currentUser?.prefix || ''}{currentUser?.first_name || ''} {currentUser?.last_name || ''}
                             </h1>
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                ติดตามความก้าวหน้า บันทึกระดับความสามารถผู้เรียน และแนบหลักฐานเชิงประจักษ์ในแต่ละรายวิชา
+                                บันทึกข้อความพฤติกรรมราย LO และตัดสิน Formative เป็นรายด้านความสามารถ
                             </p>
                         </div>
 
@@ -210,7 +252,7 @@ export default function TeacherDashboard() {
                             </div>
                             <div>
                                 <h3 className="text-sm font-extrabold text-amber-950">มี {pendingSubjects} วิชาที่ยังประเมินผลไม่ครบถ้วน</h3>
-                                <p className="mt-0.5 text-xs text-amber-900/80">กรุณาเลือกรายวิชาเพื่อบันทึกระดับความสามารถและแนบหลักฐานการเรียนรู้เพิ่มเติม</p>
+                                <p className="mt-0.5 text-xs text-amber-900/80">กรุณาเลือกรายวิชาเพื่อบันทึกข้อความพฤติกรรมที่ยังไม่ครบ</p>
                             </div>
                         </div>
                         <button
@@ -279,20 +321,20 @@ export default function TeacherDashboard() {
                             {/* Responsive Cards / Table List */}
                             <div className="divide-y divide-slate-100">
                                 {visibleSubjects.map((sub) => {
-                                    const progress = progressMap[sub.subject_id] || { studentCount: 0, loCount: 0, percent: 0 };
+                                    const progress = progressMap[sub.key] || { studentCount: 0, loCount: 0, percent: 0 };
                                     const isComplete = progress.percent === 100;
                                     const hasStudents = progress.studentCount > 0;
 
                                     return (
                                         <div
-                                            key={sub.subject_id}
+                                            key={sub.key}
                                             className="p-5 transition hover:bg-slate-50/80 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
                                         >
                                             <div className="space-y-1 flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-extrabold text-sm text-slate-950">{sub.subject_name}</span>
                                                     <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
-                                                        ชั้น {sub.grade_level || 'ไม่ระบุ'}
+                                                        ชั้น {sub.grade_level || 'ไม่ระบุ'} {sub.room ? `ห้อง ${sub.room}` : ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-3 text-xs text-slate-500">
@@ -322,13 +364,21 @@ export default function TeacherDashboard() {
                                                 </div>
                                             </div>
 
-                                            {/* Action Button */}
-                                            <button
-                                                onClick={() => navigate(`/eval/${sub.subject_id}`, { state: { subject: sub } })}
-                                                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30 shrink-0"
-                                            >
-                                                บันทึกประเมินผล <ArrowRight className="h-3.5 w-3.5" />
-                                            </button>
+                                            {/* Action Buttons */}
+                                            <div className="flex shrink-0 flex-wrap gap-2">
+                                                <button
+                                                    onClick={() => navigate(`/eval/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
+                                                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-extrabold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                                >
+                                                    บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate(`/formative/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
+                                                    className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-extrabold text-indigo-800 hover:bg-indigo-100"
+                                                >
+                                                    ตัดสิน Formative รายด้าน
+                                                </button>
+                                            </div>
                                         </div>
                                     );
                                 })}

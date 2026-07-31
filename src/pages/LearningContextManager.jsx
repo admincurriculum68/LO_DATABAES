@@ -34,7 +34,7 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../lib/supabase';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
-import { CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
+import { ACTIVITY_CATEGORIES_51, CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
 const TYPE_META = {
     subject: {
@@ -76,6 +76,8 @@ const EMPTY_FORM = {
     subject_group: '',
     grade_level: '',
     responsible_teacher_id: '',
+    teaching_hours: '',
+    activity_category: '',
 };
 
 const GRADE_LEVELS = ['ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'];
@@ -151,7 +153,7 @@ export default function LearningContextManager() {
                 supabase.from('subjects').select('*').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).order('subject_name'),
                 supabase.from('learning_contexts').select('*').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).order('created_at'),
                 supabase.from('users_teachers').select('teacher_id, prefix, first_name, last_name, role').eq('school_id', currentUser.school_id).eq('is_active', true).order('first_name'),
-                supabase.from('learning_outcomes').select('lo_id, lo_code, ability_no, competency_area, lo_description').eq('school_id', currentUser.school_id).order('ability_no'),
+                supabase.from('learning_outcomes').select('lo_id, lo_code, ability_no, competency_area, lo_description, grade_level, is_custom_competency').eq('school_id', currentUser.school_id).order('ability_no'),
             ]);
             if (subjectsResult.error) throw subjectsResult.error;
             if (contextsResult.error) throw contextsResult.error;
@@ -184,6 +186,7 @@ export default function LearningContextManager() {
                     description: subject.description || (subject.subject_group ? `กลุ่มวิชา: ${subject.subject_group}` : ''),
                     grade_level: subject.grade_level,
                     responsible_teacher_id: subject.teacher_id,
+                    teaching_hours: subject.teaching_hours,
                     is_active: true,
                 })),
                 ...contexts.map(context => ({
@@ -192,6 +195,8 @@ export default function LearningContextManager() {
                     source: 'context',
                     recordId: context.context_id,
                     subject_group: context.subject_group || '',
+                    teaching_hours: context.teaching_hours,
+                    activity_category: context.activity_category,
                 })),
             ].sort((a, b) => LEARNING_FORMAT_ORDER.indexOf(a.context_type) - LEARNING_FORMAT_ORDER.indexOf(b.context_type)
                 || (a.context_name || '').localeCompare(b.context_name || '', 'th'));
@@ -309,12 +314,13 @@ export default function LearningContextManager() {
     const filteredLOs = useMemo(() => {
         const normalized = loQuery.trim().toLowerCase();
         return los.filter(lo => {
+            if (selectedItem?.grade_level && lo.grade_level && lo.grade_level !== selectedItem.grade_level) return false;
             if (areaFilter !== 'all' && lo.competency_area !== areaFilter) return false;
             if (showSelectedOnly && !selectedLOs.includes(lo.lo_id)) return false;
             if (!normalized) return true;
             return `${lo.lo_code || ''} ${lo.competency_area || ''} ${lo.lo_description || ''}`.toLowerCase().includes(normalized);
         });
-    }, [areaFilter, loQuery, los, selectedLOs, showSelectedOnly]);
+    }, [areaFilter, loQuery, los, selectedItem?.grade_level, selectedLOs, showSelectedOnly]);
 
     const updateForm = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
     const confirmDiscardMapping = () => !mappingDirty || window.confirm('ยังไม่ได้บันทึกการเชื่อมโยง LO ต้องการออกจากรายการนี้หรือไม่');
@@ -369,6 +375,7 @@ export default function LearningContextManager() {
                     grade_level: form.grade_level || null,
                     subject_group: form.subject_group.trim() || null,
                     teacher_id: form.responsible_teacher_id || null,
+                    teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
                 };
                 const { data, error } = await supabase.from('subjects').insert(payload).select().single();
                 if (error) throw error;
@@ -384,6 +391,8 @@ export default function LearningContextManager() {
                     semester,
                     grade_level: form.grade_level || null,
                     responsible_teacher_id: form.responsible_teacher_id || null,
+                    teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
+                    activity_category: form.context_type === 'activity' ? (form.activity_category || null) : null,
                 };
                 const { data, error } = await supabase.from('learning_contexts').insert(payload).select().single();
                 if (error) throw error;
@@ -660,6 +669,21 @@ export default function LearningContextManager() {
                                                         {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
                                                     </select>
                                                 </div>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-extrabold text-slate-800">จำนวนชั่วโมงเรียน</label>
+                                                    <input type="number" min="0" step="1" value={form.teaching_hours} onChange={e => updateForm('teaching_hours', e.target.value)} placeholder="เช่น 40" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                                </div>
+
+                                                {form.context_type === 'activity' && (
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-extrabold text-slate-800">หมวดกิจกรรมพัฒนาผู้เรียน (หลักสูตร 2551)</label>
+                                                        <select value={form.activity_category} onChange={e => updateForm('activity_category', e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                                            <option value="">ไม่เข้าหมวดกิจกรรมพัฒนาผู้เรียน</option>
+                                                            {ACTIVITY_CATEGORIES_51.map(category => <option key={category} value={category}>{category}</option>)}
+                                                        </select>
+                                                    </div>
+                                                )}
 
                                                 {/* LO Mapping Status Filter */}
                                                 <div className="space-y-1">
@@ -1166,6 +1190,8 @@ export default function LearningContextManager() {
                                                                     <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
                                                                         {lo.competency_area || 'ไม่ระบุด้าน'}
                                                                     </span>
+                                                                    {lo.grade_level && <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">{lo.grade_level}</span>}
+                                                                    {lo.is_custom_competency && <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
                                                                 </div>
                                                                 <p className="text-xs leading-relaxed text-slate-700 max-w-[80ch]">
                                                                     {lo.lo_description}

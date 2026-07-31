@@ -16,6 +16,11 @@ import PhaseReportAdmin from './pages/PhaseReportAdmin';
 import BatchReportView from './pages/BatchReportView';
 import AcademicApprovalCenter from './pages/AcademicApprovalCenter';
 import LearningContextManager from './pages/LearningContextManager';
+import FormativeCompetencyView from './pages/FormativeCompetencyView';
+import SubjectTeacherManager from './pages/SubjectTeacherManager';
+import CurriculumEquivalency from './pages/CurriculumEquivalency';
+import LearningGroupManager from './pages/LearningGroupManager';
+import DataSetupCenter from './pages/DataSetupCenter';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
 
@@ -37,6 +42,11 @@ export default function App() {
         <Route path="/eval/:subjectId" element={
           <ProtectedRoute allowedRoles={['teacher']}>
             <EvalView />
+          </ProtectedRoute>
+        } />
+        <Route path="/formative/:subjectId" element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <FormativeCompetencyView />
           </ProtectedRoute>
         } />
         <Route path="/report/:studentId/:academicYear/:semester" element={
@@ -108,6 +118,26 @@ export default function App() {
         <Route path="/admin/learning-contexts" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <LearningContextManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/subject-teachers" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <SubjectTeacherManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/curriculum-equivalency" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <CurriculumEquivalency />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/learning-groups" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <LearningGroupManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/setup" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <DataSetupCenter />
           </ProtectedRoute>
         } />
 

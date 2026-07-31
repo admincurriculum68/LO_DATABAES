@@ -10,18 +10,21 @@ import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
+import { CBE_CAPABILITIES_2568 } from '../constants/curriculum2568';
+import FlexibleImportWizard from '../components/FlexibleImportWizard';
 
 const WORKSPACE_TABS = [
     { id: 'overview', label: 'Dashboard', shortLabel: 'หน้าหลัก', description: 'กลับไปดูภาพรวมงานวิชาการ', icon: LayoutDashboard },
     { id: 'data', label: 'ข้อมูลสถานศึกษา', shortLabel: 'ข้อมูล', description: 'ตรวจสอบและแก้ไขข้อมูลครู นักเรียน วิชา และ LO', icon: Database },
-    { id: 'import', label: 'นำเข้าข้อมูล', shortLabel: 'นำเข้า', description: 'นำเข้าข้อมูลจาก DMC, Excel หรือ CSV', icon: Upload },
+    { id: 'import', label: 'ตั้งค่าและเพิ่มข้อมูล', shortLabel: 'เพิ่มข้อมูล', description: 'เพิ่มข้อมูลจาก DMC หรือ Excel รูปแบบใดก็ได้ด้วยตัวช่วยทีละขั้น', icon: Upload },
     { id: 'mapping', label: 'กำหนด LO ของวิชา', shortLabel: 'กำหนด LO', description: 'เลือกผลลัพธ์การเรียนรู้ที่ใช้ประเมินในแต่ละวิชา', icon: LinkIcon },
     { id: 'enrollment', label: 'จัดกลุ่มเรียน', shortLabel: 'กลุ่มเรียน', description: 'จัดนักเรียนเข้าวิชาและตรวจสอบรายชื่อในแต่ละกลุ่ม', icon: Users },
-    { id: 'progress', label: 'ติดตามการประเมิน', shortLabel: 'ติดตามผล', description: 'ตรวจสอบความก้าวหน้าของครูผู้สอนและแต่ละวิชา', icon: CheckCircle },
+    { id: 'progress', label: 'ติดตามการรายงานผลการเรียน', shortLabel: 'รายงานผล', description: 'ตรวจสอบความก้าวหน้าของครูผู้สอนและแต่ละวิชา', icon: CheckCircle },
     { id: 'promotion', label: 'เลื่อนชั้นและจัดห้อง', shortLabel: 'เลื่อนชั้น', description: 'ปรับระดับชั้นและห้องเรียนสำหรับปีการศึกษาถัดไป', icon: ArrowUpCircle },
 ];
 
 const SCHOOL_SCOPED_TABLES = ['users_students', 'users_teachers', 'subjects', 'learning_outcomes'];
+const WIZARD_IMPORT_TYPES = new Set(['students', 'teachers', 'subjects', 'learning_units', 'projects', 'activities', 'enrollments', 'learning_outcomes']);
 
 const FIELD_LABELS = {
     citizen_id: 'เลขประจำตัวประชาชน', student_code: 'รหัสนักเรียน', prefix: 'คำนำหน้า', first_name: 'ชื่อ', last_name: 'นามสกุล',
@@ -29,7 +32,7 @@ const FIELD_LABELS = {
     is_active: 'สถานะใช้งาน', academic_year: 'ปีการศึกษา', semester: 'ภาคเรียน', subject_name: 'ชื่อวิชา', grade_level: 'ระดับชั้น',
     subject_group: 'กลุ่มวิชา', teacher_id: 'ครูผู้สอน', lo_code: 'รหัส LO', ability_no: 'ข้อที่', level_group: 'ช่วงชั้น',
     competency_area: 'ด้านความสามารถ', lo_description: 'รายละเอียดผลลัพธ์การเรียนรู้', competency_level: 'ระดับความสามารถ', behavior_text: 'คำบรรยายพฤติกรรม',
-    new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด',
+    new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด', teaching_hours: 'จำนวนชั่วโมงเรียน', is_custom_competency: 'สมรรถนะเพิ่มเติม',
 };
 
 const hiddenField = (key, table) => ['password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'subject_id', 'lo_id', 'id'].includes(key)
@@ -56,6 +59,8 @@ const FIELD_OPTIONS = {
     is_active: [['true', 'ใช้งาน'], ['false', 'ระงับการใช้งาน']],
     student_status: [['active', 'ใช้งาน'], ['inactive', 'ไม่ใช้งาน']],
     semester: [['1', 'ภาคเรียนที่ 1'], ['2', 'ภาคเรียนที่ 2']],
+    is_custom_competency: [['true', 'ใช่'], ['false', 'ไม่ใช่']],
+    grade_level: [['ป.1', 'ป.1'], ['ป.2', 'ป.2'], ['ป.3', 'ป.3'], ['ป.4', 'ป.4'], ['ป.5', 'ป.5'], ['ป.6', 'ป.6']],
 };
 
 // ตรวจก่อนบันทึก คืนข้อความเตือนถ้าพบข้อผิดพลาด
@@ -76,7 +81,8 @@ function validateRowEdit(table, data) {
     return errors;
 }
 
-const displayValue = value => {
+const displayValue = (value, key) => {
+    if (key === 'is_custom_competency') return value === true ? 'เพิ่มเติมจากหลักสูตร' : 'ตามหลักสูตร';
     if (value === true) return 'ใช้งาน';
     if (value === false) return 'ไม่ใช้งาน';
     if (VALUE_LABELS[value]) return VALUE_LABELS[value];
@@ -155,6 +161,8 @@ export default function AdminDashboard() {
     const [promoToRoom, setPromoToRoom] = useState('');
     const [loadingPromo, setLoadingPromo] = useState(false);
     const [promoStudents, setPromoStudents] = useState([]);
+    const [promoSelectedStudents, setPromoSelectedStudents] = useState([]);
+    const [importWizardType, setImportWizardType] = useState(null);
 
     // Load common base data & stats
     useEffect(() => {
@@ -259,6 +267,8 @@ export default function AdminDashboard() {
             // รหัสอ้างอิงห้ามถูกส่งไปแก้ไม่ว่ากรณีใด
             (READONLY_FIELDS[selectedTable] || []).forEach(field => delete payload[field]);
             if (payload.is_active !== undefined) payload.is_active = payload.is_active === true || payload.is_active === 'true';
+            if (payload.is_custom_competency !== undefined) payload.is_custom_competency = payload.is_custom_competency === true || payload.is_custom_competency === 'true';
+            if (payload.teaching_hours !== undefined) payload.teaching_hours = payload.teaching_hours === '' ? null : Number(payload.teaching_hours);
             if (payload.citizen_id !== undefined) payload.citizen_id = String(payload.citizen_id).replace(/\D/g, '');
             if (payload.new_password) {
                 payload.password_hash = await hashPassword(payload.new_password.toString().trim());
@@ -507,20 +517,12 @@ export default function AdminDashboard() {
         }
     };
 
-    // --- CSV IMPORT ---
-    const handleFileUpload = async (e, importType) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        e.target.value = null;
-        const ext = file.name.split('.').pop().toLowerCase();
-        const label = ext === 'xlsx' || ext === 'xls' ? 'Excel' : 'CSV';
-        toast.loading(`กำลังอ่านไฟล์ ${label} สำหรับ: ${importType}...`, { id: 'csv' });
-
+    // Flexible Import Wizard ส่งข้อมูลที่จับคู่ชื่อคอลัมน์แล้วเข้าฟังก์ชันเดียวกัน
+    // เพื่อให้การนำเข้าจาก Template เดิมและไฟล์ของโรงเรียนใช้ validation ชุดเดียวกัน
+    const processImportData = async (data, importType) => {
+        if (!data || data.length === 0) { toast.error('ไม่พบข้อมูลสำหรับนำเข้า', { id: 'csv' }); return; }
+        toast.loading('กำลังตรวจสอบและบันทึกข้อมูล...', { id: 'csv' });
         try {
-            const data = await parseUploadedFile(file);
-            if (!data || data.length === 0) { toast.error('ไฟล์ว่างเปล่า', { id: 'csv' }); return; }
-
-                try {
                     let payload = [];
                     if (importType === 'students') {
                         if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง: ต้องมี citizen_id และ dob', { id: 'csv' }); return; }
@@ -637,7 +639,8 @@ export default function AdminDashboard() {
                                 subject_name: s.subject_name?.trim(), 
                                 grade_level: s.grade_level?.trim(),
                                 subject_group: s.subject_group?.trim() || null, 
-                                teacher_id: tId
+                                teacher_id: tId,
+                                teaching_hours: s.teaching_hours ? parseInt(s.teaching_hours) : null
                             };
                         });
                         
@@ -652,6 +655,32 @@ export default function AdminDashboard() {
                             toast.error('ข้อมูลวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
                             return;
                         }
+                    }
+                    else if (['learning_units', 'projects', 'activities'].includes(importType)) {
+                        const contextType = { learning_units: 'learning_unit', projects: 'project', activities: 'activity' }[importType];
+                        const teachers = await fetchAllRows((from, to) =>
+                            supabase.from('users_teachers').select('teacher_id, citizen_id').eq('school_id', currentUser.school_id).range(from, to)
+                        );
+                        const teacherMap = Object.fromEntries(teachers.map(teacher => [teacher.citizen_id, teacher.teacher_id]));
+                        payload = data.filter(row => row.context_name?.trim()).map(row => {
+                            const citizenId = row.teacher_citizen_id ? String(row.teacher_citizen_id).replace(/\D/g, '') : '';
+                            return {
+                                school_id: currentUser.school_id,
+                                context_type: contextType,
+                                context_name: row.context_name.trim(),
+                                description: row.description?.trim() || null,
+                                academic_year: parseInt(row.academic_year) || academicYear,
+                                semester: parseInt(row.semester) || semester,
+                                grade_level: row.grade_level?.trim() || null,
+                                subject_group: row.subject_group?.trim() || null,
+                                teaching_hours: row.teaching_hours ? parseInt(row.teaching_hours) : null,
+                                activity_category: contextType === 'activity' ? (row.activity_category?.trim() || null) : null,
+                                responsible_teacher_id: teacherMap[citizenId] || null,
+                            };
+                        });
+                        if (!payload.length) { toast.error('ไม่พบแถวที่มี context_name', { id: 'csv' }); return; }
+                        const { error } = await supabase.from('learning_contexts').insert(payload);
+                        if (error) throw error;
                     }
                     else if (importType === 'enrollments') {
                         const studentMap = {};
@@ -708,8 +737,10 @@ export default function AdminDashboard() {
                     else if (importType === 'learning_outcomes') {
                         let tempPayload = data.map(l => ({
                             school_id: currentUser.school_id,
+                            grade_level: l.grade_level?.trim() || null,
                             lo_code: l.lo_code?.trim(), ability_no: parseInt(l.ability_no), level_group: l.level_group?.trim(),
-                            competency_area: l.competency_area?.trim(), lo_description: l.lo_description?.trim()
+                            competency_area: l.competency_area?.trim(), lo_description: l.lo_description?.trim(),
+                            is_custom_competency: String(l.is_custom_competency).toLowerCase() === 'true'
                         }));
                         
                         // เซ็คซ้ำ (lo_code และ ability_no ของโรงเรียนนี้)
@@ -824,11 +855,26 @@ export default function AdminDashboard() {
                         loadTableData(selectedTable);
                     }
 
-                } catch (err) {
-                    toast.error('ข้อผิดพลาดการนำเข้า: ' + err.message, { id: 'csv' });
-                }
+                    return { count: payload.length };
+
         } catch (err) {
-            toast.error('อ่านไฟล์ไม่สำเร็จ: ' + err.message, { id: 'csv' });
+            toast.error('ข้อผิดพลาดการนำเข้า: ' + err.message, { id: 'csv' });
+            throw err;
+        }
+    };
+
+    // รองรับปุ่มอัปโหลดแบบเดิมระหว่างช่วงเปลี่ยนผ่าน
+    const handleFileUpload = async (e, importType) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        e.target.value = null;
+        try {
+            const data = await parseUploadedFile(file);
+            await processImportData(data, importType);
+        } catch (err) {
+            if (!String(err.message || '').includes('ข้อผิดพลาดการนำเข้า')) {
+                toast.error('อ่านไฟล์ไม่สำเร็จ: ' + err.message, { id: 'csv' });
+            }
         }
     };
 
@@ -880,6 +926,8 @@ export default function AdminDashboard() {
         if (tabId === 'data' && !selectedTable) loadTableData('users_students');
     };
     const activeWorkspace = WORKSPACE_TABS.find(tab => tab.id === activeTab) || WORKSPACE_TABS[1];
+    const mappingGradeLevel = subjects.find(subject => subject.subject_id === mappingSubject)?.grade_level || '';
+    const gradeCompatibleLOs = allLOs.filter(lo => !mappingGradeLevel || !lo.grade_level || lo.grade_level === mappingGradeLevel);
 
     if (activeTab === 'overview') {
         return (
@@ -1184,6 +1232,15 @@ export default function AdminDashboard() {
                                                                     <Lock className="h-3 w-3 shrink-0" />
                                                                     {String(row[key] ?? '').slice(0, 8)}…
                                                                 </span>
+                                                            ) : isEditing && selectedTable === 'learning_outcomes' && key === 'competency_area' && !['true', true].includes(editingRow.data.is_custom_competency) ? (
+                                                                <select
+                                                                    className="w-full min-w-[18rem] rounded-lg border-2 border-indigo-400 bg-white px-3 py-1.5 font-bold text-indigo-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                                    value={String(editingRow.data[key] ?? '')}
+                                                                    onChange={(e) => setEditingRow({ ...editingRow, data: { ...editingRow.data, [key]: e.target.value } })}
+                                                                >
+                                                                    <option value="">เลือกด้านความสามารถตามหลักสูตร</option>
+                                                                    {CBE_CAPABILITIES_2568.map(capability => <option key={capability.key} value={capability.name}>{capability.name}</option>)}
+                                                                </select>
                                                             ) : isEditing && FIELD_OPTIONS[key] ? (
                                                                 <select
                                                                     className="w-full min-w-[9rem] rounded-lg border-2 border-indigo-400 bg-white px-3 py-1.5 font-bold text-indigo-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -1204,7 +1261,7 @@ export default function AdminDashboard() {
                                                                 />
                                                             ) : (
                                                                 <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
-                                                                    {displayValue(row[key])}
+                                                                    {displayValue(row[key], key)}
                                                                 </span>
                                                             )}
                                                         </td>
@@ -1260,9 +1317,25 @@ export default function AdminDashboard() {
                         {/* --- TAB 2: CSV IMPORT --- */}
                         {activeTab === 'import' && (
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                                {importWizardType ? (
+                                    <FlexibleImportWizard
+                                        initialType={importWizardType}
+                                        onCancel={() => setImportWizardType(null)}
+                                        onConfirm={async (records, type) => {
+                                            const result = await processImportData(records, type);
+                                            if (result) setImportWizardType(null);
+                                        }}
+                                    />
+                                ) : (
+                                <>
                                 <div className="mb-6">
-                                    <h3 className="font-extrabold text-slate-900">เลือกข้อมูลที่ต้องการนำเข้า</h3>
-                                    <p className="mt-1 text-sm text-slate-600">สำหรับข้อมูลนักเรียน แนะนำให้นำเข้าไฟล์ DMC โดยตรง ส่วนข้อมูลอื่นดาวน์โหลดแม่แบบก่อนกรอกข้อมูล</p>
+                                    <h3 className="font-extrabold text-slate-900">เพิ่มข้อมูลจากไฟล์ของโรงเรียน</h3>
+                                    <p className="mt-1 text-sm text-slate-600">ใช้ไฟล์ Excel ที่มีอยู่ได้เลย ระบบช่วยจับคู่ชื่อคอลัมน์และให้ตรวจสอบข้อมูลก่อนบันทึก</p>
+                                </div>
+
+                                <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-700 text-white"><FileText className="h-6 w-6" /></div><div><h3 className="font-extrabold text-indigo-950">Excel ของโรงเรียน ไม่ต้องเปลี่ยนหัวคอลัมน์</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-indigo-900">เลือกประเภทข้อมูล อัปโหลดไฟล์ จับคู่คอลัมน์ และแก้รายการที่ผิดได้ในหน้าเดียว</p></div></div>
+                                    <button onClick={() => setImportWizardType('students')} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />เริ่มนำเข้าข้อมูล</button>
                                 </div>
 
                                 {/* 🏫 DMC Import Card (Prominent) */}
@@ -1275,21 +1348,25 @@ export default function AdminDashboard() {
                                                 <p className="mt-1 text-sm leading-6 text-blue-900">รองรับไฟล์ Excel (.xlsx, .xls) จาก DMC ระบบจะนำเข้าชื่อ รหัสนักเรียน ระดับชั้น ห้องเรียน และกำหนดรหัสผ่านเริ่มต้นจากวันเดือนปีเกิด</p>
                                             </div>
                                         </div>
-                                        <label className="flex min-h-11 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-extrabold text-white hover:bg-blue-800 md:w-auto md:self-center">
-                                            <Upload className="w-6 h-6" />
-                                            อัปโหลดไฟล์ Excel ของ DMC
-                                            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDMCImport} />
-                                        </label>
+                                        <div className="flex w-full shrink-0 flex-col gap-2 md:w-auto md:self-center">
+                                            <button onClick={() => setImportWizardType('students')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-extrabold text-white hover:bg-blue-800"><Upload className="h-4 w-4" />ตรวจสอบไฟล์ก่อนนำเข้า</button>
+                                            <label className="flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-100">นำเข้าไฟล์ DMC รูปแบบมาตรฐานแบบด่วน<input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleDMCImport} /></label>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                                <details className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                                    <summary className="cursor-pointer bg-slate-50 px-5 py-4 text-sm font-extrabold text-slate-700 hover:bg-slate-100">แม่แบบและตัวเลือกขั้นสูง</summary>
+                                <div className="border-t border-slate-200">
                                     {[
                                         { id: 'students', title: 'ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
                                         { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอนในแต่ละปีการศึกษาและภาคเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teacher_citizen_id\n2569,1,ภาษาไทย,ป.1,ภาษาไทย,เลขบัตรประชาชนครู 13 หลัก' },
+                                        { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอน พร้อมจำนวนชั่วโมงเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teaching_hours,teacher_citizen_id\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,1234567890123\n2569,1,การคิดคำนวณ 1,ป.1,การคิดคำนวณ,40,1234567890123' },
+                                        { id: 'learning_units', title: 'ข้อมูลหน่วยการเรียนรู้', desc: 'หน่วยการเรียนรู้ที่ออกแบบแยกจากรายวิชา', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ชุมชนของเรา,ป.1,บูรณาการหลายกลุ่มวิชา,12,1234567890123,สำรวจชุมชนและสื่อสารสิ่งที่ค้นพบ\n2569,1,อาหารดีมีประโยชน์,ป.1,สุขภาพกายและจิต,8,1234567890123,เลือกอาหารและดูแลสุขภาพ' },
+                                        { id: 'projects', title: 'ข้อมูลโครงงาน', desc: 'โครงงานพร้อมชั้น กลุ่มวิชา และจำนวนชั่วโมง', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ตลาดนัดพอเพียง,ป.3,เศรษฐกิจและการเงิน,16,1234567890123,วางแผนผลิตและจำหน่ายสินค้า\n2569,1,นักสืบสายน้ำ,ป.3,วิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี,12,1234567890123,สำรวจคุณภาพน้ำในชุมชน' },
+                                        { id: 'activities', title: 'ข้อมูลกิจกรรม', desc: 'กิจกรรมทั่วไปหรือกิจกรรมพัฒนาผู้เรียน 3 หมวดตามหลักสูตร 2551', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,activity_category,description\n2569,1,รู้จักตนเอง,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมแนะแนว,กิจกรรมสำรวจความสนใจ\n2569,1,ลูกเสือสำรอง,ป.2,กิจกรรมพัฒนาผู้เรียน,20,1234567890123,กิจกรรมนักเรียน,ฝึกระเบียบและการทำงานเป็นทีม\n2569,1,จิตอาสาพัฒนาโรงเรียน,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมเพื่อสังคมและสาธารณประโยชน์,ร่วมดูแลพื้นที่ส่วนรวม' },
                                         { id: 'enrollments', title: 'ข้อมูลกลุ่มเรียน', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
-                                        { id: 'learning_outcomes', title: 'ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'lo_code,ability_no,level_group,competency_area,lo_description\nSCH-P1-LO-03,3,ป.ต้น,ความสามารถด้านการคิดคำนวณ,ใช้จำนวนนับ การบวก และการลบเพื่อแก้ปัญหาใกล้ตัว พร้อมอธิบายวิธีคิดได้' },
+                                        { id: 'learning_outcomes', title: 'ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'grade_level,lo_code,ability_no,level_group,competency_area,is_custom_competency,lo_description\nป.1,SCH-P1-LO-03,3,ป.ต้น,ความสามารถด้านการคิดคำนวณ,false,ใช้จำนวนนับ การบวก และการลบเพื่อแก้ปัญหาใกล้ตัว พร้อมอธิบายวิธีคิดได้' },
                                         { id: 'behaviors', title: 'คำบรรยายระดับความสามารถ', desc: 'คำบรรยายพฤติกรรมสำหรับแต่ละระดับความสามารถ', template: 'competency_area,competency_level,behavior_text\nความสามารถด้านการคิดคำนวณ,พัฒนา,ปฏิบัติได้ในสถานการณ์ที่คุ้นเคยเมื่อได้รับคำชี้แนะบางส่วน และเริ่มตรวจสอบงานของตน' },
                                         { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
                                         { id: 'yearly_behavior_templates', title: 'คำบรรยายรายชั้นปี (ปพ.๖)', desc: 'คำบรรยายพฤติกรรมในแต่ละระดับ แยกตามข้อและชั้นปี', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
@@ -1307,8 +1384,8 @@ export default function AdminDashboard() {
                                                         // Build XLSX with Text-formatted columns
                                                         const ws = XLSX.utils.aoa_to_sheet([]);
                                                         const headers = card.template.split('\n')[0].split(',');
-                                                        const sampleRow = card.template.split('\n')[1]?.split(',') || [];
-                                                        XLSX.utils.sheet_add_aoa(ws, [headers, sampleRow], { origin: 'A1' });
+                                                        const sampleRows = card.template.split('\n').slice(1).map(row => row.split(','));
+                                                        XLSX.utils.sheet_add_aoa(ws, [headers, ...sampleRows], { origin: 'A1' });
                                                         // Format citizen_id and dob columns as Text to prevent Excel scientific notation
                                                         const textCols = ['citizen_id', 'dob', 'student_code'];
                                                         headers.forEach((h, colIdx) => {
@@ -1316,13 +1393,26 @@ export default function AdminDashboard() {
                                                                 const colLetter = XLSX.utils.encode_col(colIdx);
                                                                 if (!ws['!cols']) ws['!cols'] = [];
                                                                 ws['!cols'][colIdx] = { wch: 18 };
-                                                                // Mark sample cell as text
-                                                                const cellAddr = colLetter + '2';
-                                                                if (ws[cellAddr]) ws[cellAddr].t = 's';
+                                                                sampleRows.forEach((_, rowIndex) => {
+                                                                    const cellAddr = colLetter + String(rowIndex + 2);
+                                                                    if (ws[cellAddr]) ws[cellAddr].t = 's';
+                                                                });
                                                             }
                                                         });
+                                                        ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+                                                        ws['!cols'] = headers.map(header => ({ wch: Math.min(42, Math.max(14, header.length + 4)) }));
                                                         const wb = XLSX.utils.book_new();
                                                         XLSX.utils.book_append_sheet(wb, ws, 'data');
+                                                        const guide = XLSX.utils.aoa_to_sheet([
+                                                            ['วิธีใช้แม่แบบ', card.title],
+                                                            ['1', 'อ่านตัวอย่างในชีต data แล้วแทนข้อมูลตัวอย่างด้วยข้อมูลจริง'],
+                                                            ['2', 'ห้ามแก้ชื่อคอลัมน์แถวแรก และควรเก็บเลขบัตรประชาชน/วันเกิดเป็นข้อความ'],
+                                                            ['3', 'หนึ่งแถวเท่ากับหนึ่งรายการ ลบแถวตัวอย่างที่ไม่ใช้ได้'],
+                                                            ['4', 'บันทึกเป็น .xlsx แล้วอัปโหลดกลับในเมนูนำเข้าข้อมูล'],
+                                                            ['หมายเหตุ', card.desc],
+                                                        ]);
+                                                        guide['!cols'] = [{ wch: 14 }, { wch: 80 }];
+                                                        XLSX.utils.book_append_sheet(wb, guide, 'วิธีใช้');
                                                         XLSX.writeFile(wb, `แม่แบบ_${card.id}.xlsx`);
                                                     }}
                                                     className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
@@ -1330,15 +1420,17 @@ export default function AdminDashboard() {
                                                     <Download className="w-4 h-4 group-hover/btn:-translate-y-1 transition-transform" />
                                                     <span>ไฟล์ Excel แม่แบบ (.xlsx)</span>
                                                 </button>
-                                                <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800">
+                                                {WIZARD_IMPORT_TYPES.has(card.id) ? <button onClick={() => setImportWizardType(card.id)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800">
                                                     <Upload className="w-4 h-4 group-hover/btn2:-translate-y-1 transition-transform" />
-                                                    <span>อัปโหลดข้อมูล</span>
-                                                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} />
-                                                </label>
+                                                    <span>เปิดตัวช่วยนำเข้า</span>
+                                                </button> : <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" /><span>อัปโหลดแบบเดิม</span><input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} /></label>}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
+                                </details>
+                                </>
+                                )}
                             </div>
                         )}
 
@@ -1370,7 +1462,7 @@ export default function AdminDashboard() {
                                             <FileText className="w-16 h-16 text-slate-200 mb-4" />
                                             เลือกวิชาจากช่องด้านบนเพื่อแสดงรายการ LO
                                         </div>
-                                    ) : allLOs.length === 0 ? (
+                                    ) : gradeCompatibleLOs.length === 0 ? (
                                         <div className="text-center py-10 text-red-700 bg-red-50 rounded-2xl border border-red-100 font-bold">ยังไม่มีข้อมูลผลลัพธ์การเรียนรู้ กรุณานำเข้าข้อมูล LO ก่อนดำเนินการ</div>
                                     ) : (
                                         <>
@@ -1390,7 +1482,7 @@ export default function AdminDashboard() {
                                             </div>
 
                                             <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200">
-                                                {allLOs.map(lo => {
+                                                {gradeCompatibleLOs.map(lo => {
                                                     const isChecked = mappedLOs.includes(lo.lo_id);
                                                     return (
                                                         <label key={lo.lo_id} className={`flex cursor-pointer items-start p-4 transition-colors ${isChecked ? 'bg-indigo-50' : 'bg-white hover:bg-slate-50'}`}>
@@ -1410,6 +1502,8 @@ export default function AdminDashboard() {
                                                                     <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs mr-2 border border-slate-200">ข้อ {lo.ability_no}</span>
                                                                     {lo.lo_code ? `${lo.lo_code} ` : ''} 
                                                                     <span className="text-indigo-600">[{lo.competency_area || 'ทั่วไป'}]</span>
+                                                                    {lo.grade_level && <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{lo.grade_level}</span>}
+                                                                    {lo.is_custom_competency && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
                                                                 </span>
                                                                 <span className={`block text-sm leading-relaxed ${isChecked ? 'text-slate-700 font-medium' : 'text-slate-500'}`}>{lo.lo_description}</span>
                                                             </div>
@@ -1642,8 +1736,8 @@ export default function AdminDashboard() {
                         {activeTab === 'progress' && (
                             <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> ความก้าวหน้าการประเมินผลรายวิชา</h2>
-                                    <p className="text-slate-500 font-medium text-sm">ติดตามความครบถ้วนของการประเมิน จำแนกตามครูผู้สอนและรายวิชา</p>
+                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> ติดตามการรายงานผลการเรียน</h2>
+                                    <p className="text-slate-500 font-medium text-sm">ติดตามความครบถ้วนของข้อความพฤติกรรมราย LO จำแนกตามครูผู้สอนและรายวิชา</p>
                                     <button
                                         onClick={async () => {
                                             setLoadingProgress(true);
@@ -1676,7 +1770,7 @@ export default function AdminDashboard() {
                                                 if (enrollIds.length > 0) {
                                                     const { data } = await supabase
                                                         .from('lo_evaluations')
-                                                        .select('enrollment_id, lo_id')
+                                                        .select('enrollment_id, lo_id, evidence_note')
                                                         .in('enrollment_id', enrollIds);
                                                     evals = data || [];
                                                 }
@@ -1689,7 +1783,7 @@ export default function AdminDashboard() {
                                                     const subEnrollIds = subEnrolls.map(e => e.enrollment_id);
                                                     const subLoIds = subLOs.map(l => l.lo_id);
                                                     const filled = evals.filter(ev =>
-                                                        subEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id)
+                                                        subEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id) && ev.evidence_note?.trim()
                                                     ).length;
                                                     const pct = totalCells > 0 ? Math.round((filled / totalCells) * 100) : 0;
                                                     const teacher = sub.users_teachers;
@@ -1827,6 +1921,7 @@ export default function AdminDashboard() {
                                                         if (data.length === 0) toast.error('ไม่พบนักเรียนในห้องนี้');
                                                         else toast.success(`พบนักเรียน ${data.length} คน`);
                                                         setPromoStudents(data || []);
+                                                        setPromoSelectedStudents((data || []).map(s => s.student_id));
                                                     } catch (err) {
                                                         toast.error('ข้อผิดพลาด: ' + err.message);
                                                     } finally {
@@ -1866,17 +1961,18 @@ export default function AdminDashboard() {
                                                 onChange={(e) => setPromoToRoom(e.target.value)}
                                             />
                                             <button 
-                                                disabled={promoStudents.length === 0 || !promoToGrade || !promoToRoom}
+                                                disabled={promoSelectedStudents.length === 0 || !promoToGrade || !promoToRoom}
                                                 onClick={async () => {
-                                                    if (!window.confirm(`ยืนยันการเปลี่ยนนักเรียนทั้ง ${promoStudents.length} คน ไปยังชั้น ${promoToGrade} ห้อง ${promoToRoom} หรือไม่?`)) return;
+                                                    if (!window.confirm(`ยืนยันการเปลี่ยนนักเรียนที่เลือกทั้ง ${promoSelectedStudents.length} คน ไปยังชั้น ${promoToGrade} ห้อง ${promoToRoom} หรือไม่?`)) return;
                                                     try {
                                                         const { error } = await supabase
                                                             .from('users_students')
                                                             .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
-                                                            .in('student_id', promoStudents.map(s => s.student_id));
+                                                            .in('student_id', promoSelectedStudents);
                                                         if (error) throw error;
                                                         toast.success('บันทึกการเลื่อนชั้นและจัดห้องเรียนแล้ว');
                                                         setPromoStudents([]);
+                                                        setPromoSelectedStudents([]);
                                                         setPromoFromRoom('');
                                                         setPromoToGrade('');
                                                         setPromoToRoom('');
@@ -1886,7 +1982,7 @@ export default function AdminDashboard() {
                                                 }}
                                                 className="w-full mt-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                บันทึกการเลื่อนชั้น ({promoStudents.length} คน)
+                                                บันทึกการเลื่อนชั้น ({promoSelectedStudents.length} คน)
                                             </button>
                                         </div>
                                     </div>
@@ -1895,22 +1991,44 @@ export default function AdminDashboard() {
                                 {promoStudents.length > 0 && (
                                     <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
                                         <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
-                                            <span>รายชื่อนักเรียนที่กำหนดให้เลื่อนชั้น</span>
-                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-lg">พบ {promoStudents.length} คน</span>
+                                            <span>รายชื่อนักเรียนในห้อง</span>
+                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-lg">เลือก {promoSelectedStudents.length}/{promoStudents.length} คน</span>
                                         </div>
                                         <div className="max-h-80 overflow-y-auto">
                                             <table className="w-full text-left text-sm whitespace-nowrap">
-                                                <thead className="bg-white sticky top-0 border-b border-slate-100">
+                                                <thead className="bg-white sticky top-0 border-b border-slate-100 z-10 shadow-sm">
                                                     <tr className="text-slate-500">
-                                                        <th className="px-4 py-2 font-medium w-16 text-center">ลำดับ</th>
-                                                        <th className="px-4 py-2 font-medium w-32">รหัสนักเรียน</th>
-                                                        <th className="px-4 py-2 font-medium">ชื่อ-นามสกุล</th>
-                                                        <th className="px-4 py-2 font-medium">ชั้นปัจจุบัน</th>
+                                                        <th className="px-4 py-3 font-medium w-16 text-center">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                                checked={promoSelectedStudents.length === promoStudents.length && promoStudents.length > 0}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setPromoSelectedStudents(promoStudents.map(s => s.student_id));
+                                                                    else setPromoSelectedStudents([]);
+                                                                }}
+                                                            />
+                                                        </th>
+                                                        <th className="px-4 py-3 font-medium w-16 text-center">ลำดับ</th>
+                                                        <th className="px-4 py-3 font-medium w-32">รหัสนักเรียน</th>
+                                                        <th className="px-4 py-3 font-medium">ชื่อ-นามสกุล</th>
+                                                        <th className="px-4 py-3 font-medium">ชั้นปัจจุบัน</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100 bg-white">
                                                     {promoStudents.map((s, i) => (
                                                         <tr key={s.student_id} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-2 text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                                                    checked={promoSelectedStudents.includes(s.student_id)}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) setPromoSelectedStudents([...promoSelectedStudents, s.student_id]);
+                                                                        else setPromoSelectedStudents(promoSelectedStudents.filter(id => id !== s.student_id));
+                                                                    }}
+                                                                />
+                                                            </td>
                                                             <td className="px-4 py-2 text-center text-slate-400 font-semibold">{i+1}</td>
                                                             <td className="px-4 py-2 font-mono text-slate-600">{s.student_code}</td>
                                                             <td className="px-4 py-2 font-bold text-slate-800">{s.prefix||''}{s.first_name} {s.last_name}</td>
