@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, fetchAllRows } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck, Database, School } from 'lucide-react';
+import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck, Database, School, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -38,6 +38,43 @@ const hiddenField = (key, table) => ['password_hash', 'plain_password', 'school_
 const VALUE_LABELS = {
     active: 'ใช้งาน', inactive: 'ไม่ใช้งาน', admin: 'ฝ่ายวิชาการ', teacher: 'ครูผู้สอน', executive: 'ผู้บริหาร', student: 'นักเรียน',
 };
+
+// คอลัมน์ที่แก้ไม่ได้ เพราะเป็นรหัสอ้างอิงที่ผูกกับผลการประเมินและการลงทะเบียนไว้แล้ว
+// ถ้าแก้ ข้อมูลที่เชื่อมกันอยู่จะขาดออกจากกันโดยไม่มีทางกู้คืน
+const READONLY_FIELDS = {
+    users_teachers: ['teacher_id'],
+    users_students: ['student_id'],
+    subjects: ['subject_id'],
+    learning_outcomes: ['lo_id'],
+};
+const isReadonlyField = (key, table) => (READONLY_FIELDS[table] || []).includes(key);
+
+// ช่องที่มีค่าที่เป็นไปได้จำกัด ต้องเลือกจากรายการ พิมพ์เองแล้วผิดเพียงตัวอักษรเดียว
+// เช่น admi แทน admin จะทำให้บัญชีนั้นเข้าใช้งานไม่ได้ทันที
+const FIELD_OPTIONS = {
+    role: [['teacher', 'ครูผู้สอน'], ['admin', 'ฝ่ายวิชาการ'], ['executive', 'ผู้บริหาร']],
+    is_active: [['true', 'ใช้งาน'], ['false', 'ระงับการใช้งาน']],
+    student_status: [['active', 'ใช้งาน'], ['inactive', 'ไม่ใช้งาน']],
+    semester: [['1', 'ภาคเรียนที่ 1'], ['2', 'ภาคเรียนที่ 2']],
+};
+
+// ตรวจก่อนบันทึก คืนข้อความเตือนถ้าพบข้อผิดพลาด
+function validateRowEdit(table, data) {
+    const errors = [];
+    if (['users_teachers', 'users_students'].includes(table)) {
+        const id = String(data.citizen_id ?? '').replace(/\D/g, '');
+        if (id.length !== 13) errors.push(`เลขประจำตัวประชาชนต้องมี 13 หลัก (ขณะนี้ ${id.length} หลัก) หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`);
+        if (!String(data.first_name ?? '').trim()) errors.push('ต้องมีชื่อ');
+    }
+    if (data.new_password !== undefined && data.new_password !== null && String(data.new_password).trim() !== '') {
+        const pw = String(data.new_password).replace(/\D/g, '');
+        if (pw.length !== 8) errors.push('รหัสผ่านใหม่ต้องเป็นวันเดือนปีเกิด 8 หลัก เช่น 05012555');
+    }
+    if (table === 'learning_outcomes' && !String(data.lo_description ?? '').trim()) {
+        errors.push('ต้องมีรายละเอียดผลลัพธ์การเรียนรู้');
+    }
+    return errors;
+}
 
 const displayValue = value => {
     if (value === true) return 'ใช้งาน';
@@ -212,8 +249,17 @@ export default function AdminDashboard() {
     };
 
     const handleUpdate = async (idValue, idCol, updatedObj) => {
+        const problems = validateRowEdit(selectedTable, updatedObj);
+        if (problems.length > 0) {
+            toast.error(problems[0], { duration: 6000 });
+            return;
+        }
         try {
             const payload = { ...updatedObj };
+            // รหัสอ้างอิงห้ามถูกส่งไปแก้ไม่ว่ากรณีใด
+            (READONLY_FIELDS[selectedTable] || []).forEach(field => delete payload[field]);
+            if (payload.is_active !== undefined) payload.is_active = payload.is_active === true || payload.is_active === 'true';
+            if (payload.citizen_id !== undefined) payload.citizen_id = String(payload.citizen_id).replace(/\D/g, '');
             if (payload.new_password) {
                 payload.password_hash = await hashPassword(payload.new_password.toString().trim());
                 delete payload.new_password;
@@ -1073,11 +1119,31 @@ export default function AdminDashboard() {
                                                     <tr key={idx} className="hover:bg-slate-50 py-2 group transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
                                                     {Object.keys(row).filter(k => !hiddenField(k, selectedTable)).map(key => (
-                                                        <td key={key} className="px-5 py-3 text-slate-700 max-w-[200px] truncate">
-                                                            {isEditing ? (
+                                                        <td key={key} className="px-5 py-3 text-slate-700 max-w-[240px] truncate">
+                                                            {isEditing && isReadonlyField(key, selectedTable) ? (
+                                                                <span
+                                                                    title="รหัสอ้างอิงของระบบ แก้ไขไม่ได้ เพราะผูกกับผลการประเมินที่บันทึกไว้แล้ว"
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 font-mono text-xs text-slate-500"
+                                                                >
+                                                                    <Lock className="h-3 w-3 shrink-0" />
+                                                                    {String(row[key] ?? '').slice(0, 8)}…
+                                                                </span>
+                                                            ) : isEditing && FIELD_OPTIONS[key] ? (
+                                                                <select
+                                                                    className="w-full min-w-[9rem] rounded-lg border-2 border-indigo-400 bg-white px-3 py-1.5 font-bold text-indigo-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                                    value={String(editingRow.data[key] ?? '')}
+                                                                    onChange={(e) => setEditingRow({ ...editingRow, data: { ...editingRow.data, [key]: e.target.value } })}
+                                                                >
+                                                                    {FIELD_OPTIONS[key].map(([val, label]) => (
+                                                                        <option key={val} value={val}>{label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            ) : isEditing ? (
                                                                 <input
-                                                                    className="border-2 border-indigo-400 rounded-lg px-3 py-1.5 w-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-bold text-indigo-900"
-                                                                    value={editingRow.data[key] || ''}
+                                                                    className="border-2 border-indigo-400 rounded-lg px-3 py-1.5 w-full min-w-[9rem] bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-bold text-indigo-900"
+                                                                    value={editingRow.data[key] ?? ''}
+                                                                    inputMode={key === 'citizen_id' || key === 'new_password' ? 'numeric' : undefined}
+                                                                    maxLength={key === 'citizen_id' ? 13 : key === 'new_password' ? 8 : undefined}
                                                                     onChange={(e) => setEditingRow({ ...editingRow, data: { ...editingRow.data, [key]: e.target.value } })}
                                                                 />
                                                             ) : (
