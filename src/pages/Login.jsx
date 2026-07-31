@@ -2,8 +2,33 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { loginWithCitizenId } from '../lib/auth';
-import { BookOpen, Lock, User, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import {
+    Award,
+    BookOpen,
+    Check,
+    CheckCircle2,
+    Eye,
+    EyeOff,
+    GraduationCap,
+    HelpCircle,
+    KeyRound,
+    Loader2,
+    Lock,
+    LogIn,
+    ShieldCheck,
+    Sparkles,
+    User,
+    UserCheck,
+    Users,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const DEMO_ACCOUNTS = [
+    { role: 'ฝ่ายวิชาการ', name: 'นางพิมพ์ชนก (Admin)', citizenId: '1111111111111', dob: '01012540', badge: 'bg-purple-500/20 text-purple-200 border-purple-400/30' },
+    { role: 'ครูประจำชั้น', name: 'นางกมลวรรณ (ป.1/1)', citizenId: '2222222222222', dob: '01012540', badge: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30' },
+    { role: 'ผู้บริหาร', name: 'นายณรงค์ชัย (Exec)', citizenId: '5555555555555', dob: '01012540', badge: 'bg-amber-500/20 text-amber-200 border-amber-400/30' },
+    { role: 'นักเรียน', name: 'ด.ช.ภูมิพัฒน์ (ป.1)', citizenId: '9100000000001', dob: '01012540', badge: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' },
+];
 
 const LEARNING_FORMATS = ['วิชา', 'หน่วยการเรียนรู้', 'โครงงาน', 'กิจกรรม'];
 
@@ -18,11 +43,11 @@ export default function Login() {
     const handleLogin = async (e) => {
         e.preventDefault();
         if (citizenId.length < 13) {
-            toast.error('กรุณากรอกเลขประจำตัวประชาชน 13 หลักให้ครบ');
+            toast.error('กรุณากรอกเลขประจำตัวประชาชน 13 หลักให้ครบถ้วน');
             return;
         }
-        if (dob.length !== 8) {
-            toast.error('กรุณากรอกรหัสผ่าน 8 หลักในรูปแบบวันเดือนปีเกิด');
+        if (dob.length < 4) {
+            toast.error('กรุณากรอกรหัสผ่าน (วันเดือนปีเกิด 8 หลัก)');
             return;
         }
         setLoading(true);
@@ -32,80 +57,153 @@ export default function Login() {
                 toast.success(res.message);
                 loginUser(res.user);
                 switch (res.user.role) {
-                    case 'admin':    navigate('/admin'); break;
+                    case 'admin': navigate('/admin'); break;
                     case 'executive': navigate('/executive'); break;
-                    case 'student':  navigate('/student'); break;
-                    default:         navigate('/');
+                    case 'student': navigate('/student'); break;
+                    default: navigate('/');
                 }
             } else {
                 toast.error(res.message);
             }
         } catch (err) {
-            toast.error('ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง: ' + err.message);
+            toast.error('เข้าสู่ระบบไม่สำเร็จ: ' + err.message);
         } finally {
             setLoading(false);
         }
     };
 
+    const fillDemoAccount = (acc) => {
+        setCitizenId(acc.citizenId);
+        setDob(acc.dob);
+        toast.success(`เลือกบัญชีสาธิต: ${acc.role} (${acc.name})`);
+    };
+
     const idComplete = citizenId.length === 13;
+    const dobComplete = dob.length === 8;
 
     return (
-        <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900">
-            <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
-                <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm lg:grid lg:grid-cols-[1.05fr_1fr]">
+        <div className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 font-sans p-4 sm:p-6 lg:p-8 text-slate-100 overflow-hidden">
+            
+            {/* Background Decorative Glow Bubbles */}
+            <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -bottom-20 h-96 w-96 rounded-full bg-sky-600/15 blur-3xl" />
 
-                    {/* แผงข้อมูลระบบ อ่านได้ชัดแม้ฉายขึ้นจอในห้องประชุม */}
-                    <aside className="border-b border-indigo-100 bg-indigo-50/70 px-7 py-8 sm:px-9 lg:border-b-0 lg:border-r lg:px-10 lg:py-12">
+            <main className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl shadow-indigo-950/50 lg:grid lg:grid-cols-[1.1fr_1fr]">
+                
+                {/* ═══ Left Side: Brand Hero & Quick Demo Accounts ═══ */}
+                <aside className="relative flex flex-col justify-between border-b border-white/10 bg-gradient-to-b from-indigo-900/40 to-slate-950/60 p-8 sm:p-10 lg:border-b-0 lg:border-r lg:p-12">
+                    <div className="space-y-6">
+                        {/* Brand Logo */}
                         <div className="flex items-center gap-3">
-                            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
-                                <BookOpen className="h-5 w-5" />
-                            </span>
-                            <span className="text-2xl font-black tracking-tight text-slate-900">
-                                CBE <span className="text-indigo-700">Track</span>
-                            </span>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20">
+                                <BookOpen className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black tracking-tight text-white">
+                                        CBE <span className="text-indigo-400">Track</span>
+                                    </span>
+                                    <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-300 border border-indigo-400/30">
+                                        v2026
+                                    </span>
+                                </div>
+                                <p className="text-xs text-indigo-200/70">ระบบประเมินและติดตามผลลัพธ์การเรียนรู้ฐานสมรรถนะ</p>
+                            </div>
                         </div>
 
-                        <p className="mt-6 max-w-[34ch] text-lg font-bold leading-8 text-slate-800 sm:text-xl sm:leading-9">
-                            ระบบติดตามผลลัพธ์การเรียนรู้เชิงสมรรถนะ สำหรับสถานศึกษา
-                        </p>
-                        <p className="mt-3 max-w-[46ch] text-sm leading-7 text-slate-700">
-                            รวบรวมหลักฐานการเรียนรู้จากหลายบริบท เพื่อให้ฝ่ายวิชาการตัดสินและรับรองผลลัพธ์การเรียนรู้ของผู้เรียนได้อย่างตรวจสอบย้อนกลับได้
-                        </p>
+                        {/* Tagline */}
+                        <div className="space-y-3 pt-2">
+                            <h2 className="text-xl font-black text-white sm:text-2xl leading-snug">
+                                ประเมินอย่างมีความหมาย <br />
+                                <span className="bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 bg-clip-text text-transparent">
+                                    ตัดสินผลด้วยหลักฐานเชิงประจักษ์
+                                </span>
+                            </h2>
+                            <p className="text-xs leading-relaxed text-slate-300">
+                                เชื่อมโยงผลลัพธ์การเรียนรู้ (LO) จาก 4 รูปแบบการจัดการเรียนรู้ เพื่อการรับรองผลลัพธ์การเรียนรู้ระดับสถานศึกษาที่โปร่งใสและตรวจสอบได้
+                            </p>
+                        </div>
 
-                        <div className="mt-8 hidden sm:block">
-                            <p className="text-sm font-bold text-slate-700">รองรับรูปแบบการจัดการเรียนรู้</p>
-                            <ul className="mt-3 flex flex-wrap gap-2">
+                        {/* Learning Formats Pills */}
+                        <div className="space-y-2 pt-2">
+                            <p className="text-xs font-bold text-indigo-200 flex items-center gap-1.5">
+                                <Sparkles className="h-3.5 w-3.5 text-indigo-400" /> รูปแบบการจัดการเรียนรู้ที่รองรับ:
+                            </p>
+                            <div className="flex flex-wrap gap-2">
                                 {LEARNING_FORMATS.map(format => (
-                                    <li
+                                    <span
                                         key={format}
-                                        className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-sm font-bold text-indigo-800"
+                                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-xs font-extrabold text-indigo-100 backdrop-blur-md"
                                     >
                                         {format}
-                                    </li>
+                                    </span>
                                 ))}
-                            </ul>
+                            </div>
                         </div>
 
-                        <p className="mt-8 hidden items-start gap-2.5 text-sm leading-6 text-slate-700 lg:flex">
-                            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" />
-                            ผู้ใช้แต่ละบทบาทเห็นข้อมูลเฉพาะส่วนที่รับผิดชอบ และทุกการรับรองผลมีผู้รับผิดชอบกำกับไว้
-                        </p>
-                    </aside>
+                        {/* Security Feature Notice */}
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-300 backdrop-blur-md space-y-1">
+                            <div className="font-extrabold text-white flex items-center gap-1.5">
+                                <ShieldCheck className="h-4 w-4 text-emerald-400" /> มาตรฐานความปลอดภัยข้อมูลสถานศึกษา
+                            </div>
+                            <p className="text-[11px] leading-relaxed text-slate-400">
+                                ข้อมูลถูกจำกัดสิทธิการเข้าถึงตามบทบาท (Row Level Security) และทุกการอนุมัติจะถูกบันทึกประวัติการเปลี่ยนแปลง (Audit Logs)
+                            </p>
+                        </div>
+                    </div>
 
-                    {/* แบบฟอร์มเข้าสู่ระบบ */}
-                    <div className="px-7 py-8 sm:px-9 sm:py-10 lg:px-10 lg:py-12">
-                        <h1 className="text-2xl font-black tracking-tight text-slate-950">เข้าสู่ระบบ</h1>
-                        <p className="mt-1.5 text-sm text-slate-600">กรอกข้อมูลของท่านเพื่อเริ่มใช้งาน</p>
+                    {/* Quick Demo Login Pill Selector (Ideal for Real Testing & Demo Sessions) */}
+                    <div className="mt-8 border-t border-white/10 pt-6 space-y-3">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-extrabold text-indigo-200 flex items-center gap-1.5">
+                                <UserCheck className="h-4 w-4 text-indigo-400" /> เลือกบัญชีสาธิตเพื่อทดลองใช้งานด่วน:
+                            </span>
+                        </div>
 
-                        <form onSubmit={handleLogin} className="mt-8 space-y-6" noValidate>
-                            <div>
-                                <label htmlFor="citizen-id" className="block text-sm font-bold text-slate-800">
-                                    เลขประจำตัวประชาชน 13 หลัก
-                                </label>
-                                <div className="relative mt-2">
-                                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500">
-                                        <User className="h-4 w-4" />
+                        <div className="grid grid-cols-2 gap-2">
+                            {DEMO_ACCOUNTS.map(acc => (
+                                <button
+                                    key={acc.role}
+                                    type="button"
+                                    onClick={() => fillDemoAccount(acc)}
+                                    className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition hover:scale-[1.02] active:scale-95 ${acc.badge}`}
+                                >
+                                    <span className="text-xs font-black">{acc.role}</span>
+                                    <span className="text-[10px] opacity-80 truncate w-full">{acc.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </aside>
+
+                {/* ═══ Right Side: Clean Login Form ═══ */}
+                <div className="flex flex-col justify-between bg-white p-8 sm:p-10 lg:p-12 text-slate-900">
+                    <div className="space-y-6">
+                        <div>
+                            <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-extrabold text-indigo-700 border border-indigo-100 mb-2">
+                                <Lock className="h-3.5 w-3.5" /> เข้าสู่ระบบสถานศึกษา
+                            </div>
+                            <h1 className="text-2xl font-black text-slate-950 sm:text-3xl">เข้าสู่ระบบ</h1>
+                            <p className="mt-1 text-xs font-medium text-slate-500">
+                                กรอกเลขประจำตัวประชาชน 13 หลัก และรหัสผ่านเพื่อเริ่มใช้งาน
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleLogin} className="space-y-5" noValidate>
+                            
+                            {/* Input 1: Citizen ID */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label htmlFor="citizen-id" className="text-xs font-extrabold text-slate-800">
+                                        เลขประจำตัวประชาชน 13 หลัก <span className="text-rose-500">*</span>
+                                    </label>
+                                    <span className={`text-xs font-mono font-extrabold ${idComplete ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                        {citizenId.length}/13
                                     </span>
+                                </div>
+
+                                <div className="relative">
+                                    <User className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
                                     <input
                                         id="citizen-id"
                                         type="text"
@@ -115,28 +213,28 @@ export default function Login() {
                                         required
                                         value={citizenId}
                                         onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
-                                        placeholder="ไม่ต้องเว้นวรรค"
-                                        className="block min-h-[3.25rem] w-full rounded-xl border border-slate-300 bg-white pl-11 pr-16 text-base font-semibold tracking-wide text-slate-900 outline-none transition-colors placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-500 hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100"
+                                        placeholder="เช่น 1111111111111"
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-10 pr-10 py-3 text-sm font-extrabold tracking-wider text-slate-900 placeholder-slate-400 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
                                     />
-                                    {citizenId.length > 0 && (
-                                        <span
-                                            aria-hidden="true"
-                                            className={`absolute inset-y-0 right-4 flex items-center text-sm font-bold tabular-nums ${idComplete ? 'text-emerald-700' : 'text-slate-500'}`}
-                                        >
-                                            {citizenId.length}/13
-                                        </span>
+                                    {idComplete && (
+                                        <CheckCircle2 className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-emerald-500" />
                                     )}
                                 </div>
                             </div>
 
-                            <div>
-                                <label htmlFor="dob-password" className="block text-sm font-bold text-slate-800">
-                                    รหัสผ่าน
-                                </label>
-                                <div className="relative mt-2">
-                                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500">
-                                        <Lock className="h-4 w-4" />
+                            {/* Input 2: Password (DOB) */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label htmlFor="dob-password" className="text-xs font-extrabold text-slate-800">
+                                        รหัสผ่าน (วันเดือนปีเกิด 8 หลัก) <span className="text-rose-500">*</span>
+                                    </label>
+                                    <span className={`text-xs font-mono font-extrabold ${dobComplete ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                        {dob.length}/8
                                     </span>
+                                </div>
+
+                                <div className="relative">
+                                    <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
                                     <input
                                         id="dob-password"
                                         type={showPassword ? 'text' : 'password'}
@@ -146,49 +244,55 @@ export default function Login() {
                                         required
                                         value={dob}
                                         onChange={(e) => setDob(e.target.value.replace(/\D/g, ''))}
-                                        aria-describedby="dob-hint"
-                                        placeholder="วันเดือนปีเกิด 8 หลัก"
-                                        className="block min-h-[3.25rem] w-full rounded-xl border border-slate-300 bg-white pl-11 pr-14 text-base font-semibold tracking-widest text-slate-900 outline-none transition-colors placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-500 hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100"
+                                        placeholder="เช่น 01012540"
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-10 pr-12 py-3 text-sm font-extrabold tracking-widest text-slate-900 placeholder-slate-400 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(v => !v)}
-                                        aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                                        aria-pressed={showPassword}
-                                        className="absolute inset-y-0 right-0 flex items-center rounded-r-xl px-4 text-slate-500 transition-colors hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                                        className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-700 transition"
+                                        title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
                                     >
                                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </button>
                                 </div>
-                                <p id="dob-hint" className="mt-2 text-sm leading-6 text-slate-600">
-                                    บัญชีที่ยังไม่ได้เปลี่ยนรหัสผ่าน ใช้วันเดือนปีเกิด เช่น 5 มกราคม 2555 กรอก{' '}
-                                    <span className="font-mono font-bold text-slate-900">05012555</span>
+
+                                <p className="text-[11px] leading-relaxed text-slate-500 flex items-center gap-1 pt-1">
+                                    <HelpCircle className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                                    รหัสผ่านเริ่มต้นใช้วันเดือนปีเกิด พ.ศ. 8 หลัก เช่น 5 ม.ค. 2540 กรอก <strong className="text-slate-800 font-mono">05012540</strong>
                                 </p>
                             </div>
 
+                            {/* Submit Button */}
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="flex min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-xl bg-indigo-700 text-base font-bold text-white transition-colors hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 active:bg-indigo-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-600/30 transition hover:from-indigo-700 hover:to-indigo-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 disabled:opacity-50"
                             >
                                 {loading ? (
                                     <>
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        กำลังตรวจสอบข้อมูล...
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        กำลังตรวจสอบสิทธิการใช้งาน...
                                     </>
-                                ) : 'เข้าสู่ระบบ'}
+                                ) : (
+                                    <>
+                                        <LogIn className="h-4 w-4" /> เข้าสู่ระบบ
+                                    </>
+                                )}
                             </button>
                         </form>
+                    </div>
 
-                        <p className="mt-8 border-t border-slate-200 pt-5 text-sm leading-6 text-slate-600">
-                            หากเข้าสู่ระบบไม่ได้ กรุณาติดต่อฝ่ายวิชาการของสถานศึกษาเพื่อตรวจสอบข้อมูลบัญชีผู้ใช้
-                        </p>
+                    {/* Footer Support Info */}
+                    <div className="mt-8 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+                        <p>หากพบปัญหาการเข้าสู่ระบบ กรุณาติดต่อฝ่ายวิชาการประจำสถานศึกษา</p>
                     </div>
                 </div>
             </main>
 
-            <footer className="px-4 pb-8 text-center text-sm text-slate-600">
-                <span className="font-bold text-slate-800">CBE Track</span> · สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.) © {new Date().getFullYear() + 543}
+            {/* Bottom Global Footer */}
+            <footer className="mt-6 text-center text-xs font-semibold text-slate-400">
+                CBE Track · ระบบติดตามผลลัพธ์การเรียนรู้ พ.ศ. {new Date().getFullYear() + 543}
             </footer>
         </div>
     );
