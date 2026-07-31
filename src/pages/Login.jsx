@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { loginWithCitizenId } from '../lib/auth';
-import { GraduationCap, Lock, User, Loader2, Eye, EyeOff } from 'lucide-react';
+import { BookOpen, Lock, User, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const LEARNING_FORMATS = ['วิชา', 'หน่วยการเรียนรู้', 'โครงงาน', 'กิจกรรม'];
 
 export default function Login() {
     const [citizenId, setCitizenId] = useState('');
@@ -45,109 +47,149 @@ export default function Login() {
         }
     };
 
+    const idComplete = citizenId.length === 13;
+
     return (
-        <div className="min-h-screen bg-slate-900 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-900 via-slate-900 to-black flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Animated background blobs */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600 rounded-full mix-blend-screen filter blur-[128px] opacity-20 animate-pulse"></div>
-            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-indigo-600 rounded-full mix-blend-screen filter blur-[128px] opacity-20 animate-pulse delay-1000"></div>
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-violet-700 rounded-full mix-blend-screen filter blur-[160px] opacity-10"></div>
+        <div className="flex min-h-screen flex-col bg-slate-50 font-sans text-slate-900">
+            <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
+                <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm lg:grid lg:grid-cols-[1.05fr_1fr]">
 
-            <div className="relative w-full max-w-md z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* Brand Badge */}
-                <div className="flex items-center justify-center mb-8 gap-2">
-                    <div className="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg border border-blue-400/30">
-                        <GraduationCap className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-white font-extrabold text-2xl tracking-tight">CBE <span className="text-blue-400">Track</span></span>
-                </div>
+                    {/* แผงข้อมูลระบบ อ่านได้ชัดแม้ฉายขึ้นจอในห้องประชุม */}
+                    <aside className="border-b border-indigo-100 bg-indigo-50/70 px-7 py-8 sm:px-9 lg:border-b-0 lg:border-r lg:px-10 lg:py-12">
+                        <div className="flex items-center gap-3">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
+                                <BookOpen className="h-5 w-5" />
+                            </span>
+                            <span className="text-2xl font-black tracking-tight text-slate-900">
+                                CBE <span className="text-indigo-700">Track</span>
+                            </span>
+                        </div>
 
-                <div className="bg-slate-800/70 backdrop-blur-xl border border-slate-700/80 p-8 rounded-3xl shadow-2xl shadow-black/40">
-                    <div className="text-center mb-8">
-                        <h1 className="text-xl font-extrabold text-white mb-1">เข้าสู่ระบบ</h1>
-                        <p className="text-slate-400 text-sm">ระบบติดตามผลลัพธ์การเรียนรู้เชิงสมรรถนะ</p>
-                    </div>
+                        <p className="mt-6 max-w-[34ch] text-lg font-bold leading-8 text-slate-800 sm:text-xl sm:leading-9">
+                            ระบบติดตามผลลัพธ์การเรียนรู้เชิงสมรรถนะ สำหรับสถานศึกษา
+                        </p>
+                        <p className="mt-3 max-w-[46ch] text-sm leading-7 text-slate-700">
+                            รวบรวมหลักฐานการเรียนรู้จากหลายบริบท เพื่อให้ฝ่ายวิชาการตัดสินและรับรองผลลัพธ์การเรียนรู้ของผู้เรียนได้อย่างตรวจสอบย้อนกลับได้
+                        </p>
 
-                    <form onSubmit={handleLogin} className="space-y-5">
-                        {/* Citizen ID */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-300 ml-1">เลขประจำตัวประชาชน 13 หลัก</label>
-                            <div className="relative group">
-                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
-                                    <User className="h-4 w-4" />
-                                </div>
-                                <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    maxLength="13"
-                                    required
-                                    value={citizenId}
-                                    onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
-                                    className="block w-full pl-11 pr-4 py-3.5 bg-slate-900/60 border border-slate-600/80 rounded-xl text-white placeholder-slate-600 focus:bg-slate-900/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none text-sm font-medium"
-                                    placeholder="กรอกเลขประจำตัวประชาชน"
-                                />
-                                {/* Character counter */}
-                                {citizenId.length > 0 && (
-                                    <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold tabular-nums ${citizenId.length === 13 ? 'text-green-400' : 'text-slate-500'}`}>
-                                        {citizenId.length}/13
+                        <div className="mt-8 hidden sm:block">
+                            <p className="text-sm font-bold text-slate-700">รองรับรูปแบบการจัดการเรียนรู้</p>
+                            <ul className="mt-3 flex flex-wrap gap-2">
+                                {LEARNING_FORMATS.map(format => (
+                                    <li
+                                        key={format}
+                                        className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-sm font-bold text-indigo-800"
+                                    >
+                                        {format}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        <p className="mt-8 hidden items-start gap-2.5 text-sm leading-6 text-slate-700 lg:flex">
+                            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" />
+                            ผู้ใช้แต่ละบทบาทเห็นข้อมูลเฉพาะส่วนที่รับผิดชอบ และทุกการรับรองผลมีผู้รับผิดชอบกำกับไว้
+                        </p>
+                    </aside>
+
+                    {/* แบบฟอร์มเข้าสู่ระบบ */}
+                    <div className="px-7 py-8 sm:px-9 sm:py-10 lg:px-10 lg:py-12">
+                        <h1 className="text-2xl font-black tracking-tight text-slate-950">เข้าสู่ระบบ</h1>
+                        <p className="mt-1.5 text-sm text-slate-600">กรอกข้อมูลของท่านเพื่อเริ่มใช้งาน</p>
+
+                        <form onSubmit={handleLogin} className="mt-8 space-y-6" noValidate>
+                            <div>
+                                <label htmlFor="citizen-id" className="block text-sm font-bold text-slate-800">
+                                    เลขประจำตัวประชาชน 13 หลัก
+                                </label>
+                                <div className="relative mt-2">
+                                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500">
+                                        <User className="h-4 w-4" />
                                     </span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Password / DOB */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-300 ml-1">รหัสผ่าน</label>
-                            <div className="relative group">
-                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
-                                    <Lock className="h-4 w-4" />
+                                    <input
+                                        id="citizen-id"
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="username"
+                                        maxLength={13}
+                                        required
+                                        value={citizenId}
+                                        onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
+                                        placeholder="ไม่ต้องเว้นวรรค"
+                                        className="block min-h-[3.25rem] w-full rounded-xl border border-slate-300 bg-white pl-11 pr-16 text-base font-semibold tracking-wide text-slate-900 outline-none transition-colors placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-500 hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100"
+                                    />
+                                    {citizenId.length > 0 && (
+                                        <span
+                                            aria-hidden="true"
+                                            className={`absolute inset-y-0 right-4 flex items-center text-sm font-bold tabular-nums ${idComplete ? 'text-emerald-700' : 'text-slate-500'}`}
+                                        >
+                                            {citizenId.length}/13
+                                        </span>
+                                    )}
                                 </div>
-                                <input
-                                    type={showPassword ? 'text' : 'password'}
-                                    inputMode="numeric"
-                                    maxLength="8"
-                                    required
-                                    value={dob}
-                                    onChange={(e) => setDob(e.target.value.replace(/\D/g, ''))}
-                                    className="block w-full pl-11 pr-12 py-3.5 bg-slate-900/60 border border-slate-600/80 rounded-xl text-white placeholder-slate-600 focus:bg-slate-900/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none text-sm font-medium tracking-widest"
-                                    placeholder="วันเดือนปีเกิด 8 หลัก"
-                                />
-                                {/* Toggle show/hide */}
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(v => !v)}
-                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-blue-400 transition-colors"
-                                    tabIndex={-1}
-                                >
-                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </button>
                             </div>
-                            <p className="text-xs text-slate-400 ml-1">บัญชีที่ยังไม่ได้เปลี่ยนรหัสผ่าน ใช้วันเดือนปีเกิด เช่น 5 มกราคม 2555 กรอก <span className="font-mono text-slate-300">05012555</span></p>
-                        </div>
 
-                        {/* Submit */}
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full relative group overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 text-white font-bold py-3.5 rounded-xl shadow-[0_0_30px_-5px_rgba(59,130,246,0.5)] hover:shadow-[0_0_40px_-5px_rgba(59,130,246,0.7)] transition-all duration-300 disabled:cursor-not-allowed transform active:scale-[0.98] mt-2"
-                        >
-                            {/* Shimmer effect */}
-                            <span className="absolute inset-0 w-1/3 h-full bg-white/10 skew-x-12 -translate-x-full group-hover:translate-x-[400%] transition-transform duration-700"></span>
-                            <span className="relative flex items-center justify-center text-base tracking-wide">
+                            <div>
+                                <label htmlFor="dob-password" className="block text-sm font-bold text-slate-800">
+                                    รหัสผ่าน
+                                </label>
+                                <div className="relative mt-2">
+                                    <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500">
+                                        <Lock className="h-4 w-4" />
+                                    </span>
+                                    <input
+                                        id="dob-password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        inputMode="numeric"
+                                        autoComplete="current-password"
+                                        maxLength={8}
+                                        required
+                                        value={dob}
+                                        onChange={(e) => setDob(e.target.value.replace(/\D/g, ''))}
+                                        aria-describedby="dob-hint"
+                                        placeholder="วันเดือนปีเกิด 8 หลัก"
+                                        className="block min-h-[3.25rem] w-full rounded-xl border border-slate-300 bg-white pl-11 pr-14 text-base font-semibold tracking-widest text-slate-900 outline-none transition-colors placeholder:text-sm placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-500 hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(v => !v)}
+                                        aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                        aria-pressed={showPassword}
+                                        className="absolute inset-y-0 right-0 flex items-center rounded-r-xl px-4 text-slate-500 transition-colors hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"
+                                    >
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                <p id="dob-hint" className="mt-2 text-sm leading-6 text-slate-600">
+                                    บัญชีที่ยังไม่ได้เปลี่ยนรหัสผ่าน ใช้วันเดือนปีเกิด เช่น 5 มกราคม 2555 กรอก{' '}
+                                    <span className="font-mono font-bold text-slate-900">05012555</span>
+                                </p>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-xl bg-indigo-700 text-base font-bold text-white transition-colors hover:bg-indigo-800 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 active:bg-indigo-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+                            >
                                 {loading ? (
                                     <>
-                                        <Loader2 className="animate-spin w-5 h-5 mr-2" />
+                                        <Loader2 className="h-5 w-5 animate-spin" />
                                         กำลังตรวจสอบข้อมูล...
                                     </>
                                 ) : 'เข้าสู่ระบบ'}
-                            </span>
-                        </button>
-                    </form>
-                </div>
+                            </button>
+                        </form>
 
-                <div className="mt-6 text-center text-xs text-slate-500">
-                    <span className="font-bold text-slate-400">CBE Track</span> · สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.) © {new Date().getFullYear() + 543}
+                        <p className="mt-8 border-t border-slate-200 pt-5 text-sm leading-6 text-slate-600">
+                            หากเข้าสู่ระบบไม่ได้ กรุณาติดต่อฝ่ายวิชาการของสถานศึกษาเพื่อตรวจสอบข้อมูลบัญชีผู้ใช้
+                        </p>
+                    </div>
                 </div>
-            </div>
+            </main>
+
+            <footer className="px-4 pb-8 text-center text-sm text-slate-600">
+                <span className="font-bold text-slate-800">CBE Track</span> · สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน (สพฐ.) © {new Date().getFullYear() + 543}
+            </footer>
         </div>
     );
 }
