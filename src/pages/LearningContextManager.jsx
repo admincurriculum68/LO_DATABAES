@@ -41,6 +41,19 @@ const TYPE_META = {
     integrated_unit: { icon: ClipboardList, className: 'border-amber-200 bg-amber-50 text-amber-800', activeBadge: 'bg-amber-600 text-white' },
 };
 
+const STANDARD_SUBJECT_GROUPS = [
+    'ภาษาไทย',
+    'คณิตศาสตร์',
+    'วิทยาศาสตร์และเทคโนโลยี',
+    'สังคมศึกษา ศาสนา และวัฒนธรรม',
+    'สุขศึกษาและพลศึกษา',
+    'ศิลปะ',
+    'การงานอาชีพ',
+    'ภาษาต่างประเทศ',
+    'กิจกรรมพัฒนาผู้เรียน',
+    'บูรณาการหลายกลุ่มสาระ',
+];
+
 const EMPTY_FORM = {
     context_type: 'subject',
     context_name: '',
@@ -134,7 +147,8 @@ export default function LearningContextManager() {
                     recordId: subject.subject_id,
                     context_type: 'subject',
                     context_name: subject.subject_name,
-                    description: subject.subject_group ? `กลุ่มสาระหรือกลุ่มวิชา: ${subject.subject_group}` : '',
+                    subject_group: subject.subject_group || '',
+                    description: subject.description || (subject.subject_group ? `กลุ่มสาระ/กลุ่มวิชา: ${subject.subject_group}` : ''),
                     grade_level: subject.grade_level,
                     responsible_teacher_id: subject.teacher_id,
                     is_active: true,
@@ -144,6 +158,7 @@ export default function LearningContextManager() {
                     key: itemKey('context', context.context_id),
                     source: 'context',
                     recordId: context.context_id,
+                    subject_group: context.subject_group || '',
                 })),
             ].sort((a, b) => LEARNING_FORMAT_ORDER.indexOf(a.context_type) - LEARNING_FORMAT_ORDER.indexOf(b.context_type)
                 || (a.context_name || '').localeCompare(b.context_name || '', 'th'));
@@ -200,7 +215,7 @@ export default function LearningContextManager() {
             if (formatFilter !== 'all' && item.context_type !== formatFilter) return false;
             if (!normalized) return true;
             const teacherName = teacherById[item.responsible_teacher_id] || '';
-            return `${item.context_name || ''} ${item.description || ''} ${item.grade_level || ''} ${teacherName}`.toLowerCase().includes(normalized);
+            return `${item.context_name || ''} ${item.subject_group || ''} ${item.description || ''} ${item.grade_level || ''} ${teacherName}`.toLowerCase().includes(normalized);
         });
     }, [formatFilter, itemQuery, learningFormats, teacherById]);
 
@@ -276,6 +291,7 @@ export default function LearningContextManager() {
                     context_type: form.context_type,
                     context_name: form.context_name.trim(),
                     description: form.description.trim() || null,
+                    subject_group: form.subject_group.trim() || null,
                     academic_year: academicYear,
                     semester,
                     grade_level: form.grade_level || null,
@@ -293,7 +309,7 @@ export default function LearningContextManager() {
                 action: 'create_learning_format',
                 entity_type: createdItem.source === 'subject' ? 'subject' : 'learning_context',
                 entity_id: createdItem.id,
-                detail: { format_type: createdItem.type, format_name: createdItem.name },
+                detail: { format_type: createdItem.type, format_name: createdItem.name, subject_group: form.subject_group },
             });
             toast.success(`เพิ่ม${learningFormatLabel(createdItem.type)}เรียบร้อย เลือก LO ที่ใช้ประเมินต่อได้ทันที`);
             await loadData();
@@ -361,6 +377,11 @@ export default function LearningContextManager() {
         <Layout title="รูปแบบการจัดการเรียนรู้">
             <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
                 
+                {/* Datalist for Subject Groups autocomplete */}
+                <datalist id="subject-groups-list">
+                    {STANDARD_SUBJECT_GROUPS.map(g => <option key={g} value={g} />)}
+                </datalist>
+
                 {/* Top Header Hero Banner */}
                 <header className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl ring-1 ring-white/10">
                     <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
@@ -383,7 +404,7 @@ export default function LearningContextManager() {
                                 รูปแบบการจัดการเรียนรู้ (Learning Contexts)
                             </h1>
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                จัดการรายวิชา, หน่วยการเรียนรู้บูรณาการ, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมกำหนดผลลัพธ์การเรียนรู้ (LO) ที่ใช้ในการประเมิน
+                                จัดการรายวิชา, หน่วยการเรียนรู้บูรณาการ, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุกลุ่มสาระ/กลุ่มวิชา และเชื่อมโยงผลลัพธ์การเรียนรู้ (LO)
                             </p>
                         </div>
 
@@ -485,7 +506,7 @@ export default function LearningContextManager() {
                                             type="text"
                                             value={itemQuery}
                                             onChange={e => setItemQuery(e.target.value)}
-                                            placeholder="ค้นหาชื่อ, ชั้นเรียน, หรือครูผู้รับผิดชอบ..."
+                                            placeholder="ค้นหาชื่อ, กลุ่มสาระ/กลุ่มวิชา, ชั้นเรียน, ครู..."
                                             className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-2 text-xs font-medium text-slate-900 placeholder-slate-400 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
                                     </div>
@@ -547,13 +568,23 @@ export default function LearningContextManager() {
                                                                 <span className={`font-bold ${isActiveItem ? 'text-indigo-100' : 'text-slate-500'}`}>
                                                                     {learningFormatLabel(item.context_type)}
                                                                 </span>
+                                                                {item.subject_group && (
+                                                                    <>
+                                                                        <span className={isActiveItem ? 'text-indigo-200' : 'text-slate-300'}>·</span>
+                                                                        <span className={`rounded-md px-1.5 py-0.2 text-[11px] font-extrabold ${
+                                                                            isActiveItem ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                                                                        }`}>
+                                                                            {item.subject_group}
+                                                                        </span>
+                                                                    </>
+                                                                )}
                                                                 <span className={isActiveItem ? 'text-indigo-200' : 'text-slate-300'}>·</span>
                                                                 <span className={isActiveItem ? 'text-indigo-100' : 'text-slate-500'}>
                                                                     {item.grade_level || 'ทุกระดับชั้น'}
                                                                 </span>
-                                                                <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-black border shadow-2xs ${
+                                                                <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-black border shadow-2xs ${
                                                                     isActiveItem ? 'bg-white/20 text-white border-white/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                                                                }">
+                                                                }`}>
                                                                     {loCount} LO
                                                                 </span>
                                                             </div>
@@ -579,7 +610,7 @@ export default function LearningContextManager() {
                                         <div className="flex items-center justify-between border-b border-slate-100 p-6">
                                             <div>
                                                 <h3 className="text-lg font-extrabold text-slate-900">เพิ่มรูปแบบการจัดการเรียนรู้ใหม่</h3>
-                                                <p className="mt-0.5 text-xs text-slate-500">กรอกข้อมูลพื้นฐาน แล้วระบบจะพาไปเลือก LO สำหรับประเมินต่อทันที</p>
+                                                <p className="mt-0.5 text-xs text-slate-500">กรอกข้อมูลพื้นฐานและเลือกกลุ่มสาระ/กลุ่มวิชา แล้วระบบจะพาไปเลือก LO ต่อทันที</p>
                                             </div>
                                             <button
                                                 type="button"
@@ -633,17 +664,19 @@ export default function LearningContextManager() {
                                                     />
                                                 </div>
 
-                                                {isSubjectForm && (
-                                                    <div className="space-y-1">
-                                                        <label className="text-xs font-extrabold text-slate-800">กลุ่มสาระ / กลุ่มวิชา</label>
-                                                        <input
-                                                            value={form.subject_group}
-                                                            onChange={e => updateForm('subject_group', e.target.value)}
-                                                            placeholder="เช่น ภาษาไทย"
-                                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                        />
-                                                    </div>
-                                                )}
+                                                {/* Subject Group Input / Selection (Now available for ALL 4 types) */}
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-extrabold text-slate-800">
+                                                        กลุ่มสาระการเรียนรู้ / กลุ่มวิชา
+                                                    </label>
+                                                    <input
+                                                        list="subject-groups-list"
+                                                        value={form.subject_group}
+                                                        onChange={e => updateForm('subject_group', e.target.value)}
+                                                        placeholder="เลือกหรือพิมพ์ เช่น ภาษาไทย, บูรณาการ..."
+                                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    />
+                                                </div>
 
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-extrabold text-slate-800">ระดับชั้น</label>
@@ -657,7 +690,7 @@ export default function LearningContextManager() {
                                                     </select>
                                                 </div>
 
-                                                <div className="space-y-1">
+                                                <div className="sm:col-span-2 space-y-1">
                                                     <label className="text-xs font-extrabold text-slate-800">
                                                         {isSubjectForm ? 'ครูผู้สอน' : 'ครูผู้รับผิดชอบ'}
                                                     </label>
@@ -674,6 +707,19 @@ export default function LearningContextManager() {
                                                         ))}
                                                     </select>
                                                 </div>
+
+                                                {!isSubjectForm && (
+                                                    <div className="sm:col-span-2 space-y-1">
+                                                        <label className="text-xs font-extrabold text-slate-800">คำอธิบายรายละเอียด</label>
+                                                        <textarea
+                                                            rows="3"
+                                                            value={form.description}
+                                                            onChange={e => updateForm('description', e.target.value)}
+                                                            placeholder="อธิบายวัตถุประสงค์หรือลักษณะการจัดการเรียนรู้โดยย่อ"
+                                                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-medium text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -716,6 +762,11 @@ export default function LearningContextManager() {
                                                         <span className={`rounded-lg border px-2.5 py-0.5 text-xs font-black ${(TYPE_META[selectedItem.context_type] || TYPE_META.project).className}`}>
                                                             {learningFormatLabel(selectedItem.context_type)}
                                                         </span>
+                                                        {selectedItem.subject_group && (
+                                                            <span className="rounded-lg bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
+                                                                กลุ่มสาระ/กลุ่มวิชา: {selectedItem.subject_group}
+                                                            </span>
+                                                        )}
                                                         <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
                                                             ระดับชั้น {selectedItem.grade_level || 'ทุกระดับชั้น'}
                                                         </span>

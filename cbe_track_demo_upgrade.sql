@@ -77,12 +77,15 @@ CREATE TABLE IF NOT EXISTS learning_contexts (
     academic_year INTEGER NOT NULL,
     semester INTEGER NOT NULL CHECK (semester IN (1, 2)),
     grade_level TEXT,
+    subject_group TEXT,
     responsible_teacher_id UUID REFERENCES users_teachers(teacher_id) ON DELETE SET NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(school_id, academic_year, semester, context_type, context_code)
 );
+
+ALTER TABLE learning_contexts ADD COLUMN IF NOT EXISTS subject_group TEXT;
 
 -- Convert the former integrated-unit label to the canonical learning-unit type.
 UPDATE learning_contexts
