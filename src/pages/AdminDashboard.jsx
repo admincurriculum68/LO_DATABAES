@@ -295,6 +295,30 @@ export default function AdminDashboard() {
     // Fix decimal suffix: 1234567890123.00 → "1234567890123"
     // ค่าที่ Excel ย่อจนเลขหายไปแล้ว เช่น 1.43E+12 กู้คืนไม่ได้ ต้องให้ผู้ใช้แก้ไฟล์
     const LOSSY_SCIENTIFIC = '__EXCEL_LOSSY__';
+
+    // Excel เก็บเลขบัตรเป็น "ตัวเลข" ได้ ซึ่งค่าที่เก็บไว้ยังครบทุกหลัก
+    // แต่ SheetJS จะจัดรูปแบบเป็น 1.4299E+12 ตอนอ่านเป็นข้อความ
+    // จึงต้องใช้ค่าดิบเมื่อเซลล์เป็นตัวเลข ส่วนกรณีที่ "ข้อความในไฟล์" เป็น
+    // ตัวเลขวิทยาศาสตร์อยู่แล้ว คือเลขหายไปจริงและต้องปฏิเสธ
+    const cellToIdText = (rawValue, formattedValue) => {
+        if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+            return Number.isInteger(rawValue) ? rawValue.toFixed(0) : String(rawValue);
+        }
+        const raw = String(rawValue ?? '').trim();
+        if (raw) return raw;
+        return String(formattedValue ?? '').trim();
+    };
+
+    // แปลงวันที่ของ Excel เป็น DDMMYYYY พุทธศักราช
+    // เซลล์วันที่จริงจะถูกเก็บเป็นเลขลำดับวัน ต้องแปลงก่อน
+    // ปีที่ได้ถ้าน้อยกว่า 2400 แปลว่าเป็น ค.ศ. ต้องบวก 543
+    const excelSerialToThaiDob = (serial) => {
+        if (typeof serial !== 'number' || !Number.isFinite(serial) || serial <= 0) return null;
+        const parsed = XLSX.SSF?.parse_date_code?.(serial);
+        if (!parsed || !parsed.y || !parsed.m || !parsed.d) return null;
+        const year = parsed.y < 2400 ? parsed.y + 543 : parsed.y;
+        return `${String(parsed.d).padStart(2, '0')}${String(parsed.m).padStart(2, '0')}${year}`;
+    };
     const sanitizeCitizenId = (raw) => {
         if (!raw && raw !== 0) return '';
         let s = String(raw).trim();
@@ -350,10 +374,22 @@ export default function AdminDashboard() {
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
-                    const workbook = XLSX.read(e.target.result, { type: 'array', cellText: true, cellDates: true });
+                    const workbook = XLSX.read(e.target.result, { type: 'array', cellText: true });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    // Use raw:false so numbers stay as formatted strings (prevents scientific notation)
+                    // ข้อความตามที่แสดงใช้กับข้อความทั่วไป ส่วนเลขบัตรและวันเกิดต้องใช้ค่าดิบ
+                    // เพราะ Excel เก็บเป็นตัวเลขได้ แล้วจะถูกจัดรูปแบบเป็น 1.43E+12 หรือเลขลำดับวัน
                     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+                    const valueRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+                    rows.forEach((row, i) => {
+                        const values = valueRows[i] || {};
+                        if ('citizen_id' in row) row.citizen_id = cellToIdText(values.citizen_id, row.citizen_id);
+                        if ('student_citizen_id' in row) row.student_citizen_id = cellToIdText(values.student_citizen_id, row.student_citizen_id);
+                        if ('teacher_citizen_id' in row) row.teacher_citizen_id = cellToIdText(values.teacher_citizen_id, row.teacher_citizen_id);
+                        if ('student_code' in row) row.student_code = cellToIdText(values.student_code, row.student_code);
+                        if ('dob' in row && typeof values.dob === 'number') {
+                            row.dob = excelSerialToThaiDob(values.dob) || row.dob;
+                        }
+                    });
                     resolve(rows);
                 } catch (err) {
                     reject(new Error('อ่านไฟล์ Excel ไม่สำเร็จ: ' + err.message));
@@ -383,7 +419,9 @@ export default function AdminDashboard() {
             const buffer = await new Promise((res, rej) => { reader.onload = ev => res(ev.target.result); reader.onerror = rej; reader.readAsArrayBuffer(file); });
             const wb = XLSX.read(buffer, { type: 'array', cellText: true });
             const ws = wb.Sheets[wb.SheetNames[0]];
+            // อ่านสองชุด ข้อความตามที่แสดงใช้กับวันเกิด ค่าดิบใช้กับเลขบัตรและรหัสนักเรียน
             const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+            const valueRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
 
             // DMC: Row0=metadata (contains "วันและเวลา"), Row1=column headers, Row2+=data
             const isDMC = String(rawRows[0]?.[0] || '').includes('วันและเวลา');
@@ -401,15 +439,18 @@ export default function AdminDashboard() {
             };
 
             const validRows = [], invalidRows = [];
-            for (let i = 0; i < rawRows.slice(2).length; i++) {
-                const row = rawRows.slice(2)[i];
+            const dataRows = rawRows.slice(2);
+            const dataValueRows = valueRows.slice(2);
+            for (let i = 0; i < dataRows.length; i++) {
+                const row = dataRows[i];
+                const valueRow = dataValueRows[i] || [];
                 if (!row || row.every(c => !String(c).trim())) continue;
-                const cleanId = sanitizeCitizenId(String(row[COL.CITIZEN] || '').replace(/^'+/, ''));
-                const dobStr = parseDMCDob(row[COL.DOB]);
+                const cleanId = sanitizeCitizenId(cellToIdText(valueRow[COL.CITIZEN], row[COL.CITIZEN]).replace(/^'+/, ''));
+                const dobStr = parseDMCDob(row[COL.DOB]) || excelSerialToThaiDob(valueRow[COL.DOB]);
                 const fname = String(row[COL.FNAME] || '').trim();
                 const lname = String(row[COL.LNAME] || '').trim();
                 const prefix = prefixMap[String(row[COL.PREFIX] || '').trim()] || String(row[COL.PREFIX] || '').trim();
-                const code = String(row[COL.CODE] || '').trim().replace(/\.0+$/, '');
+                const code = cellToIdText(valueRow[COL.CODE], row[COL.CODE]).replace(/\.0+$/, '');
                 // ดึงชั้นและห้องจาก DMC แล้วรวมเป็น current_room เช่น "ป.3/2"
                 const gradeRaw = String(row[COL.GRADE] || '').trim();   // เช่น "ป.3"
                 const roomRaw  = String(row[COL.ROOM]  || '').trim().replace(/\.0+$/, ''); // เช่น "2"
