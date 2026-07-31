@@ -141,7 +141,7 @@ export default function HomeroomView() {
             const firstLoId = nextData.loData[0]?.learning_outcomes?.lo_id || '';
             setData(nextData);
             setActivityData(nextActivityData);
-            setSelectedLo(current => nextData.loData.some(item => item.learning_outcomes.lo_id === current) ? current : firstLoId);
+            setSelectedLo(current => nextData.loData.some(item => item.learning_outcomes?.lo_id === current) ? current : firstLoId);
         } catch (error) {
             setLoadError(error.message || 'ไม่สามารถโหลดข้อมูลห้องเรียนได้');
         } finally {
@@ -173,7 +173,7 @@ export default function HomeroomView() {
 
     const learningOutcomes = useMemo(() => {
         const map = new Map();
-        (data?.loData || []).forEach(item => map.set(item.learning_outcomes.lo_id, item.learning_outcomes));
+        (data?.loData || []).forEach(item => { if (item.learning_outcomes) map.set(item.learning_outcomes.lo_id, item.learning_outcomes); });
         return [...map.values()].sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0) || (a.lo_code || '').localeCompare(b.lo_code || '', 'th'));
     }, [data]);
 
@@ -182,7 +182,16 @@ export default function HomeroomView() {
         const mappedCount = data.loData.filter(item => item.subject_id === enrollment.subject_id).length;
         return total + mappedCount;
     }, 0);
-    const assessedAcademicCells = data?.evalData?.filter(item => item.competency_level && item.competency_level !== 'N/A').length || 0;
+    // นับเฉพาะช่องที่ยังผูกกับวิชานั้นจริง และถือว่า N/A คือประเมินแล้ว ให้ตรงกับหน้าประเมินของครู
+    const assessedAcademicCells = (() => {
+        if (!data?.evalData?.length) return 0;
+        const subjectByEnrollment = new Map((data.enrollments || []).map(item => [item.enrollment_id, item.subject_id]));
+        const mappedPairs = new Set((data.loData || []).map(item => `${item.subject_id}_${item.learning_outcomes?.lo_id ?? item.lo_id}`));
+        return data.evalData.filter(item =>
+            item.competency_level &&
+            mappedPairs.has(`${subjectByEnrollment.get(item.enrollment_id)}_${item.lo_id}`)
+        ).length;
+    })();
     const savedActivityStudents = Object.values(activityData).filter(item => item.eval_id).length;
     const academicPercent = totalAcademicCells ? Math.min(100, Math.round((assessedAcademicCells / totalAcademicCells) * 100)) : 0;
 
@@ -246,7 +255,7 @@ export default function HomeroomView() {
                                 <td className="px-4 py-3.5"><strong className="block text-slate-900">{fullName(student.info)}</strong><span className="mt-0.5 block text-xs text-slate-500">{student.info.student_code}</span></td>
                                 {subjects.map(subject => {
                                     const enrollment = data.enrollments.find(item => item.student_id === student.id && item.subject_id === subject.id);
-                                    const isMapped = data.loData.some(item => item.subject_id === subject.id && item.learning_outcomes.lo_id === selectedLo);
+                                    const isMapped = data.loData.some(item => item.subject_id === subject.id && item.learning_outcomes?.lo_id === selectedLo);
                                     const evaluation = enrollment && isMapped ? data.evalData.find(item => item.enrollment_id === enrollment.enrollment_id && item.lo_id === selectedLo) : null;
                                     const level = isMapped ? evaluation?.competency_level || '' : 'N/A';
                                     return <td key={subject.id} className="px-3 py-3.5 text-center">{level === 'N/A' ? <span className="text-xs font-semibold text-slate-400">ไม่ได้ใช้ LO นี้</span> : level ? <span className={`inline-flex rounded-lg border px-2.5 py-1.5 text-xs font-extrabold ${levelTone[level] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>{formalLevelLabel(level)}</span> : <span className="inline-flex rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-800">รอประเมิน</span>}</td>;

@@ -48,6 +48,17 @@ function recommendedLevel(sources) {
     })[0];
 }
 
+// สถานะของแต่ละแหล่งประเมิน ต้องสะท้อนว่าครูส่งตรวจแล้วจริงหรือยังเป็นฉบับร่าง
+function sourceStatusMeta(source) {
+    if (!source.competency_level) return { label: 'รอข้อมูล', className: 'bg-amber-50 text-amber-800' };
+    switch (source.workflow_status) {
+        case 'submitted': return { label: 'พร้อมตรวจ', className: 'bg-emerald-50 text-emerald-800' };
+        case 'approved': return { label: 'รับรองแล้ว', className: 'bg-indigo-50 text-indigo-800' };
+        case 'returned': return { label: 'ส่งกลับแก้ไข', className: 'bg-rose-50 text-rose-800' };
+        default: return { label: 'ฉบับร่าง ยังไม่ส่งตรวจ', className: 'bg-slate-100 text-slate-700' };
+    }
+}
+
 function sourceLabel(source) {
     if (source.source_type === 'subject') return source.source_name || 'รายวิชา';
     const type = learningFormatLabel(source.context_type);
@@ -246,6 +257,11 @@ export default function AcademicApprovalCenter() {
         if (!decisionReason.trim()) {
             toast.error(decisionStatus === 'returned' ? 'กรุณาระบุสิ่งที่ต้องการให้ครูแก้ไข' : 'กรุณาบันทึกเหตุผลหรือหลักฐานประกอบการรับรอง');
             return;
+        }
+
+        if (decisionStatus === 'approved') {
+            const draftSources = selected.sources.filter(source => source.competency_level && !['submitted', 'approved'].includes(source.workflow_status));
+            if (draftSources.length > 0 && !window.confirm(`มี ${draftSources.length} แหล่งประเมินที่ครูยังไม่ได้ส่งตรวจ (ฉบับร่าง) ต้องการรับรองผลต่อหรือไม่?`)) return;
         }
 
         setSaving(true);
@@ -457,7 +473,10 @@ export default function AcademicApprovalCenter() {
                                                             <td className="px-4 py-3.5"><div className="flex gap-2.5">{source.source_type === 'subject' ? <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" /> : <FolderKanban className="mt-0.5 h-4 w-4 shrink-0 text-indigo-700" />}<strong className="text-slate-900">{sourceLabel(source)}</strong></div></td>
                                                             <td className="px-4 py-3.5"><span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1.5 font-extrabold text-slate-800">{source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ประเมิน'}</span></td>
                                                             <td className="px-4 py-3.5 leading-6 text-slate-700">{source.evidence_note || <span className="font-semibold text-amber-800">ยังไม่ได้บันทึกหลักฐาน</span>}</td>
-                                                            <td className="px-4 py-3.5"><span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${source.competency_level ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{source.competency_level ? 'พร้อมตรวจ' : 'รอข้อมูล'}</span></td>
+                                                            <td className="px-4 py-3.5">{(() => {
+                                                                const sourceState = sourceStatusMeta(source);
+                                                                return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${sourceState.className}`}>{sourceState.label}</span>;
+                                                            })()}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

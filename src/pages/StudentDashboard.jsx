@@ -56,13 +56,15 @@ export default function StudentDashboard() {
                     const subjectLos = (loData || [])
                         .filter(l => l.subject_id === subject.subject_id)
                         .map(l => l.learning_outcomes)
-                        .sort((a, b) => a.ability_no - b.ability_no);
+                        .filter(Boolean)
+                        .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
 
                     const evalsMap = (evalData || []).filter(e => e.enrollment_id === enroll.enrollment_id);
 
                     const subjectEvals = subjectLos.map(lo => {
                         const evMatch = evalsMap.find(e => e.lo_id === lo.lo_id);
                         return {
+                            lo_id: lo.lo_id,
                             lo_code: lo.lo_code,
                             ability_no: lo.ability_no,
                             description: lo.lo_description,
@@ -92,15 +94,19 @@ export default function StudentDashboard() {
 
     // Calculate overall stats
     const totalSubjects = data.length;
-    let totalEvals = 0;
-    let passedEvals = 0;
-    
+    // LO เดียวกันถูกประเมินได้หลายวิชา ตัวเลขสรุปจึงต้องนับเป็นจำนวน LO ที่ไม่ซ้ำ ไม่ใช่จำนวนช่องประเมิน
+    const evaluatedLoIds = new Set();
+    const passedLoIds = new Set();
+
     data.forEach(sub => {
         sub.evaluations.forEach(ev => {
-            if (ev.level !== '-') totalEvals++;
-            if (['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(ev.level)) passedEvals++;
+            if (ev.level !== '-') evaluatedLoIds.add(ev.lo_id);
+            if (['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(ev.level)) passedLoIds.add(ev.lo_id);
         });
     });
+
+    const totalEvals = evaluatedLoIds.size;
+    const passedEvals = passedLoIds.size;
 
     return (
         <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">

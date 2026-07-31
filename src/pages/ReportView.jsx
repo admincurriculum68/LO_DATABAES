@@ -99,7 +99,8 @@ export default function ReportView() {
     // Behavior summary calculation
     // Group evaluations by subject_group
     const groupedEvals = {};
-    evaluations.forEach(ev => {
+    // ข้ามผลที่ LO ต้นทางถูกลบไปแล้ว ไม่เช่นนั้นการจัดเรียงด้านล่างจะพังทั้งรายงาน
+    evaluations.filter(ev => ev.learning_outcomes).forEach(ev => {
         const enroll = enrollments.find(e => e.enrollment_id === ev.enrollment_id);
         const groupName = enroll?.subjects?.subject_group || 'กลุ่มวิชาอื่นๆ';
         if (!groupedEvals[groupName]) groupedEvals[groupName] = [];
@@ -107,7 +108,7 @@ export default function ReportView() {
     });
 
     Object.keys(groupedEvals).forEach(g => {
-        groupedEvals[g].sort((a, b) => a.learning_outcomes.ability_no - b.learning_outcomes.ability_no);
+        groupedEvals[g].sort((a, b) => (a.learning_outcomes.ability_no || 0) - (b.learning_outcomes.ability_no || 0));
     });
 
     const levelScore = { 'เริ่มต้น': 1, 'พัฒนา': 2, 'ชำนาญ': 3, 'เชี่ยวชาญ': 4 };

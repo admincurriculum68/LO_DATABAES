@@ -62,6 +62,7 @@ export async function loginWithCitizenId(citizenId, dob) {
                         user: {
                             id: user.student_id,
                             student_id: user.student_id,
+                            student_code: user.student_code,
                             school_id: user.school_id,
                             school_name: user.schools?.school_name || null,
                             full_name: `${user.prefix || ''}${user.first_name} ${user.last_name}`,

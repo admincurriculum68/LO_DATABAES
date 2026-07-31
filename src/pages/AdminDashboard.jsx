@@ -245,15 +245,22 @@ export default function AdminDashboard() {
     }, [tableData, searchTerm]);
 
     // ─── CSV Sanitize Helpers ────────────────────────────────────────────
-    // Fix Excel scientific notation: 1.43E+12 → "1429900127280"
+    // Fix Excel scientific notation: 1.4299001272800E+12 → "1429900127280"
     // Fix decimal suffix: 1234567890123.00 → "1234567890123"
+    // ค่าที่ Excel ย่อจนเลขหายไปแล้ว เช่น 1.43E+12 กู้คืนไม่ได้ ต้องให้ผู้ใช้แก้ไฟล์
+    const LOSSY_SCIENTIFIC = '__EXCEL_LOSSY__';
     const sanitizeCitizenId = (raw) => {
         if (!raw && raw !== 0) return '';
         let s = String(raw).trim();
         // Handle scientific notation (e.g. 1.43E+12)
         if (/[eE]/.test(s)) {
             const n = parseFloat(s);
-            if (!isNaN(n)) s = Math.round(n).toString();
+            if (isNaN(n)) return '';
+            // เลขที่ Excel เก็บไว้ต้องมีจำนวนหลักไม่น้อยกว่าเลขที่แปลงกลับได้ มิฉะนั้นแปลว่าหลักท้ายหายไปแล้ว
+            const mantissaDigits = s.split(/[eE]/)[0].replace(/\D/g, '').length;
+            const restored = Math.round(n).toString();
+            if (mantissaDigits < restored.length) return LOSSY_SCIENTIFIC;
+            s = restored;
         }
         // Strip trailing .0, .00, etc. (Excel decimal)
         s = s.replace(/\.0+$/, '');
@@ -281,6 +288,7 @@ export default function AdminDashboard() {
     const validateCitizenRow = (cleanId, cleanDob, rowNum) => {
         const errors = [];
         if (!cleanId) errors.push(`แถว ${rowNum}: citizen_id ว่างเปล่า`);
+        else if (cleanId === LOSSY_SCIENTIFIC) errors.push(`แถว ${rowNum}: citizen_id ถูก Excel ย่อเป็นตัวเลขวิทยาศาสตร์ (เช่น 1.43E+12) ทำให้เลขหายไป กรุณาตั้งรูปแบบคอลัมน์เป็น "ข้อความ" (Text) แล้วส่งออกไฟล์ใหม่`);
         else if (cleanId.length !== 13) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ต้องมี 13 หลัก (มี ${cleanId.length} หลัก)`);
         else if (/^(1{13}|2{13}|3{13}|0{13})$/.test(cleanId)) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ดูเหมือนเป็นข้อมูลทดสอบ`);
         if (!cleanDob) errors.push(`แถว ${rowNum}: dob ว่างเปล่า`);
@@ -362,7 +370,8 @@ export default function AdminDashboard() {
                 const currentRoom       = gradeRaw && roomRaw ? `${gradeRaw}/${roomRaw}` : (gradeRaw || null); // เช่น "ป.3/2"
                 const currentGradeLevel = gradeRaw || null; // เช่น "ป.3" แยกเก็บสำหรับฟีเจอร์เลื่อนชั้น
                 const errs = [];
-                if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
+                if (cleanId === LOSSY_SCIENTIFIC) errs.push(`citizen_id "${row[COL.CITIZEN]}" ถูก Excel ย่อเป็นตัวเลขวิทยาศาสตร์ ทำให้เลขหายไป กรุณาตั้งรูปแบบคอลัมน์เป็น "ข้อความ" (Text) แล้วส่งออกไฟล์ใหม่`);
+                else if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
                 if (!dobStr) errs.push(`วันเกิด "${row[COL.DOB]}" ไม่ถูกต้อง`);
                 if (!fname) errs.push('ไม่มีชื่อ');
                 if (errs.length > 0) invalidRows.push({ row: i + 3, name: `${fname} ${lname}`, errors: errs });

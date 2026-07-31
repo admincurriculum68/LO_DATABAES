@@ -75,9 +75,10 @@ export default function TeacherDashboard() {
             if (enrollIds.length > 0) {
                 const { data } = await supabase
                     .from('lo_evaluations')
-                    .select('enrollment_id, lo_id')
+                    .select('enrollment_id, lo_id, competency_level')
                     .in('enrollment_id', enrollIds);
-                evals = data || [];
+                // แถวที่มีแต่หลักฐานแต่ยังไม่เลือกระดับ ยังถือว่าประเมินไม่เสร็จ
+                evals = (data || []).filter(e => e.competency_level);
             }
 
             // Build progress map

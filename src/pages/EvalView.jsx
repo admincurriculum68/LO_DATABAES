@@ -23,12 +23,15 @@ export default function EvalView() {
     const [selectedRoom, setSelectedRoom] = useState('all');
     const [submission, setSubmission] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [lockedCells, setLockedCells] = useState(new Set());
 
     useEffect(() => {
         async function loadData() {
             try {
-                if (!subject) {
+                let subjectRecord = subject;
+                if (!subjectRecord) {
                     const { data: sub } = await supabase.from('subjects').select('*').eq('subject_id', subjectId).single();
+                    subjectRecord = sub;
                     setSubject(sub);
                 }
 
@@ -43,7 +46,10 @@ export default function EvalView() {
                         .eq('subject_id', subjectId)
                 ]);
 
-                const formatLOs = mappedLOs?.map(item => item.learning_outcomes).sort((a, b) => a.ability_no - b.ability_no) || [];
+                const formatLOs = (mappedLOs || [])
+                    .map(item => item.learning_outcomes)
+                    .filter(Boolean)
+                    .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
                 setLearningOutcomes(formatLOs);
 
                 let formatEnrolls = enrolls || [];
@@ -52,13 +58,32 @@ export default function EvalView() {
                 setEnrollments(formatEnrolls);
 
                 const enrollIds = formatEnrolls.map(e => e.enrollment_id);
+                const mappedLoIds = new Set(formatLOs.map(lo => lo.lo_id));
 
                 if (enrollIds.length > 0) {
                     const { data: evals } = await supabase
                         .from('lo_evaluations')
                         .select('*')
                         .in('enrollment_id', enrollIds);
-                    setEvaluations(evals || []);
+                    // เก็บเฉพาะ LO ที่ยังผูกกับวิชานี้ ผลของ LO ที่ถูกยกเลิกการผูกไปแล้วต้องไม่นับรวมในความคืบหน้า
+                    setEvaluations((evals || []).filter(e => mappedLoIds.has(e.lo_id)));
+                }
+
+                // ผลที่ฝ่ายวิชาการรับรองแล้วต้องล็อกไม่ให้ครูแก้ย้อนหลัง
+                const studentIds = formatEnrolls.map(e => e.users_students?.student_id).filter(Boolean);
+                if (studentIds.length > 0 && mappedLoIds.size > 0 && subjectRecord) {
+                    const { data: decisions } = await supabase
+                        .from('lo_final_decisions')
+                        .select('student_id, lo_id, decision_status, is_locked')
+                        .eq('academic_year', subjectRecord.academic_year)
+                        .eq('semester', subjectRecord.semester)
+                        .in('student_id', studentIds)
+                        .in('lo_id', [...mappedLoIds]);
+                    setLockedCells(new Set(
+                        (decisions || [])
+                            .filter(d => d.is_locked || d.decision_status === 'approved')
+                            .map(d => `${d.student_id}_${d.lo_id}`)
+                    ));
                 }
 
                 const { data: submissionData } = await supabase
@@ -82,7 +107,9 @@ export default function EvalView() {
             }
         }
         loadData();
-    }, [subjectId, subject]);
+        // subject มาจาก location.state ได้ จึงไม่ใส่ใน deps เพื่อไม่ให้โหลดข้อมูลซ้ำรอบสอง
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [subjectId]);
 
     // Warn before closing browser tab if there are unsaved changes
     useEffect(() => {
@@ -154,7 +181,6 @@ export default function EvalView() {
                 return [...prev, { evaluation_id: crypto.randomUUID(), enrollment_id: enrollmentId, lo_id: loId, competency_level: newLevel, evidence_note: '', workflow_status: 'draft', evaluated_by: currentUser.teacher_id, updated_at: new Date().toISOString() }];
             }
         });
-        setSubmission(prev => prev ? { ...prev, status: 'draft' } : prev);
         setIsDirty(true);
     };
 
@@ -177,7 +203,6 @@ export default function EvalView() {
                 updated_at: new Date().toISOString()
             }];
         });
-        setSubmission(prev => prev ? { ...prev, status: 'draft' } : prev);
         setIsDirty(true);
     };
 
@@ -211,6 +236,18 @@ export default function EvalView() {
                 );
                 const failedAttendance = attendanceResults.find(result => result.error);
                 if (failedAttendance?.error) throw failedAttendance.error;
+            }
+
+            // 3. แก้ผลหลังส่งตรวจแล้ว ต้องดึงสถานะกลับเป็นฉบับร่าง ไม่เช่นนั้นฝ่ายวิชาการจะเห็นว่ายังส่งอยู่ทั้งที่ผลเปลี่ยนไปแล้ว
+            if (submission && submission.status !== 'draft') {
+                const { data: revertedSubmission, error: submissionErr } = await supabase
+                    .from('assessment_submissions')
+                    .update({ status: 'draft', updated_at: new Date().toISOString() })
+                    .eq('submission_id', submission.submission_id)
+                    .select()
+                    .single();
+                if (submissionErr) throw submissionErr;
+                setSubmission(revertedSubmission);
             }
 
             setIsDirty(false);
@@ -504,13 +541,15 @@ export default function EvalView() {
                                                 {learningOutcomes.map(lo => {
                                                     const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
                                                     const val = ev?.competency_level || '';
+                                                    const cellLocked = submissionStatus === 'approved' || lockedCells.has(`${st.student_id}_${lo.lo_id}`);
                                                     return (
                                                         <td key={lo.lo_id} className="px-2 py-2 text-center">
                                                             <select
                                                                 value={val}
                                                                 onChange={(e) => handleLevelChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
-                                                                disabled={submissionStatus === 'approved'}
-                                                                className={`block w-full px-3 py-2 text-sm border-2 rounded-xl focus:ring-offset-1 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none cursor-pointer ${getSelectColor(val)} hover:border-slate-400`}
+                                                                disabled={cellLocked}
+                                                                title={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว จึงแก้ไขไม่ได้' : undefined}
+                                                                className={`block w-full px-3 py-2 text-sm border-2 rounded-xl focus:ring-offset-1 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none ${cellLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-slate-400'} ${getSelectColor(val)}`}
                                                             >
                                                                 <option value="" disabled className="text-slate-400">- เลือก -</option>
                                                                 <option value="เริ่มต้น">เริ่มต้น</option>
@@ -527,8 +566,8 @@ export default function EvalView() {
                                                                         rows="2"
                                                                         value={ev?.evidence_note || ''}
                                                                         onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
-                                                                        disabled={submissionStatus === 'approved'}
-                                                                        placeholder="บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน"
+                                                                        disabled={cellLocked}
+                                                                        placeholder={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว' : 'บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน'}
                                                                         className="w-full resize-y rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                                                                     />
                                                                 </div>
