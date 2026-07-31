@@ -312,10 +312,13 @@ export default function AcademicApprovalCenter() {
             });
             setLocalDecisions(initDecisions);
 
-            if (!selectedStudentId || !result.some(e => e.student.student_id === selectedStudentId)) {
-                const firstStudent = result[0]?.student?.student_id || '';
-                setSelectedStudentId(firstStudent);
-            }
+            // อ่านค่าที่เลือกอยู่จริงผ่าน functional update ถ้าอ่านจาก closure จะได้ค่าเก่า
+            // แล้วผู้ใช้จะถูกดีดกลับไปนักเรียนคนแรกทุกครั้งที่บันทึกผลการรับรอง
+            setSelectedStudentId(current =>
+                current && result.some(e => e.student.student_id === current)
+                    ? current
+                    : (result[0]?.student?.student_id || '')
+            );
         } catch (error) {
             const message = error.message || 'ไม่สามารถโหลดข้อมูลได้';
             setLoadError(message.includes('does not exist') || message.includes('schema cache')
@@ -811,7 +814,7 @@ export default function AcademicApprovalCenter() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {filteredStudentList.map((item, idx) => {
+                                            {filteredStudentList.map(item => {
                                                 const student = item.student;
                                                 const entriesMap = new Map(item.entries.map(e => [e.lo.lo_id, e]));
 
