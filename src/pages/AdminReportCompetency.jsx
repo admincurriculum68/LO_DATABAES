@@ -6,6 +6,8 @@ import AcademicReportShell from '../components/AcademicReportShell';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { fetchAllRows, supabase } from '../lib/supabase';
+import SchoolReportHeader from '../components/SchoolReportHeader';
+import { loadSchoolProfile } from '../lib/schoolProfile';
 
 const LEVEL_STYLES = {
     เริ่มต้น: 'border-rose-200 bg-rose-50 text-rose-800',
@@ -29,6 +31,7 @@ export default function AdminReportCompetency() {
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState('all');
     const [page, setPage] = useState(1);
+    const [school, setSchool] = useState({ school_name: currentUser?.school_name || '', logo_data_url: '' });
     const pageSize = 50;
 
     useEffect(() => {
@@ -36,7 +39,7 @@ export default function AdminReportCompetency() {
             if (!currentUser?.school_id || !academicYear || !semester) return;
             setLoading(true);
             try {
-                const [studentRows, loRows, decisionRows] = await Promise.all([
+                const [studentRows, loRows, decisionRows, schoolProfile] = await Promise.all([
                     fetchAllRows((from, to) => supabase.from('users_students')
                         .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room')
                         .eq('school_id', currentUser.school_id)
@@ -53,12 +56,14 @@ export default function AdminReportCompetency() {
                         .eq('academic_year', academicYear)
                         .eq('semester', semester)
                         .range(from, to)),
+                    loadSchoolProfile(currentUser.school_id),
                 ]);
                 const areaNames = [...new Set([...loRows, ...decisionRows].map(row => row.competency_area).filter(Boolean))]
                     .sort((a, b) => a.localeCompare(b, 'th'));
                 setStudents(studentRows);
                 setAreas(areaNames);
                 setDecisions(decisionRows);
+                setSchool(schoolProfile);
                 setSelectedArea(current => areaNames.includes(current) ? current : areaNames[0] || '');
             } catch (error) {
                 const migrationHint = error.message?.includes('competency_area_final_decisions')
@@ -110,13 +115,20 @@ export default function AdminReportCompetency() {
                 <button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
             </>}
         >
+            <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } thead { display: table-header-group; } tr { break-inside: avoid; } }`}</style>
             <section className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden md:grid-cols-[minmax(240px,1fr)_minmax(240px,1fr)_220px]">
                 <label><span className="mb-1.5 block text-xs font-bold text-slate-600">ด้านความสามารถ</span><select value={selectedArea} onChange={event => setSelectedArea(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800"><option value="">ยังไม่มีข้อมูล</option>{areas.map(area => <option key={area} value={area}>{area}</option>)}</select></label>
                 <label><span className="mb-1.5 block text-xs font-bold text-slate-600">ค้นหาผู้เรียน</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ชื่อ รหัส หรือห้องเรียน" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" /></label>
                 <label><span className="mb-1.5 block text-xs font-bold text-slate-600">สถานะ</span><select value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold"><option value="all">ทุกสถานะ</option><option value="approved">รับรองแล้ว</option><option value="pending">รอรับรอง</option><option value="returned">ส่งกลับแก้ไข</option><option value="none">ยังไม่มีผล</option></select></label>
             </section>
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <section className="hidden font-sarabun-new text-black print:block">
+                <SchoolReportHeader school={school} title="แบบรายงานผลด้านความสามารถ" subtitle={`${selectedArea || 'ยังไม่ได้เลือกด้านความสามารถ'} · ภาคเรียนที่ ${semester}/${academicYear}`} compact />
+                <p className="mt-4 text-sm">ผลที่ฝ่ายวิชาการรับรอง จำนวน {filteredStudents.length} คน</p>
+                <table className="mt-3 w-full border-collapse text-[13px] leading-5"><thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">ชั้น/ห้อง</th><th className="w-24 border border-black px-2 py-2">ผลรับรอง</th><th className="w-24 border border-black px-2 py-2">สถานะ</th><th className="border border-black px-2 py-2">เหตุผล/หมายเหตุ</th></tr></thead><tbody>{filteredStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="border border-black px-2 py-2 text-center">{index + 1}</td><td className="border border-black px-2 py-2"><strong>{studentName(student)}</strong><br /><span>{student.student_code || '-'}</span></td><td className="border border-black px-2 py-2 text-center">{student.current_grade_level || '-'}<br />{student.current_room || '-'}</td><td className="border border-black px-2 py-2 text-center">{decision?.final_level || '-'}</td><td className="border border-black px-2 py-2 text-center">{statusLabel(decision?.decision_status)}</td><td className="border border-black px-2 py-2">{decision?.decision_reason || '-'}</td></tr>; })}</tbody></table>
+            </section>
+
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm print:hidden">
                 <div className="border-b border-slate-200 p-5"><p className="text-xs font-bold text-indigo-700">ด้านความสามารถ</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">{selectedArea || 'ยังไม่มีข้อมูล'}</h2><p className="mt-1 text-sm text-slate-600">แสดง {filteredStudents.length} คน · หน่วยรับรองคือผู้เรียน 1 คน ต่อ 1 ด้านความสามารถ ต่อภาคเรียน</p></div>
                 {loading ? <div className="py-20 text-center text-sm font-semibold text-slate-500">กำลังโหลดรายงาน…</div> : (
                     <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">ผู้เรียน</th><th className="px-4 py-3">ชั้น/ห้อง</th><th className="px-4 py-3 text-center">ผลรับรองรายด้าน</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">เหตุผล/หมายเหตุ</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="px-4 py-3 text-slate-500">{(page - 1) * pageSize + index + 1}</td><td className="px-4 py-3"><strong className="block text-slate-900">{studentName(student)}</strong><span className="text-xs text-slate-500">{student.student_code}</span></td><td className="px-4 py-3 text-slate-700">{student.current_grade_level || '-'} / {student.current_room || '-'}</td><td className="px-4 py-3 text-center">{decision?.final_level ? <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-extrabold ${LEVEL_STYLES[decision.final_level] || LEVEL_STYLES['N/A']}`}>{decision.final_level}</span> : <span className="text-slate-400">-</span>}</td><td className="px-4 py-3 font-bold text-slate-700">{statusLabel(decision?.decision_status)}</td><td className="max-w-md whitespace-normal px-4 py-3 text-slate-600">{decision?.decision_reason || '-'}</td></tr>; })}{!visibleStudents.length && <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">ไม่พบผู้เรียนตามเงื่อนไข</td></tr>}</tbody></table></div>

@@ -5,6 +5,7 @@ import {
     CheckCircle2,
     ClipboardCheck,
     Database,
+    FileBarChart2,
     FileSpreadsheet,
     GraduationCap,
     Link2,
@@ -76,6 +77,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
         { title: 'กำหนดครูผู้สอน', description: 'มอบหมายครูร่วมสอนหลายคนและระบุห้องเรียน', icon: UserCheck, action: () => onNavigate('/admin/subject-teachers') },
         { title: 'เลื่อนชั้นและย้ายห้อง', description: 'จัดการทั้งห้องหรือเลือกผู้เรียนรายบุคคล', icon: GraduationCap, action: () => onOpenTab('promotion') },
         { title: 'เทียบผลหลักสูตร 2568 → 2551', description: 'บันทึกหลักฐานและรับรองผลเทียบรายบุคคล', icon: Scale, action: () => onNavigate('/admin/curriculum-equivalency') },
+        { title: 'รวมข้อความ LO ข้ามรายวิชา', description: 'นำข้อความที่ครูหลายวิชาเขียนใน LO เดียวกันมาเปรียบเทียบและพิมพ์เป็นหลักฐาน', icon: FileBarChart2, action: () => onNavigate('/admin/report-lo') },
         { title: 'รายงานผลการเรียน ปพ.๖', description: 'ตรวจสอบและพิมพ์รายงานผลรายปี', icon: FileSpreadsheet, action: () => onNavigate('/admin/yearly-report') },
     ];
 

@@ -53,8 +53,17 @@ export function AuthProvider({ children }) {
         localStorage.removeItem('loUser');
     };
 
+    const updateCurrentUser = (updates) => {
+        setCurrentUser(previous => {
+            if (!previous) return previous;
+            const next = { ...previous, ...updates };
+            localStorage.setItem('loUser', JSON.stringify(next));
+            return next;
+        });
+    };
+
     return (
-        <AuthContext.Provider value={{ currentUser, loginUser, logoutUser, loading }}>
+        <AuthContext.Provider value={{ currentUser, loginUser, logoutUser, updateCurrentUser, loading }}>
             {!loading && children}
         </AuthContext.Provider>
     );

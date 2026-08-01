@@ -16,9 +16,11 @@ import {
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
+import SchoolReportHeader from '../components/SchoolReportHeader';
 import { useAuth } from '../AuthContext';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { calculateCompletion } from '../lib/evaluationProgress';
+import { loadSchoolProfile } from '../lib/schoolProfile';
 
 const LEVELS = ['มีข้อความ'];
 const levelMeta = {
@@ -27,6 +29,63 @@ const levelMeta = {
 };
 
 const studentName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
+
+function SubjectCover({ school, subject, teacherNames }) {
+    return (
+        <article className="summary-print-only hidden min-h-[270mm] font-sarabun-new text-black">
+            <SchoolReportHeader
+                school={school}
+                title="แฟ้มหลักฐานการประเมินผลลัพธ์การเรียนรู้"
+                subtitle="หลักฐานข้อความสะท้อนพฤติกรรมรายวิชา"
+            />
+            <div className="flex min-h-[190mm] flex-col items-center justify-center text-center">
+                <p className="text-2xl">รายวิชา</p>
+                <h2 className="mt-4 max-w-[160mm] text-5xl font-bold leading-tight">{subject?.subject_name || '-'}</h2>
+                {subject?.subject_code && <p className="mt-3 text-2xl">รหัสวิชา {subject.subject_code}</p>}
+                <dl className="mt-12 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-4 border-y border-black py-6 text-left text-xl">
+                    <dt className="font-bold">ระดับชั้น</dt><dd>{subject?.grade_level || '-'}</dd>
+                    <dt className="font-bold">ภาคเรียน/ปีการศึกษา</dt><dd>{subject?.semester || '-'} / {subject?.academic_year || '-'}</dd>
+                    <dt className="font-bold">จำนวนชั่วโมงเรียน</dt><dd>{subject?.teaching_hours ? `${subject.teaching_hours} ชั่วโมง` : '-'}</dd>
+                    <dt className="font-bold">ครูผู้สอน</dt><dd>{teacherNames.length ? teacherNames.join(', ') : '-'}</dd>
+                </dl>
+            </div>
+            <div className="mt-auto grid grid-cols-2 gap-16 px-10 text-center text-xl">
+                <div><p>(........................................................)</p><p className="mt-2 font-bold">ครูผู้สอน</p></div>
+                <div><p>(........................................................)</p><p className="mt-2 font-bold">ผู้ตรวจสอบฝ่ายวิชาการ</p></div>
+            </div>
+        </article>
+    );
+}
+
+function SubjectEvidenceReport({ school, subject, teacherNames, enrollments, learningOutcomes, evaluationMap, roomLabel }) {
+    const rows = enrollments.flatMap((enrollment, studentIndex) => learningOutcomes.map((lo, loIndex) => ({
+        key: `${enrollment.enrollment_id}:${lo.lo_id}`,
+        studentIndex,
+        loIndex,
+        enrollment,
+        lo,
+        evidence: evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`) || '',
+    })));
+
+    return (
+        <article className="summary-print-only hidden font-sarabun-new text-black">
+            <SchoolReportHeader
+                school={school}
+                title="รายงานข้อความสะท้อนพฤติกรรมตามผลลัพธ์การเรียนรู้"
+                subtitle={`${subject?.subject_name || '-'} · ชั้น ${subject?.grade_level || '-'} · ${roomLabel} · ภาคเรียนที่ ${subject?.semester || '-'}/${subject?.academic_year || '-'}`}
+                compact
+            />
+            <div className="mt-4 flex justify-between gap-6 text-base">
+                <p><strong>ครูผู้สอน:</strong> {teacherNames.length ? teacherNames.join(', ') : '-'}</p>
+                <p><strong>ผู้เรียน:</strong> {enrollments.length} คน · <strong>LO:</strong> {learningOutcomes.length} ข้อ</p>
+            </div>
+            <table className="mt-4 w-full border-collapse text-[13px] leading-5">
+                <thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="w-36 border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">LO</th><th className="border border-black px-2 py-2">ข้อความสะท้อนพฤติกรรม</th></tr></thead>
+                <tbody>{rows.map(row => <tr key={row.key} className="break-inside-avoid"><td className="border border-black px-2 py-2 text-center">{row.loIndex === 0 ? row.studentIndex + 1 : ''}</td><td className="border border-black px-2 py-2 align-top">{row.loIndex === 0 ? <><strong>{studentName(row.enrollment.users_students)}</strong><br /><span>{row.enrollment.users_students?.student_code || '-'} · {row.enrollment.room || '-'}</span></> : ''}</td><td className="border border-black px-2 py-2 align-top"><strong>{row.lo.lo_code || `LO ${row.lo.ability_no}`}</strong><br /><span>{row.lo.competency_area || 'ไม่ระบุด้าน'}</span></td><td className="border border-black px-2 py-2 align-top">{row.evidence || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}</td></tr>)}</tbody>
+            </table>
+        </article>
+    );
+}
 
 export default function SummaryView() {
     const { subjectId } = useParams();
@@ -41,6 +100,9 @@ export default function SummaryView() {
     const [roomFilter, setRoomFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [distributionLo, setDistributionLo] = useState('');
+    const [school, setSchool] = useState({ school_name: currentUser?.school_name || '', logo_data_url: '' });
+    const [teacherNames, setTeacherNames] = useState([]);
+    const [printMode, setPrintMode] = useState('');
 
     useEffect(() => {
         async function loadSummary() {
@@ -63,7 +125,7 @@ export default function SummaryView() {
                 }
                 setSubject(subjectData);
 
-                const [mappingResult, enrollments] = await Promise.all([
+                const [mappingResult, enrollments, schoolProfile, assignmentResult] = await Promise.all([
                     supabase.from('subject_lo_mapping')
                         .select('learning_outcomes(lo_id, lo_code, ability_no, lo_description, competency_area)')
                         .eq('subject_id', subjectId),
@@ -73,8 +135,23 @@ export default function SummaryView() {
                         .eq('enrollment_status', 'active')
                         .eq('users_students.school_id', currentUser.school_id)
                         .range(from, to)),
+                    loadSchoolProfile(currentUser.school_id),
+                    supabase.from('subject_teachers').select('teacher_id').eq('subject_id', subjectId),
                 ]);
                 if (mappingResult.error) throw mappingResult.error;
+                if (assignmentResult.error) throw assignmentResult.error;
+                setSchool(schoolProfile);
+
+                const teacherIds = [...new Set([subjectData.teacher_id, ...(assignmentResult.data || []).map(item => item.teacher_id)].filter(Boolean))];
+                if (teacherIds.length) {
+                    const { data: teachers, error: teacherError } = await supabase.from('users_teachers')
+                        .select('teacher_id, prefix, first_name, last_name')
+                        .in('teacher_id', teacherIds);
+                    if (teacherError) throw teacherError;
+                    setTeacherNames((teachers || []).map(teacher => `${teacher.prefix || ''}${teacher.first_name || ''} ${teacher.last_name || ''}`.trim()));
+                } else {
+                    setTeacherNames([]);
+                }
 
                 const learningOutcomes = (mappingResult.data || [])
                     .map(item => item.learning_outcomes)
@@ -150,20 +227,41 @@ export default function SummaryView() {
         toast.success('จัดทำไฟล์ Excel เรียบร้อยแล้ว');
     };
 
+    useEffect(() => {
+        const resetPrintMode = () => setPrintMode('');
+        window.addEventListener('afterprint', resetPrintMode);
+        return () => window.removeEventListener('afterprint', resetPrintMode);
+    }, []);
+
+    const printDocument = mode => {
+        setPrintMode(mode);
+        window.setTimeout(() => window.print(), 100);
+    };
+
+    const printableEnrollments = filteredEnrollments;
+    const printableRoomLabel = query.trim() || statusFilter !== 'all'
+        ? `ตามตัวกรอง ${filteredEnrollments.length} คน`
+        : roomFilter === 'all' ? 'ทุกห้องเรียน' : `ห้อง ${roomFilter}`;
+
     return (
         <Layout title="สรุปผลรายวิชา">
             <style>{`
                 @media print {
                     .summary-controls { display: none !important; }
+                    .summary-screen-only { display: none !important; }
+                    .summary-print-only { display: block !important; }
                     .summary-document { border: 0 !important; box-shadow: none !important; }
                     .summary-table { font-size: 10px !important; }
                     body { background: white !important; }
+                    thead { display: table-header-group; }
+                    tr { break-inside: avoid; }
+                    @page { size: A4 portrait; margin: 12mm; }
                 }
             `}</style>
             <div className="mx-auto w-full max-w-[1800px]">
                 <header className="summary-controls mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div><button onClick={() => navigate('/')} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับ Dashboard ครู</button><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><FileBarChart2 className="h-4 w-4" /> รายงานผลรายวิชา</div><h2 className="mt-1 text-2xl font-extrabold text-slate-950">{subject?.subject_name || 'กำลังโหลดรายวิชา'}</h2><p className="mt-1 text-sm text-slate-600">ตารางที่ 1 · ผลลัพธ์การเรียนรู้ระดับรายวิชา · ชั้น {subject?.grade_level || '-'} · ภาคเรียนที่ {subject?.semester || '-'}/{subject?.academic_year || '-'}</p></div>
-                    <div className="flex flex-wrap gap-2"><button onClick={() => navigate(`/eval/${subjectId}`, { state: { subject } })} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-extrabold text-white hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2"><ClipboardCheck className="h-4 w-4" /> กลับไปประเมินผล</button><button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><Download className="h-4 w-4" /> Excel</button><button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><Printer className="h-4 w-4" /> พิมพ์ตาราง</button></div>
+                    <div className="flex flex-wrap gap-2"><button onClick={() => navigate(`/eval/${subjectId}`, { state: { subject } })} className="action-primary inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-extrabold"><ClipboardCheck className="h-4 w-4" />กลับไปประเมินผล</button><button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" />Excel</button><button onClick={() => printDocument('cover')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50"><BookOpen className="h-4 w-4" />พิมพ์ปกรายวิชา</button><button onClick={() => printDocument('evidence')} disabled={!printableEnrollments.length || !data.learningOutcomes.length} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer className="h-4 w-4" />พิมพ์ข้อความ LO</button></div>
                 </header>
 
                 {loadError ? (
@@ -172,6 +270,9 @@ export default function SummaryView() {
                     <div className="space-y-5"><div className="h-24 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>
                 ) : (
                     <>
+                        {printMode === 'cover' && <SubjectCover school={school} subject={subject} teacherNames={teacherNames} />}
+                        {printMode === 'evidence' && <SubjectEvidenceReport school={school} subject={subject} teacherNames={teacherNames} enrollments={printableEnrollments} learningOutcomes={data.learningOutcomes} evaluationMap={evaluationMap} roomLabel={printableRoomLabel} />}
+                        <div className="summary-screen-only">
                         <div className="hidden print:block mb-5"><h1 className="text-base font-bold">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</h1><p className="mt-1 text-sm">รายวิชา {subject?.subject_name} · ชั้น {subject?.grade_level} · ภาคเรียนที่ {subject?.semester}/{subject?.academic_year}</p></div>
 
                         <section className="summary-controls mb-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-2 xl:grid-cols-4" aria-label="ภาพรวมรายวิชา">
@@ -193,6 +294,7 @@ export default function SummaryView() {
                         </section>
 
                         {data.enrollments.length > 0 && data.learningOutcomes.length > 0 && <section className="summary-controls mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ความครบถ้วนของข้อความราย LO</h3><p className="mt-1 text-sm text-slate-600">เลือก LO เพื่อดูว่าครูบันทึกข้อความสะท้อนพฤติกรรมแล้วกี่คน</p></div><label><span className="mb-1 block text-xs font-bold text-slate-600">เลือก LO</span><select value={distributionLo} onChange={event => setDistributionLo(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-72">{data.learningOutcomes.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} · {lo.competency_area || 'ไม่ระบุด้าน'}</option>)}</select></label></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{[...LEVELS].concat('ยังไม่ประเมิน').map(level => { const count = distribution[level]; const levelPercent = data.enrollments.length ? Math.round((count / data.enrollments.length) * 100) : 0; return <div key={level} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-bold text-slate-700">{level}</span><strong className="text-slate-950">{count} คน</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${levelMeta[level].bar}`} style={{ width: `${levelPercent}%` }} /></div><p className="mt-1.5 text-right text-xs font-semibold text-slate-500">{levelPercent}%</p></div>; })}</div></section>}
+                        </div>
                     </>
                 )}
             </div>

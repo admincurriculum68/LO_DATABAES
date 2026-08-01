@@ -1,12 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
-import { ChevronLeft, Printer, FileBarChart2, ChevronDown, Download } from 'lucide-react';
+import { Printer, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import AcademicReportShell from '../components/AcademicReportShell';
+import SchoolReportHeader from '../components/SchoolReportHeader';
+import { loadSchoolProfile } from '../lib/schoolProfile';
 
 const EvidenceCell = ({ value }) => {
     if (!value) return <span className="text-xs text-slate-400">ยังไม่มีข้อความ</span>;
@@ -16,22 +17,23 @@ const EvidenceCell = ({ value }) => {
 export default function AdminReportLO() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
-    const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
     const [allLOs, setAllLOs] = useState([]);
     const [selectedLO, setSelectedLO] = useState('');
     const [subjects, setSubjects] = useState([]);     // subjects mapped to this LO
-    const [students, setStudents] = useState([]);     // all students of this school
+    const [allStudents, setAllStudents] = useState([]);
+    const [eligibleStudentIds, setEligibleStudentIds] = useState(new Set());
     const [evalsByLO, setEvalsByLO] = useState([]);  // all evaluations for this LO
     const [enrollmentMap, setEnrollmentMap] = useState({}); // enrollment_id -> {student_id, subject_id}
     const [currentPage, setCurrentPage] = useState(1);
+    const [school, setSchool] = useState({ school_name: currentUser?.school_name || '', logo_data_url: '' });
     const pageSize = 50;
 
     useEffect(() => {
         async function loadBase() {
             try {
-                const [{ data: los }, studs] = await Promise.all([
+                const [loResult, studs, schoolProfile] = await Promise.all([
                     supabase.from('learning_outcomes').select('*')
                         .eq('school_id', currentUser.school_id)
                         .order('ability_no', { ascending: true }),
@@ -39,12 +41,16 @@ export default function AdminReportLO() {
                         supabase.from('users_students')
                             .select('student_id, student_code, prefix, first_name, last_name')
                             .eq('school_id', currentUser.school_id)
+                            .eq('student_status', 'active')
                             .order('student_code', { ascending: true })
                             .range(from, to)
-                    )
+                    ),
+                    loadSchoolProfile(currentUser.school_id),
                 ]);
-                setAllLOs(los || []);
-                setStudents(studs || []);
+                if (loResult.error) throw loResult.error;
+                setAllLOs(loResult.data || []);
+                setAllStudents(studs || []);
+                setSchool(schoolProfile);
             } catch (err) {
                 toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
             } finally {
@@ -54,20 +60,31 @@ export default function AdminReportLO() {
         loadBase();
     }, [currentUser]);
 
+    useEffect(() => {
+        setSelectedLO('');
+        setSubjects([]);
+        setEligibleStudentIds(new Set());
+        setEvalsByLO([]);
+        setEnrollmentMap({});
+        setCurrentPage(1);
+    }, [academicYear, semester]);
+
     const handleLOChange = async (loId) => {
         setSelectedLO(loId);
         setCurrentPage(1); // Reset page on LO change
+        setEligibleStudentIds(new Set());
         if (!loId) return;
         setLoading(true);
         try {
             // 1. Find all subjects mapped to this LO
-            const { data: mappings } = await supabase
+            const { data: mappings, error: mappingError } = await supabase
                 .from('subject_lo_mapping')
                 .select('subject_id, subjects!inner(subject_id, subject_name, grade_level, semester, academic_year, school_id)')
                 .eq('lo_id', loId)
                 .eq('subjects.school_id', currentUser.school_id)
                 .eq('subjects.academic_year', academicYear)
                 .eq('subjects.semester', semester);
+            if (mappingError) throw mappingError;
 
             const mappedSubjects = (mappings || []).map(m => m.subjects).filter(Boolean);
             // Filter to this school's subjects
@@ -75,7 +92,7 @@ export default function AdminReportLO() {
             setSubjects(filtered);
 
             const subjectIds = filtered.map(s => s.subject_id);
-            if (subjectIds.length === 0) { setEvalsByLO([]); setEnrollmentMap({}); setLoading(false); return; }
+            if (subjectIds.length === 0) { setEvalsByLO([]); setEnrollmentMap({}); return; }
 
             // 2. Get all enrollments for those subjects
             const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
@@ -88,6 +105,7 @@ export default function AdminReportLO() {
             const eMap = {};
             enrolls.forEach(e => { eMap[e.enrollment_id] = { student_id: e.student_id, subject_id: e.subject_id }; });
             setEnrollmentMap(eMap);
+            setEligibleStudentIds(new Set(enrolls.map(enrollment => enrollment.student_id)));
 
             // 3. Get evaluations for this LO
             const enrollIds = enrolls.map(e => e.enrollment_id);
@@ -123,13 +141,14 @@ export default function AdminReportLO() {
     }, [evalsByLO, enrollmentMap]);
 
     const selectedLOData = allLOs.find(l => l.lo_id === selectedLO);
+    const students = useMemo(() => allStudents.filter(student => eligibleStudentIds.has(student.student_id)), [allStudents, eligibleStudentIds]);
     const totalPages = Math.ceil(students.length / pageSize);
     const paginatedStudents = students.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
         <AcademicReportShell
-            title="รายงานผลรายผลลัพธ์การเรียนรู้ (LO)"
-            description="เปรียบเทียบข้อความสะท้อนพฤติกรรมจากทุกวิชาที่เชื่อมโยงกับ LO เดียวกัน"
+            title="รวมข้อความ LO จากหลายรายวิชา"
+            description="นำข้อความสะท้อนพฤติกรรมที่ครูแต่ละวิชาเขียนใน LO เดียวกันมาไว้ในหน้าเดียว เพื่อใช้เป็นหลักฐานสรุปด้านความสามารถ"
             wide
             actions={<>
                 <button onClick={() => {
@@ -141,49 +160,7 @@ export default function AdminReportLO() {
                 <button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
             </>}
         >
-            {/* Header */}
-            <header className="hidden">
-                <div className="max-w-[1800px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-                    <div className="flex items-center space-x-3 min-w-0">
-                        <button onClick={() => navigate('/admin')} className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center shrink-0">
-                            <ChevronLeft className="w-5 h-5 mr-1" />
-                            <span className="font-semibold text-sm">กลับ</span>
-                        </button>
-                        <div className="hidden sm:block w-px h-6 bg-slate-300 shrink-0"></div>
-                        <h1 className="font-bold text-base text-slate-800 truncate flex items-center">
-                            <FileBarChart2 className="w-5 h-5 mr-2 text-indigo-500 shrink-0" />
-                            ตารางที่ 2 — รายงาน LO ระดับรายผลลัพธ์การเรียนรู้
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                if (!selectedLO || subjects.length === 0) return toast.error('กรุณาเลือก LO ก่อน');
-                                const headers = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', ...subjects.map(s => `${s.subject_name} (${s.grade_level})`)];
-                                const rows = students.map((st, i) => {
-                                    const row = [i+1, st.student_code, `${st.prefix||''}${st.first_name} ${st.last_name}`];
-                                    subjects.forEach(sub => {
-                                        const key = `${st.student_id}_${sub.subject_id}`;
-                                        row.push(evalLookup[key] || '');
-                                    });
-                                    return row;
-                                });
-                                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                                const wb = XLSX.utils.book_new();
-                                XLSX.utils.book_append_sheet(wb, ws, 'LO Report');
-                                XLSX.writeFile(wb, `รายงานLO_${selectedLOData?.lo_code || 'report'}.xlsx`);
-                                toast.success('จัดทำไฟล์ Excel แล้ว');
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
-                        >
-                            <Download className="w-4 h-4 mr-2" /> Excel
-                        </button>
-                        <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0">
-                            <Printer className="w-4 h-4 mr-2" /> พิมพ์
-                        </button>
-                    </div>
-                </div>
-            </header>
+            <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } thead { display: table-header-group; } tr { break-inside: avoid; } }`}</style>
 
             <main className="w-full print:p-4">
                 {/* LO Selector */}
@@ -215,7 +192,7 @@ export default function AdminReportLO() {
                 ) : (
                     <>
                         {/* Print Title */}
-                        <div className="mb-6">
+                        <div className="mb-6 print:hidden">
                             <p className="text-sm text-slate-600 font-semibold mb-2">ผลการประเมินจากทุกวิชาที่เชื่อมโยงกับ LO นี้</p>
                             <div className="bg-white rounded-2xl border border-indigo-100 p-5 shadow-sm">
                                 <p className="text-sm font-bold text-indigo-700 mb-1">ผลลัพธ์การเรียนรู้</p>
@@ -226,11 +203,29 @@ export default function AdminReportLO() {
                             </div>
                         </div>
 
+                        <section className="hidden font-sarabun-new text-black print:block">
+                            <SchoolReportHeader
+                                school={school}
+                                title="หลักฐานข้อความสะท้อนพฤติกรรมของ LO ร่วม"
+                                subtitle={`${selectedLOData?.lo_code || `LO ${selectedLOData?.ability_no || ''}`} · ${selectedLOData?.competency_area || 'ไม่ระบุด้าน'} · ภาคเรียนที่ ${semester}/${academicYear}`}
+                                compact
+                            />
+                            <div className="mt-4 border border-black p-3 text-sm leading-6">
+                                <p><strong>ผลลัพธ์การเรียนรู้:</strong> {selectedLOData?.lo_description || '-'}</p>
+                                <p><strong>รายวิชาที่เชื่อมโยง:</strong> {subjects.map(subject => subject.subject_name).join(', ') || '-'}</p>
+                                <p><strong>ผู้เรียนที่เกี่ยวข้อง:</strong> {students.length} คน · <strong>หลักฐานที่มีข้อความ:</strong> {Object.values(evalLookup).filter(value => value?.trim()).length} รายการ</p>
+                            </div>
+                            <table className="mt-4 w-full border-collapse text-[13px] leading-5">
+                                <thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="w-36 border border-black px-2 py-2">ผู้เรียน</th><th className="w-36 border border-black px-2 py-2">รายวิชา</th><th className="border border-black px-2 py-2">ข้อความสะท้อนพฤติกรรม</th></tr></thead>
+                                <tbody>{students.flatMap((student, studentIndex) => subjects.map((subject, subjectIndex) => { const evidence = evalLookup[`${student.student_id}_${subject.subject_id}`] || ''; return <tr key={`${student.student_id}:${subject.subject_id}`}><td className="border border-black px-2 py-2 text-center">{subjectIndex === 0 ? studentIndex + 1 : ''}</td><td className="border border-black px-2 py-2 align-top">{subjectIndex === 0 ? <><strong>{student.prefix || ''}{student.first_name} {student.last_name}</strong><br /><span>{student.student_code || '-'}</span></> : ''}</td><td className="border border-black px-2 py-2 align-top">{subject.subject_name}<br /><span>{subject.grade_level || '-'}</span></td><td className="border border-black px-2 py-2 align-top">{evidence || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}</td></tr>; }))}</tbody>
+                            </table>
+                        </section>
+
                         {subjects.length === 0 ? (
                             <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้นี้</div>
                         ) : (
                             <>
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
+                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm print:hidden">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
                                         <thead>
