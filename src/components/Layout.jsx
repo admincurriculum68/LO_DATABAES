@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Layout({ children, title, onActionClick, actionText, actionIcon: ActionIcon }) {
     const { currentUser, logoutUser } = useAuth();
     const { academicYear, semester, setAcademicYear, setSemester, updateAcademicSettings } = useAcademic();
     const navigate = useNavigate();
+    const location = useLocation();
     const [showTermPicker, setShowTermPicker] = useState(false);
 
     const handleLogout = () => {
@@ -25,6 +26,31 @@ export default function Layout({ children, title, onActionClick, actionText, act
         student:   { label: 'นักเรียน',   color: 'bg-green-100 text-green-700 border-green-200' },
     };
     const role = roleMeta[currentUser?.role] || { label: currentUser?.role || '', color: 'bg-slate-100 text-slate-600 border-slate-200' };
+
+    const navigationByRole = {
+        admin: [
+            { label: 'หน้าหลัก', path: '/admin', exact: true },
+            { label: 'ตั้งค่าข้อมูล', path: '/admin/setup' },
+            { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
+            { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
+            { label: 'รับรองผล', path: '/admin/approval' },
+        ],
+        teacher: [
+            { label: 'งานของฉัน', path: '/', exact: true },
+            ...(currentUser?.homeroom ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
+        ],
+        executive: [
+            { label: 'ภาพรวม', path: '/executive', exact: true },
+            { label: 'ผลรายด้าน', path: '/admin/report-competency' },
+        ],
+        student: [{ label: 'ผลการเรียนของฉัน', path: '/student', exact: true }],
+    };
+    const navigation = navigationByRole[currentUser?.role] || [];
+    const isActive = item => {
+        if (item.tab) return location.pathname === '/admin' && new URLSearchParams(location.search).get('tab') === item.tab;
+        if (item.exact) return location.pathname === item.path && !location.search;
+        return location.pathname.startsWith(item.path);
+    };
 
     const isAdmin = currentUser?.role === 'admin';
 
@@ -53,7 +79,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
                     <div className="flex items-center gap-3 min-w-0">
                         <button
                             onClick={() => navigate(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'student' ? '/student' : currentUser?.role === 'executive' ? '/executive' : '/')}
-                            className="flex items-center gap-2.5 shrink-0 group"
+                            aria-label="กลับหน้าหลัก CBE Track"
+                            className="flex min-h-11 items-center gap-2.5 shrink-0 group"
                         >
                             <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm border border-blue-500/20 group-hover:shadow-blue-500/20 group-hover:shadow-md transition-all">
                                 <BookOpen className="text-white w-4 h-4 flex-shrink-0" />
@@ -62,7 +89,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 <span className="font-extrabold text-sm text-slate-800 tracking-tight">
                                     CBE <span className="text-blue-600">Track</span>
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-medium truncate max-w-[160px]">
+                                <span className="text-[10px] text-slate-600 font-medium truncate max-w-[160px]">
                                     {currentUser?.school_name || 'ระบบติดตามผลลัพธ์การเรียนรู้'}
                                 </span>
                             </div>
@@ -71,7 +98,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         {title && (
                             <>
                                 <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 hidden sm:block" />
-                                <h1 className="font-semibold text-slate-600 truncate text-sm hidden sm:block max-w-[200px] lg:max-w-xs">{title}</h1>
+                                <span className="font-semibold text-slate-600 truncate text-sm hidden sm:block max-w-[200px] lg:max-w-xs">{title}</span>
                             </>
                         )}
                     </div>
@@ -83,7 +110,9 @@ export default function Layout({ children, title, onActionClick, actionText, act
                             <div className="relative">
                                 <button
                                     onClick={() => setShowTermPicker(!showTermPicker)}
-                                    className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 transition-all shadow-sm"
+                                    className="flex min-h-11 items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold text-indigo-800 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+                                    aria-expanded={showTermPicker}
+                                    aria-label="เลือกปีการศึกษาและภาคเรียน"
                                 >
                                     <Calendar className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">ภาคเรียนที่</span> {semester}/{academicYear}
@@ -118,7 +147,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                                             <button
                                                                 key={s}
                                                                 onClick={() => handleTermChange(academicYear, s)}
-                                                                className={`flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all ${
+                                                                className={`min-h-11 flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all ${
                                                                     semester === s
                                                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
                                                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
@@ -145,7 +174,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         {onActionClick && (
                             <button
                                 onClick={onActionClick}
-                                className="hidden sm:flex text-sm bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-200 px-4 py-2 rounded-xl font-semibold transition-all items-center gap-2 shadow-sm"
+                                className="hidden min-h-11 sm:flex text-sm bg-indigo-50 border border-indigo-100 text-indigo-800 hover:bg-indigo-100 hover:border-indigo-200 px-4 py-2 rounded-xl font-semibold transition-all items-center gap-2 shadow-sm"
                             >
                                 {ActionIcon && <ActionIcon className="w-4 h-4" />}
                                 {actionText}
@@ -165,12 +194,32 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         <button
                             onClick={handleLogout}
                             title="ออกจากระบบ"
-                            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"
+                            aria-label="ออกจากระบบ"
+                            className="flex h-11 w-11 items-center justify-center text-slate-600 hover:text-red-700 hover:bg-slate-100 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
                         >
-                            <LogOut className="w-4 h-4" />
+                            <LogOut className="w-5 h-5" />
                         </button>
                     </div>
                 </div>
+                {navigation.length > 0 && (
+                    <nav className="border-t border-slate-200 bg-white" aria-label="เมนูหลัก">
+                        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 sm:px-6 lg:px-8">
+                            {navigation.map(item => (
+                                <button
+                                    key={item.path}
+                                    type="button"
+                                    onClick={() => navigate(item.path)}
+                                    aria-current={isActive(item) ? 'page' : undefined}
+                                    className={`min-h-11 shrink-0 rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+                                        isActive(item) ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'
+                                    }`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                    </nav>
+                )}
             </header>
 
             {/* Mobile action button */}

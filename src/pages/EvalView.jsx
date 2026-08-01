@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -29,23 +29,35 @@ export default function EvalView() {
     useEffect(() => {
         async function loadData() {
             try {
-                let subjectRecord = subject;
-                if (!subjectRecord) {
-                    const { data: sub } = await supabase.from('subjects').select('*').eq('subject_id', subjectId).single();
-                    subjectRecord = sub;
-                    setSubject(sub);
-                }
+                const { data: subjectRecord, error: subjectError } = await supabase.from('subjects')
+                    .select('*').eq('subject_id', subjectId).eq('school_id', currentUser.school_id).single();
+                if (subjectError || !subjectRecord) throw new Error('ไม่พบรายวิชานี้ในโรงเรียนของคุณ');
 
-                const [{ data: enrolls }, { data: mappedLOs }] = await Promise.all([
-                    supabase.from('student_enrollments')
+                let allowedRooms = null;
+                if (currentUser.role === 'teacher') {
+                    const { data: assignments, error: assignmentError } = await supabase.from('subject_teachers')
+                        .select('room_name').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id);
+                    if (assignmentError) throw assignmentError;
+                    const isPrimaryTeacher = subjectRecord.teacher_id === currentUser.teacher_id;
+                    const assignedRooms = (assignments || []).map(item => item.room_name).filter(Boolean);
+                    const assignedAllRooms = (assignments || []).some(item => !item.room_name);
+                    if (!isPrimaryTeacher && !(assignments || []).length) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินรายวิชานี้');
+                    if (roomParam && !isPrimaryTeacher && !assignedAllRooms && !assignedRooms.includes(roomParam)) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินห้องนี้');
+                    if (!isPrimaryTeacher && !assignedAllRooms) allowedRooms = new Set(assignedRooms);
+                }
+                setSubject(subjectRecord);
+
+                const [enrolls, { data: mappedLOs, error: mappingError }] = await Promise.all([
+                    fetchAllRows((from, to) => supabase.from('student_enrollments')
                         .select(`
               enrollment_id, room, attendance_percent,
               users_students(student_id, student_code, prefix, first_name, last_name)
-            `).eq('subject_id', subjectId),
+            `).eq('subject_id', subjectId).eq('enrollment_status', 'active').range(from, to)),
                     supabase.from('subject_lo_mapping')
-                        .select(`learning_outcomes(lo_id, lo_code, ability_no, lo_description)`)
+                        .select(`learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)`)
                         .eq('subject_id', subjectId)
                 ]);
+                if (mappingError) throw mappingError;
 
                 const formatLOs = (mappedLOs || [])
                     .map(item => item.learning_outcomes)
@@ -53,7 +65,7 @@ export default function EvalView() {
                     .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
                 setLearningOutcomes(formatLOs);
 
-                let formatEnrolls = enrolls || [];
+                let formatEnrolls = allowedRooms ? enrolls.filter(item => allowedRooms.has(item.room)) : enrolls;
                 // sort by student code
                 formatEnrolls.sort((a, b) => (a.users_students?.student_code || '').localeCompare(b.users_students?.student_code || ''));
                 setEnrollments(formatEnrolls);
@@ -62,37 +74,28 @@ export default function EvalView() {
                 const mappedLoIds = new Set(formatLOs.map(lo => lo.lo_id));
 
                 if (enrollIds.length > 0) {
-                    const { data: evals } = await supabase
-                        .from('lo_evaluations')
-                        .select('*')
-                        .in('enrollment_id', enrollIds);
+                    const evals = await fetchAllByIn(enrollIds, (batch, from, to) => supabase
+                        .from('lo_evaluations').select('*').in('enrollment_id', batch).range(from, to));
                     // เก็บเฉพาะ LO ที่ยังผูกกับวิชานี้ ผลของ LO ที่ถูกยกเลิกการผูกไปแล้วต้องไม่นับรวมในความคืบหน้า
-                    setEvaluations((evals || []).filter(e => mappedLoIds.has(e.lo_id)));
+                    setEvaluations(evals.filter(e => mappedLoIds.has(e.lo_id)));
                 }
 
-                // ผลที่ฝ่ายวิชาการรับรองแล้วต้องล็อกไม่ให้ครูแก้ย้อนหลัง
+                // เมื่อฝ่ายวิชาการรับรองรายด้านแล้ว ให้ล็อก LO ทุกข้อในด้านนั้น
                 const studentIds = formatEnrolls.map(e => e.users_students?.student_id).filter(Boolean);
-                if (studentIds.length > 0 && mappedLoIds.size > 0 && subjectRecord) {
-                    const { data: decisions } = await supabase
-                        .from('lo_final_decisions')
-                        .select('student_id, lo_id, decision_status, is_locked')
+                if (studentIds.length > 0 && mappedLoIds.size > 0) {
+                    const decisions = await fetchAllByIn(studentIds, (batch, from, to) => supabase
+                        .from('competency_area_final_decisions')
+                        .select('student_id, competency_area, decision_status, is_locked')
+                        .eq('school_id', currentUser.school_id)
                         .eq('academic_year', subjectRecord.academic_year)
                         .eq('semester', subjectRecord.semester)
-                        .in('student_id', studentIds)
-                        .in('lo_id', [...mappedLoIds]);
+                        .in('student_id', batch).range(from, to));
                     setLockedCells(new Set(
-                        (decisions || [])
+                        decisions
                             .filter(d => d.is_locked || d.decision_status === 'approved')
-                            .map(d => `${d.student_id}_${d.lo_id}`)
+                            .flatMap(d => formatLOs.filter(lo => lo.competency_area === d.competency_area).map(lo => `${d.student_id}_${lo.lo_id}`))
                     ));
                 }
-
-                const { data: submissionData } = await supabase
-                    .from('assessment_submissions')
-                    .select('*')
-                    .eq('subject_id', subjectId)
-                    .maybeSingle();
-                setSubmission(submissionData || null);
 
                 // Track attendance state separately for easy upsert
                 const initialAtt = {};
@@ -108,9 +111,18 @@ export default function EvalView() {
             }
         }
         loadData();
-        // subject มาจาก location.state ได้ จึงไม่ใส่ใน deps เพื่อไม่ให้โหลดข้อมูลซ้ำรอบสอง
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [subjectId]);
+    }, [currentUser.role, currentUser.school_id, currentUser.teacher_id, roomParam, subjectId]);
+
+    useEffect(() => {
+        if (!subjectId) return;
+        const roomScope = selectedRoom === 'all' ? '*' : selectedRoom;
+        supabase.from('assessment_submissions').select('*')
+            .eq('subject_id', subjectId).eq('room_scope', roomScope).maybeSingle()
+            .then(({ data, error }) => {
+                if (error) toast.error('โหลดสถานะการส่งผลไม่สำเร็จ: ' + error.message);
+                else setSubmission(data || null);
+            });
+    }, [selectedRoom, subjectId]);
 
     // Warn before closing browser tab if there are unsaved changes
     useEffect(() => {
@@ -253,9 +265,40 @@ export default function EvalView() {
     };
     saveEvaluationsRef.current = saveEvaluations;
 
-    const totalCells = enrollments.length * learningOutcomes.length;
-    const filledCells = evaluations.filter(e => e.evidence_note && e.evidence_note.trim() !== '').length;
-    const missingCount = totalCells - filledCells;
+    const scopedEnrollments = selectedRoom === 'all' ? enrollments : enrollments.filter(enrollment => enrollment.room === selectedRoom);
+    const scopedEnrollmentIds = new Set(scopedEnrollments.map(enrollment => enrollment.enrollment_id));
+    const totalCells = scopedEnrollments.length * learningOutcomes.length;
+    const filledCells = evaluations.filter(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()).length;
+    const missingCount = Math.max(0, totalCells - filledCells);
+
+    const fillEvidenceColumn = lo => {
+        const note = window.prompt(`ข้อความตั้งต้นสำหรับ ${lo.lo_code || `LO ${lo.ability_no}`}\nระบบจะเติมให้นักเรียนในรายการที่กำลังแสดง และยังแก้รายคนได้`);
+        if (note === null || !note.trim()) return;
+        const now = new Date().toISOString();
+        setEvaluations(previous => {
+            const next = previous.map(item => ({ ...item }));
+            displayedEnrollments.forEach(enrollment => {
+                const studentId = enrollment.users_students?.student_id;
+                if (submissionStatus === 'approved' || lockedCells.has(`${studentId}_${lo.lo_id}`)) return;
+                const index = next.findIndex(item => item.enrollment_id === enrollment.enrollment_id && item.lo_id === lo.lo_id);
+                const value = {
+                    evaluation_id: index >= 0 ? next[index].evaluation_id : crypto.randomUUID(),
+                    enrollment_id: enrollment.enrollment_id,
+                    lo_id: lo.lo_id,
+                    competency_level: null,
+                    evidence_note: note.trim(),
+                    workflow_status: 'draft',
+                    evaluated_by: currentUser.teacher_id,
+                    updated_at: now,
+                };
+                if (index >= 0) next[index] = { ...next[index], ...value };
+                else next.push(value);
+            });
+            return next;
+        });
+        setIsDirty(true);
+        toast.success(`เติมข้อความ ${lo.lo_code || `LO ${lo.ability_no}`} ให้รายการที่แสดงแล้ว`);
+    };
 
     const submitForReview = async () => {
         if (missingCount > 0 && !window.confirm(`มี ${missingCount} รายการที่ยังไม่มีการบันทึกข้อความพฤติกรรม ต้องการส่งฝ่ายวิชาการต่อหรือไม่?`)) {
@@ -275,25 +318,33 @@ export default function EvalView() {
                 academic_year: subject.academic_year,
                 semester: subject.semester,
                 teacher_id: currentUser.teacher_id,
+                room_scope: selectedRoom === 'all' ? '*' : selectedRoom,
                 status: 'submitted',
                 submitted_at: now,
                 updated_at: now,
             };
             const { data, error } = await supabase
                 .from('assessment_submissions')
-                .upsert(payload, { onConflict: 'subject_id,academic_year,semester' })
+                .upsert(payload, { onConflict: 'subject_id,academic_year,semester,room_scope' })
                 .select()
                 .single();
             if (error) throw error;
 
-            const completedEvaluations = evaluations.filter(e => e.evidence_note?.trim());
+            const completedEvaluations = evaluations.filter(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim());
             const evaluationIds = completedEvaluations.map(e => e.evaluation_id);
-            if (evaluationIds.length) {
-                const { error: statusError } = await supabase
-                    .from('lo_evaluations')
+            for (let index = 0; index < evaluationIds.length; index += 200) {
+                const { error: statusError } = await supabase.from('lo_evaluations')
                     .update({ workflow_status: 'submitted', submitted_at: now, updated_at: now })
-                    .in('evaluation_id', evaluationIds);
+                    .in('evaluation_id', evaluationIds.slice(index, index + 200));
                 if (statusError) throw statusError;
+            }
+            const scopedIds = [...scopedEnrollmentIds];
+            for (let index = 0; index < scopedIds.length; index += 200) {
+                const { error: areaStatusError } = await supabase.from('competency_area_evaluations')
+                    .update({ workflow_status: 'submitted', submitted_at: now, updated_at: now })
+                    .in('enrollment_id', scopedIds.slice(index, index + 200))
+                    .not('competency_level', 'is', null);
+                if (areaStatusError) throw areaStatusError;
             }
             await supabase.from('audit_logs').insert({
                 school_id: currentUser.school_id,
@@ -302,10 +353,12 @@ export default function EvalView() {
                 action: 'submit_subject_assessment',
                 entity_type: 'subject',
                 entity_id: subjectId,
-                detail: { academic_year: subject.academic_year, semester: subject.semester, evaluation_count: evaluationIds.length }
+                detail: { academic_year: subject.academic_year, semester: subject.semester, room_scope: payload.room_scope, evaluation_count: evaluationIds.length }
             });
             setSubmission(data);
-            setEvaluations(prev => prev.map(e => e.evidence_note?.trim() ? { ...e, workflow_status: 'submitted', submitted_at: now } : e));
+            setEvaluations(prev => prev.map(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()
+                ? { ...e, workflow_status: 'submitted', submitted_at: now }
+                : e));
             toast.success('ส่งผลให้ฝ่ายวิชาการตรวจสอบแล้ว');
         } catch (err) {
             toast.error('ส่งผลตรวจสอบไม่สำเร็จ: ' + err.message);
@@ -315,15 +368,11 @@ export default function EvalView() {
     };
 
     let displayedEnrollments = showMissingOnly
-        ? enrollments.filter(enroll => {
+        ? scopedEnrollments.filter(enroll => {
             const studentEvals = evaluations.filter(e => e.enrollment_id === enroll.enrollment_id && e.evidence_note?.trim());
             return studentEvals.length < learningOutcomes.length;
         })
-        : enrollments;
-
-    if (selectedRoom !== 'all') {
-        displayedEnrollments = displayedEnrollments.filter(e => e.room === selectedRoom);
-    }
+        : scopedEnrollments;
 
     const uniqueRooms = [...new Set(enrollments.map(e => e.room).filter(Boolean))].sort();
     const submissionStatus = submission?.status || 'draft';
@@ -353,7 +402,7 @@ export default function EvalView() {
                     <div className="flex items-center space-x-4">
                         <button
                             onClick={handleBack}
-                            className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center"
+                            className="min-h-11 text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 px-2 rounded-xl transition-colors flex items-center"
                         >
                             <ChevronLeft className="w-5 h-5 mr-1" />
                             <span className="font-semibold text-sm">กลับ</span>
@@ -389,7 +438,7 @@ export default function EvalView() {
                         <button
                             onClick={saveEvaluations}
                             disabled={saving || !isDirty || submissionStatus === 'approved'}
-                            className={`px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center ${
+                            className={`min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center ${
                                 isDirty
                                     ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/30'
                                     : 'bg-slate-100 text-slate-400 cursor-default'
@@ -400,9 +449,9 @@ export default function EvalView() {
                         </button>
                         <button
                             onClick={submitForReview}
-                            disabled={submitting || loading || missingCount > 0 || submissionStatus === 'approved'}
-                            className="hidden min-h-10 items-center rounded-xl bg-blue-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 sm:inline-flex"
-                            title={missingCount > 0 ? `มี ${missingCount} รายการที่ยังไม่มีข้อความพฤติกรรม` : 'ส่งผลการประเมินให้ฝ่ายวิชาการตรวจสอบ'}
+                            disabled={submitting || loading || submissionStatus === 'approved'}
+                            className="hidden min-h-11 items-center rounded-xl bg-blue-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 sm:inline-flex"
+                            title={missingCount > 0 ? `ส่งได้ โดยระบบจะถามยืนยัน ${missingCount} รายการที่ยังไม่ครบ` : 'ส่งผลการประเมินให้ฝ่ายวิชาการตรวจสอบ'}
                         >
                             {submitting ? <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="mr-2 h-4 w-4" />}
                             ส่งให้ฝ่ายวิชาการตรวจสอบ
@@ -433,7 +482,7 @@ export default function EvalView() {
                                 {missingCount > 0 && (
                                     <button
                                         onClick={() => setShowMissingOnly(!showMissingOnly)}
-                                        className={`text-sm px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${
+                                        className={`min-h-11 text-sm px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${
                                             showMissingOnly 
                                             ? 'bg-amber-100 text-amber-800 border-amber-300' 
                                             : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
@@ -445,9 +494,10 @@ export default function EvalView() {
                                 )}
                                 {uniqueRooms.length > 0 && (
                                     <select
+                                        aria-label="เลือกห้องเรียนที่ต้องการบันทึกผล"
                                         value={selectedRoom}
                                         onChange={(e) => setSelectedRoom(e.target.value)}
-                                        className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
+                                        className="min-h-11 text-sm px-3 py-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
                                     >
                                         <option value="all">แสดงทุกห้อง ({enrollments.length} คน)</option>
                                         {uniqueRooms.map(room => {
@@ -470,6 +520,7 @@ export default function EvalView() {
                                             <th key={lo.lo_id} className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
                                                 <div>{lo.lo_code ? lo.lo_code : `LO ข้อ ${lo.ability_no}`}</div>
                                                 {lo.lo_code && <div className="text-[10px] text-indigo-500 font-medium mt-1">ข้อ {lo.ability_no}</div>}
+                                                <button type="button" onClick={() => fillEvidenceColumn(lo)} className="mt-2 min-h-11 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-extrabold normal-case text-indigo-900 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">เติมข้อความทั้งคอลัมน์</button>
                                             </th>
                                         ))}
                                     </tr>
@@ -502,14 +553,14 @@ export default function EvalView() {
                                                             <label className="block text-left">
                                                                 <span className="sr-only">หลักฐานเชิงคุณภาพ {lo.lo_code || `LO ${lo.ability_no}`} ของ {st.first_name}</span>
                                                                 <div className="relative">
-                                                                    <MessageSquareText className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                                                                    <MessageSquareText className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
                                                                     <textarea
                                                                         rows="2"
                                                                         value={ev?.evidence_note || ''}
                                                                         onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
                                                                         disabled={cellLocked}
                                                                         placeholder={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว' : 'บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน'}
-                                                                        className="w-full resize-y rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                                                                        className="w-full resize-y rounded-lg border border-slate-300 bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                                                                     />
                                                                 </div>
                                                             </label>

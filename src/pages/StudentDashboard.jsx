@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
+import { useAcademic } from '../AcademicContext';
 import Layout from '../components/Layout';
 import { GraduationCap, BookOpen, UserCheck, Compass, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -8,6 +9,7 @@ import { formalLevelLabel } from '../lib/terminology';
 
 export default function StudentDashboard() {
     const { currentUser } = useAuth();
+    const { academicYear, semester } = useAcademic();
     const [data, setData] = useState([]);
     const [finalResults, setFinalResults] = useState([]);
     const [formativeResults, setFormativeResults] = useState([]);
@@ -16,50 +18,56 @@ export default function StudentDashboard() {
     useEffect(() => {
         async function fetchDashboard() {
             try {
-                // ไม่มีการตัดสินคุณภาพราย LO แล้ว คง state ว่างไว้เพื่อไม่แสดงผลรับรองแบบเดิม
-                setFinalResults([]);
-
-                const { data: enrollments, error: enrollErr } = await supabase
-                    .from('student_enrollments')
+                if (!currentUser?.student_id || !currentUser?.school_id || !academicYear || !semester) return;
+                const enrollments = await fetchAllRows((from, to) => supabase.from('student_enrollments')
                     .select(`
             enrollment_id, room,
             subjects(subject_id, subject_name, academic_year, semester)
           `)
-                    .eq('student_id', currentUser.student_id);
+                    .eq('student_id', currentUser.student_id).eq('enrollment_status', 'active').range(from, to));
 
-                if (enrollErr) throw enrollErr;
+                const currentEnrollments = enrollments.filter(enrollment => enrollment.subjects
+                    && enrollment.subjects.academic_year === academicYear
+                    && enrollment.subjects.semester === semester);
 
-                if (!enrollments || enrollments.length === 0) {
+                if (currentEnrollments.length === 0) {
                     setData([]);
+                    setFinalResults([]);
+                    setFormativeResults([]);
                     setLoading(false);
                     return;
                 }
 
-                const subjectIds = enrollments.map(e => e.subjects.subject_id);
-                const enrollmentIds = enrollments.map(e => e.enrollment_id);
+                const subjectIds = currentEnrollments.map(e => e.subjects?.subject_id).filter(Boolean);
+                const enrollmentIds = currentEnrollments.map(e => e.enrollment_id);
 
-                const [{ data: loData }, { data: evalData }, { data: areaData }] = await Promise.all([
-                    supabase.from('subject_lo_mapping')
+                const [loData, evalData, areaData, finalData] = await Promise.all([
+                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
                         .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, lo_description)')
-                        .in('subject_id', subjectIds),
-                    supabase.from('lo_evaluations')
+                        .in('subject_id', batch).range(from, to)),
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
                         .select('enrollment_id, lo_id, evidence_note')
-                        .in('enrollment_id', enrollmentIds),
-                    supabase.from('competency_area_evaluations')
+                        .in('enrollment_id', batch).range(from, to)),
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('competency_area_evaluations')
                         .select('enrollment_id, competency_area, competency_level, qualitative_summary')
-                        .in('enrollment_id', enrollmentIds),
+                        .in('enrollment_id', batch).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
+                        .select('decision_id, competency_area, final_level, pass_status, decision_reason, academic_year, semester, decided_at')
+                        .eq('school_id', currentUser.school_id).eq('student_id', currentUser.student_id)
+                        .eq('academic_year', academicYear).eq('semester', semester).eq('decision_status', 'approved').range(from, to)),
                 ]);
-                setFormativeResults(areaData || []);
+                setFormativeResults(areaData);
+                setFinalResults(finalData);
 
-                const dashboardData = enrollments.map(enroll => {
+                const dashboardData = currentEnrollments.map(enroll => {
                     const subject = enroll.subjects;
-                    const subjectLos = (loData || [])
+                    const subjectLos = loData
                         .filter(l => l.subject_id === subject.subject_id)
                         .map(l => l.learning_outcomes)
                         .filter(Boolean)
                         .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
 
-                    const evalsMap = (evalData || []).filter(e => e.enrollment_id === enroll.enrollment_id);
+                    const evalsMap = evalData.filter(e => e.enrollment_id === enroll.enrollment_id);
 
                     const subjectEvals = subjectLos.map(lo => {
                         const evMatch = evalsMap.find(e => e.lo_id === lo.lo_id);
@@ -90,7 +98,7 @@ export default function StudentDashboard() {
             }
         }
         fetchDashboard();
-    }, [currentUser]);
+    }, [academicYear, currentUser, semester]);
 
     // Calculate overall stats
     const totalSubjects = data.length;
@@ -104,7 +112,7 @@ export default function StudentDashboard() {
     });
 
     const totalEvals = evaluatedLoIds.size;
-    const passedEvals = formativeResults.filter(result => result.competency_level).length;
+    const passedEvals = new Set(formativeResults.filter(result => result.competency_level).map(result => result.competency_area)).size;
 
     return (
         <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">
@@ -174,21 +182,18 @@ export default function StudentDashboard() {
                     <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="rounded-2xl bg-emerald-600 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
-                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลลัพธ์การเรียนรู้ที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลการประเมินที่ผ่านการพิจารณาหลักฐานจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม</p></div>
+                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลที่ผ่านการพิจารณา Formative และข้อความพฤติกรรมราย LO แล้ว</p></div>
                         </div>
                         <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
                     </div>
                     <div className="divide-y divide-slate-200">
-                        {finalResults.map(result => {
-                            const lo = result.learning_outcomes;
-                            return (
+                        {finalResults.map(result => (
                                 <article key={result.decision_id} className="grid gap-3 px-6 py-5 md:grid-cols-[150px_minmax(0,1fr)_140px] md:items-center">
-                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">{lo?.lo_code || `LO ${lo?.ability_no || '-'}`}</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
-                                    <div><p className="font-bold leading-6 text-slate-900">{lo?.lo_description || 'ผลลัพธ์การเรียนรู้'}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
+                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">ผลรับรองรายด้าน</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
+                                    <div><p className="font-bold leading-6 text-slate-900">{result.competency_area}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
                                     <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-extrabold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{formalLevelLabel(result.final_level)}</span></div>
                                 </article>
-                            );
-                        })}
+                            ))}
                     </div>
                 </section>
             )}

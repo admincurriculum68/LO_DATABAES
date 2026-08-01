@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSpreadsheet, RefreshCw, Upload, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import { normalizeThaiDob, sanitizeCitizenId } from '../lib/importSanitizers';
 
 const normalizeHeader = value => String(value ?? '')
     .trim()
@@ -9,39 +10,6 @@ const normalizeHeader = value => String(value ?? '')
     .replace(/[\s._/\\()\-[\]]+/g, '')
     .replace(/ปีการศึกษา/g, 'ปี')
     .replace(/หมายเลข/g, 'เลข');
-
-const normalizeDigits = value => String(value ?? '').trim().replace(/\.0+$/, '').replace(/\D/g, '');
-
-const excelSerialToThaiDob = serial => {
-    if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return '';
-    const parsed = XLSX.SSF?.parse_date_code?.(serial);
-    if (!parsed?.y || !parsed?.m || !parsed?.d) return '';
-    const year = parsed.y < 2400 ? parsed.y + 543 : parsed.y;
-    return `${String(parsed.d).padStart(2, '0')}${String(parsed.m).padStart(2, '0')}${year}`;
-};
-
-const normalizeDob = value => {
-    const text = String(value ?? '').trim();
-    if (!text) return '';
-    const separated = text.match(/^(\d{1,2})[\s./-](\d{1,2})[\s./-](\d{2,4})$/);
-    if (separated) {
-        let year = Number(separated[3]);
-        if (year < 100) year += year <= 30 ? 2500 : 2400;
-        if (year < 2400) year += 543;
-        return `${separated[1].padStart(2, '0')}${separated[2].padStart(2, '0')}${year}`;
-    }
-    const digits = normalizeDigits(text);
-    if (/^\d{8}$/.test(digits)) {
-        const leadingYear = Number(digits.slice(0, 4));
-        if (leadingYear >= 1900 && leadingYear <= 2600) {
-            const year = leadingYear < 2400 ? leadingYear + 543 : leadingYear;
-            return `${digits.slice(6, 8)}${digits.slice(4, 6)}${year}`;
-        }
-        return digits;
-    }
-    const excelDate = excelSerialToThaiDob(Number(digits));
-    return excelDate || (digits ? digits.padStart(8, '0') : '');
-};
 
 const normalizeGrade = value => {
     const text = String(value ?? '').trim();
@@ -213,8 +181,8 @@ const readFile = file => new Promise((resolve, reject) => {
 
 const transformValue = (value, field) => {
     const text = String(value ?? '').trim();
-    if (field.kind === 'citizen') return normalizeDigits(text);
-    if (field.kind === 'dob') return normalizeDob(text);
+    if (field.kind === 'citizen') return sanitizeCitizenId(text);
+    if (field.kind === 'dob') return normalizeThaiDob(text);
     if (field.kind === 'grade') return normalizeGrade(text);
     if (field.kind === 'number') return text ? String(parseInt(text.replace(/,/g, ''), 10) || '') : '';
     if (field.kind === 'boolean') return normalizeBoolean(text) ? 'true' : 'false';
@@ -249,6 +217,8 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
     const [mapping, setMapping] = useState({});
     const [edits, setEdits] = useState({});
     const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+    const [previewPage, setPreviewPage] = useState(1);
+    const [errorMessage, setErrorMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const schema = IMPORT_SCHEMAS[importType];
     const rows = useMemo(() => sheets[sheetIndex]?.rows || [], [sheetIndex, sheets]);
@@ -261,8 +231,13 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
             schema.fields.forEach(field => {
                 const columnIndex = mapping[field.key];
                 const editKey = `${sourceRow}:${field.key}`;
-                const rawValue = edits[editKey] !== undefined ? edits[editKey] : (columnIndex === '' || columnIndex === undefined ? '' : row[Number(columnIndex)]);
-                record[field.key] = transformValue(rawValue, field);
+                const hasEdit = edits[editKey] !== undefined;
+                const rawValue = hasEdit ? edits[editKey] : (columnIndex === '' || columnIndex === undefined ? '' : row[Number(columnIndex)]);
+                // ระหว่างพิมพ์วันเกิด/เลขบัตรให้คงค่าตามที่ครูพิมพ์ก่อน
+                // แล้วค่อย normalize ตอนออกจากช่อง เพื่อไม่ให้ "1" กลายเป็น "00000001"
+                record[field.key] = hasEdit && ['dob', 'citizen'].includes(field.kind)
+                    ? String(rawValue ?? '').trim()
+                    : transformValue(rawValue, field);
             });
             if (record.current_room && /^\d+$/.test(record.current_room) && record.current_grade_level) {
                 record.current_room = `${record.current_grade_level}/${record.current_room}`;
@@ -274,13 +249,16 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
     const errorCount = mappedRows.filter(item => item.errors.length).length;
     const readyRows = mappedRows.filter(item => !item.errors.length);
     const requiredMissing = schema.fields.filter(field => field.required && (mapping[field.key] === '' || mapping[field.key] === undefined));
-    const visiblePreview = (showOnlyErrors ? mappedRows.filter(item => item.errors.length) : mappedRows).slice(0, 50);
+    const previewRows = showOnlyErrors ? mappedRows.filter(item => item.errors.length) : mappedRows;
+    const previewPageCount = Math.max(1, Math.ceil(previewRows.length / 50));
+    const visiblePreview = previewRows.slice((previewPage - 1) * 50, previewPage * 50);
 
     const selectFile = async event => {
         const file = event.target.files?.[0];
         if (!file) return;
         event.target.value = '';
         setLoading(true);
+        setErrorMessage('');
         try {
             const result = await readFile(file);
             const firstUsableSheet = result.sheets.findIndex(sheet => sheet.rows.length > 0);
@@ -293,7 +271,10 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
             setHeaderRow(detectedHeader);
             setMapping(suggestMapping(nextRows[detectedHeader] || [], schema.fields));
             setEdits({});
+            setPreviewPage(1);
             setStep(2);
+        } catch (error) {
+            setErrorMessage(`เปิดไฟล์ไม่สำเร็จ: ${error.message || 'รูปแบบไฟล์ไม่ถูกต้อง'}`);
         } finally {
             setLoading(false);
         }
@@ -306,6 +287,7 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
         setHeaderRow(detectedHeader);
         setMapping(suggestMapping(nextRows[detectedHeader] || [], schema.fields));
         setEdits({});
+        setPreviewPage(1);
     };
 
     const changeHeaderRow = value => {
@@ -313,13 +295,17 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
         setHeaderRow(nextHeaderRow);
         setMapping(suggestMapping(rows[nextHeaderRow] || [], schema.fields));
         setEdits({});
+        setPreviewPage(1);
     };
 
     const confirm = async () => {
         if (!readyRows.length) return;
         setLoading(true);
+        setErrorMessage('');
         try {
             await onConfirm(readyRows.map(item => item.record), importType);
+        } catch (error) {
+            setErrorMessage(`นำเข้าไม่สำเร็จ: ${error.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'}`);
         } finally {
             setLoading(false);
         }
@@ -335,14 +321,16 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
                 <ol className="mt-4 flex gap-1" aria-label="ขั้นตอนนำเข้า">
                     {['เลือกข้อมูลและไฟล์', 'จับคู่คอลัมน์', 'ตรวจสอบและแก้ไข'].map((label, index) => {
                         const number = index + 1;
-                        return <li key={label} className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${step === number ? 'bg-indigo-700 text-white' : step > number ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${step === number ? 'bg-white/20' : 'bg-white'}`}>{step > number ? <Check className="h-3.5 w-3.5" /> : number}</span><span className="hidden truncate sm:block">{label}</span></li>;
+                        return <li key={label} className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${step === number ? 'action-primary' : step > number ? 'surface-success text-emerald-800' : 'bg-slate-100 text-slate-600'}`}><span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${step === number ? 'bg-white/20' : 'bg-white'}`}>{step > number ? <Check className="h-3.5 w-3.5" /> : number}</span><span className="hidden truncate sm:block">{label}</span></li>;
                     })}
                 </ol>
             </header>
 
+            {errorMessage && <div className="mx-5 mt-5 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900" role="alert"><AlertCircle className="h-5 w-5 shrink-0" /><span>{errorMessage}</span></div>}
+
             {step === 1 && <div className="space-y-5 p-5 sm:p-6">
                 <div><label className="mb-1.5 block text-sm font-extrabold text-slate-800">ต้องการเพิ่มข้อมูลอะไร?</label><select value={importType} onChange={event => setImportType(event.target.value)} className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold">{Object.entries(IMPORT_SCHEMAS).map(([key, item]) => <option key={key} value={key}>{item.title}</option>)}</select><p className="mt-2 text-sm text-slate-600">{schema.description}</p></div>
-                <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="flex min-h-56 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/50 p-8 text-center hover:bg-indigo-50"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-700 text-white"><Upload className="h-7 w-7" /></span><strong className="mt-4 text-base text-slate-950">เลือกไฟล์ Excel หรือ CSV ของโรงเรียน</strong><span className="mt-1 text-sm text-slate-600">รองรับไฟล์ .xlsx, .xls และ .csv โดยไม่บังคับรูปแบบหัวคอลัมน์</span></button>
+                <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="surface-selected flex min-h-56 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-300 p-8 text-center hover:bg-indigo-50"><span className="action-primary flex h-14 w-14 items-center justify-center rounded-2xl"><Upload className="h-7 w-7" /></span><strong className="mt-4 text-base text-slate-950">เลือกไฟล์ Excel หรือ CSV ของโรงเรียน</strong><span className="mt-1 text-sm text-slate-700">รองรับไฟล์ .xlsx, .xls และ .csv โดยไม่บังคับรูปแบบหัวคอลัมน์</span></button>
             </div>}
 
             {step === 2 && <div className="space-y-5 p-5 sm:p-6">
@@ -350,14 +338,15 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
                 <div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-1.5 block text-sm font-extrabold text-slate-700">ชีตข้อมูล</span><select value={sheetIndex} onChange={event => changeSheet(Number(event.target.value))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold">{sheets.map((sheet, index) => <option key={sheet.name} value={index}>{sheet.name} · {sheet.rows.length} แถว</option>)}</select></label><label><span className="mb-1.5 block text-sm font-extrabold text-slate-700">แถวที่เป็นชื่อคอลัมน์</span><select value={headerRow} onChange={event => changeHeaderRow(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold">{rows.slice(0, 20).map((row, index) => <option key={index} value={index}>แถวที่ {index + 1}: {(row || []).filter(Boolean).slice(0, 4).join(' · ') || 'ไม่มีข้อมูล'}</option>)}</select></label></div>
                 <div className="overflow-hidden rounded-xl border border-slate-200"><div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h3 className="font-extrabold text-slate-900">จับคู่ข้อมูลที่ระบบต้องการกับคอลัมน์ในไฟล์</h3><p className="mt-1 text-xs text-slate-600">ระบบจับคู่ให้อัตโนมัติแล้ว โปรดตรวจช่องที่มีเครื่องหมาย *</p></div><div className="grid gap-px bg-slate-200 sm:grid-cols-2">{schema.fields.map(field => <label key={field.key} className="bg-white p-4"><span className="mb-1.5 flex items-center justify-between text-sm font-extrabold text-slate-800"><span>{field.label}{field.required && <span className="text-rose-600"> *</span>}</span>{mapping[field.key] !== '' && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}</span><select value={mapping[field.key] ?? ''} onChange={event => setMapping(previous => ({ ...previous, [field.key]: event.target.value }))} className={`min-h-11 w-full rounded-xl border bg-white px-3 text-sm font-bold ${field.required && (mapping[field.key] === '' || mapping[field.key] === undefined) ? 'border-rose-400 text-rose-800' : 'border-slate-300 text-slate-800'}`}><option value="">— ไม่มีคอลัมน์นี้ —</option>{headers.map((header, index) => String(header ?? '').trim() && <option key={`${index}-${header}`} value={String(index)}>{String(header)} · คอลัมน์ {index + 1}</option>)}</select></label>)}</div></div>
                 {requiredMissing.length > 0 && <div className="flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><AlertCircle className="h-5 w-5 shrink-0" /><p>ยังไม่ได้จับคู่: <strong>{requiredMissing.map(field => field.label).join(', ')}</strong></p></div>}
-                <div className="flex justify-between gap-3"><button onClick={() => setStep(1)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700"><ArrowLeft className="h-4 w-4" />ย้อนกลับ</button><button onClick={() => setStep(3)} disabled={requiredMissing.length > 0} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white disabled:opacity-40">ตรวจสอบข้อมูล<ArrowRight className="h-4 w-4" /></button></div>
+                <div className="flex justify-between gap-3"><button onClick={() => setStep(1)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700"><ArrowLeft className="h-4 w-4" />ย้อนกลับ</button><button onClick={() => setStep(3)} disabled={requiredMissing.length > 0} className="action-primary inline-flex min-h-11 items-center gap-2 rounded-xl px-5 text-sm font-extrabold disabled:opacity-40">ตรวจสอบข้อมูล<ArrowRight className="h-4 w-4" /></button></div>
             </div>}
 
             {step === 3 && <div className="space-y-5 p-5 sm:p-6">
-                <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold text-slate-600">ข้อมูลทั้งหมด</p><p className="mt-1 text-2xl font-extrabold text-slate-950">{mappedRows.length.toLocaleString()} <span className="text-sm">รายการ</span></p></div><div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold text-emerald-800">พร้อมนำเข้า</p><p className="mt-1 text-2xl font-extrabold text-emerald-900">{readyRows.length.toLocaleString()} <span className="text-sm">รายการ</span></p></div><div className={`rounded-xl border p-4 ${errorCount ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}><p className={`text-xs font-bold ${errorCount ? 'text-rose-800' : 'text-slate-600'}`}>ต้องแก้ไข</p><p className={`mt-1 text-2xl font-extrabold ${errorCount ? 'text-rose-900' : 'text-slate-800'}`}>{errorCount.toLocaleString()} <span className="text-sm">รายการ</span></p></div></div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ตรวจสอบตัวอย่างและแก้ไขข้อมูล</h3><p className="mt-1 text-xs text-slate-600">แสดงสูงสุด 50 แถว ระบบจะนำเข้าเฉพาะรายการที่ไม่มีข้อผิดพลาด</p></div>{errorCount > 0 && <button onClick={() => setShowOnlyErrors(value => !value)} className={`min-h-10 rounded-xl border px-3 text-sm font-bold ${showOnlyErrors ? 'border-rose-700 bg-rose-700 text-white' : 'border-rose-300 bg-white text-rose-800'}`}>{showOnlyErrors ? 'แสดงทุกรายการ' : `แสดงเฉพาะ ${errorCount} รายการที่ผิด`}</button>}</div>
-                <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200"><table className="min-w-max w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-100 text-slate-700"><tr><th className="px-3 py-3 text-center">แถว</th><th className="px-3 py-3 text-left">สถานะ</th>{schema.fields.map(field => <th key={field.key} className="min-w-[160px] px-3 py-3 text-left">{field.label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 bg-white">{visiblePreview.map(item => <tr key={item.sourceRow} className={item.errors.length ? 'bg-rose-50/40' : ''}><td className="px-3 py-2 text-center font-mono text-xs text-slate-500">{item.sourceRow}</td><td className="max-w-[220px] px-3 py-2">{item.errors.length ? <span className="text-xs font-bold leading-5 text-rose-700">{item.errors.join(' · ')}</span> : <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />พร้อม</span>}</td>{schema.fields.map(field => <td key={field.key} className="px-2 py-2"><input value={item.record[field.key] ?? ''} onChange={event => setEdits(previous => ({ ...previous, [`${item.sourceRow}:${field.key}`]: event.target.value }))} className={`min-h-9 w-full rounded-lg border px-2 text-xs ${item.errors.length && (!item.record[field.key] || (field.kind === 'citizen' && item.record[field.key].length !== 13)) ? 'border-rose-400 bg-white' : 'border-slate-200 bg-white'}`} /></td>)}</tr>)}</tbody></table></div>
-                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button onClick={() => setStep(2)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700"><ArrowLeft className="h-4 w-4" />กลับไปจับคู่คอลัมน์</button><button onClick={confirm} disabled={!readyRows.length || loading} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-6 text-sm font-extrabold text-white disabled:opacity-40"><Upload className="h-4 w-4" />{loading ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${readyRows.length.toLocaleString()} รายการ`}</button></div>
+                <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold text-slate-600">ข้อมูลทั้งหมด</p><p className="mt-1 text-2xl font-extrabold text-slate-950">{mappedRows.length.toLocaleString()} <span className="text-sm">รายการ</span></p></div><div className="surface-success rounded-xl border border-emerald-200 p-4"><p className="text-xs font-bold text-emerald-800">พร้อมนำเข้า</p><p className="mt-1 text-2xl font-extrabold text-emerald-900">{readyRows.length.toLocaleString()} <span className="text-sm">รายการ</span></p></div><div className={`rounded-xl border p-4 ${errorCount ? 'surface-danger border-rose-200' : 'border-slate-200 bg-white'}`}><p className={`text-xs font-bold ${errorCount ? 'text-rose-800' : 'text-slate-600'}`}>ต้องแก้ไข</p><p className={`mt-1 text-2xl font-extrabold ${errorCount ? 'text-rose-900' : 'text-slate-800'}`}>{errorCount.toLocaleString()} <span className="text-sm">รายการ</span></p></div></div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ตรวจสอบและแก้ไขข้อมูลทุกแถว</h3><p className="mt-1 text-xs text-slate-600">แสดงครั้งละ 50 แถว เลื่อนไปหน้าอื่นเพื่อแก้รายการที่เหลือได้ ระบบจะนำเข้าเฉพาะรายการที่ไม่มีข้อผิดพลาด</p></div>{errorCount > 0 && <button onClick={() => { setShowOnlyErrors(value => !value); setPreviewPage(1); }} className={`min-h-11 rounded-xl border px-3 text-sm font-bold ${showOnlyErrors ? 'action-danger border-rose-700' : 'border-rose-300 bg-white text-rose-800'}`}>{showOnlyErrors ? 'แสดงทุกรายการ' : `แสดงเฉพาะ ${errorCount} รายการที่ผิด`}</button>}</div>
+                <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200"><table className="min-w-max w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-100 text-slate-700"><tr><th className="px-3 py-3 text-center">แถว</th><th className="px-3 py-3 text-left">สถานะ</th>{schema.fields.map(field => <th key={field.key} className="min-w-[160px] px-3 py-3 text-left">{field.label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 bg-white">{visiblePreview.map(item => <tr key={item.sourceRow} className={item.errors.length ? 'surface-danger' : ''}><td className="px-3 py-2 text-center font-mono text-xs text-slate-600">{item.sourceRow}</td><td className="max-w-[220px] px-3 py-2">{item.errors.length ? <span className="text-xs font-bold leading-5 text-rose-700">{item.errors.join(' · ')}</span> : <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />พร้อม</span>}</td>{schema.fields.map(field => { const editKey = `${item.sourceRow}:${field.key}`; return <td key={field.key} className="px-2 py-2"><input value={item.record[field.key] ?? ''} onChange={event => setEdits(previous => ({ ...previous, [editKey]: event.target.value }))} onBlur={event => setEdits(previous => ({ ...previous, [editKey]: transformValue(event.target.value, field) }))} className={`min-h-11 w-full rounded-lg border px-2 text-xs ${item.errors.length && (!item.record[field.key] || (field.kind === 'citizen' && item.record[field.key].length !== 13)) ? 'border-rose-400 bg-white' : 'border-slate-200 bg-white'}`} /></td>; })}</tr>)}</tbody></table></div>
+                {previewPageCount > 1 && <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-sm font-bold text-slate-600">หน้า {previewPage} จาก {previewPageCount} · {previewRows.length.toLocaleString()} รายการ</span><div className="flex gap-2"><button type="button" onClick={() => setPreviewPage(value => Math.max(1, value - 1))} disabled={previewPage === 1} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button type="button" onClick={() => setPreviewPage(value => Math.min(previewPageCount, value + 1))} disabled={previewPage === previewPageCount} className="action-primary min-h-11 rounded-lg px-4 text-sm font-bold disabled:opacity-40">ถัดไป</button></div></div>}
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button onClick={() => setStep(2)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700"><ArrowLeft className="h-4 w-4" />กลับไปจับคู่คอลัมน์</button><button onClick={confirm} disabled={!readyRows.length || loading} className="action-success inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-extrabold disabled:opacity-40"><Upload className="h-4 w-4" />{loading ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${readyRows.length.toLocaleString()} รายการ`}</button></div>
             </div>}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={selectFile} />
         </section>

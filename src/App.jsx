@@ -1,28 +1,30 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import Login from './pages/Login';
-import TeacherDashboard from './pages/TeacherDashboard';
-import EvalView from './pages/EvalView';
-import ReportView from './pages/ReportView';
-import SummaryView from './pages/SummaryView';
-import HomeroomView from './pages/HomeroomView';
-import StudentDashboard from './pages/StudentDashboard';
-import ExecutiveDashboard from './pages/ExecutiveDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminReportLO from './pages/AdminReportLO';
-import AdminReportCompetency from './pages/AdminReportCompetency';
-import YearlyReportAdmin from './pages/YearlyReportAdmin';
-import PhaseReportAdmin from './pages/PhaseReportAdmin';
-import BatchReportView from './pages/BatchReportView';
-import AcademicApprovalCenter from './pages/AcademicApprovalCenter';
-import LearningContextManager from './pages/LearningContextManager';
-import FormativeCompetencyView from './pages/FormativeCompetencyView';
-import SubjectTeacherManager from './pages/SubjectTeacherManager';
-import CurriculumEquivalency from './pages/CurriculumEquivalency';
-import LearningGroupManager from './pages/LearningGroupManager';
-import DataSetupCenter from './pages/DataSetupCenter';
 import ProtectedRoute from './ProtectedRoute';
 import { Toaster } from 'react-hot-toast';
+
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
+const EvalView = lazy(() => import('./pages/EvalView'));
+const ReportView = lazy(() => import('./pages/ReportView'));
+const SummaryView = lazy(() => import('./pages/SummaryView'));
+const HomeroomView = lazy(() => import('./pages/HomeroomView'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const ExecutiveDashboard = lazy(() => import('./pages/ExecutiveDashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminReportLO = lazy(() => import('./pages/AdminReportLO'));
+const AdminReportCompetency = lazy(() => import('./pages/AdminReportCompetency'));
+const YearlyReportAdmin = lazy(() => import('./pages/YearlyReportAdmin'));
+const PhaseReportAdmin = lazy(() => import('./pages/PhaseReportAdmin'));
+const BatchReportView = lazy(() => import('./pages/BatchReportView'));
+const AcademicApprovalCenter = lazy(() => import('./pages/AcademicApprovalCenter'));
+const LearningContextManager = lazy(() => import('./pages/LearningContextManager'));
+const FormativeCompetencyView = lazy(() => import('./pages/FormativeCompetencyView'));
+const SubjectTeacherManager = lazy(() => import('./pages/SubjectTeacherManager'));
+const CurriculumEquivalency = lazy(() => import('./pages/CurriculumEquivalency'));
+const LearningGroupManager = lazy(() => import('./pages/LearningGroupManager'));
+const DataSetupCenter = lazy(() => import('./pages/DataSetupCenter'));
 
 export default function App() {
   const { currentUser } = useAuth();
@@ -30,6 +32,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <Toaster position="top-right" />
+      <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="loader" aria-label="กำลังเปิดหน้า" /></div>}>
       <Routes>
         <Route path="/login" element={!currentUser ? <Login /> : <Navigate to="/" />} />
 
@@ -143,6 +146,7 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      </Suspense>
     </div>
   );
 }

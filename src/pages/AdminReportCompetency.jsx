@@ -1,378 +1,128 @@
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase, fetchAllRows } from '../lib/supabase';
-import { useAuth } from '../AuthContext';
-import { ChevronLeft, Printer, BarChart3, ChevronDown, Download } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import AcademicReportShell from '../components/AcademicReportShell';
+import { useAcademic } from '../AcademicContext';
+import { useAuth } from '../AuthContext';
+import { fetchAllRows, supabase } from '../lib/supabase';
 
-const LevelBadge = ({ val }) => {
-    if (!val || val === '-') return <span className="text-slate-300 text-xs">-</span>;
-    const map = {
-        'เริ่มต้น': 'bg-red-50 text-red-600 border-red-200',
-        'พัฒนา': 'bg-orange-50 text-orange-600 border-orange-200',
-        'ชำนาญ': 'bg-blue-50 text-blue-600 border-blue-200',
-        'เชี่ยวชาญ': 'bg-green-50 text-green-600 border-green-200',
-    };
-    return (
-        <span className={`inline-block px-2 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap ${map[val] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-            {val}
-        </span>
-    );
+const LEVEL_STYLES = {
+    เริ่มต้น: 'border-rose-200 bg-rose-50 text-rose-800',
+    พัฒนา: 'border-amber-200 bg-amber-50 text-amber-800',
+    ชำนาญ: 'border-blue-200 bg-blue-50 text-blue-800',
+    เชี่ยวชาญ: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    'N/A': 'border-slate-200 bg-slate-50 text-slate-600',
 };
+
+const statusLabel = status => ({ approved: 'รับรองแล้ว', returned: 'ส่งกลับแก้ไข', pending: 'รอรับรอง' }[status] || 'รอรับรอง');
+const studentName = student => `${student.prefix || ''}${student.first_name || ''} ${student.last_name || ''}`.trim();
 
 export default function AdminReportCompetency() {
     const { currentUser } = useAuth();
-    const navigate = useNavigate();
-
+    const { academicYear, semester } = useAcademic();
     const [loading, setLoading] = useState(true);
-    const [competencyAreas, setCompetencyAreas] = useState([]);
-    const [selectedArea, setSelectedArea] = useState('');
-
-    // After selecting an area
-    const [losByArea, setLosByArea] = useState([]);        // LOs in this competency area
-    const [subjects, setSubjects] = useState([]);          // distinct subjects mapped to ANY lo in this area
     const [students, setStudents] = useState([]);
-    const [evals, setEvals] = useState([]);
-    const [enrollmentMap, setEnrollmentMap] = useState({}); // enrollment_id -> { student_id, subject_id }
-    const [subjectLoMap, setSubjectLoMap] = useState({});   // lo_id -> [subject_ids]
-    const [currentPage, setCurrentPage] = useState(1);
+    const [areas, setAreas] = useState([]);
+    const [decisions, setDecisions] = useState([]);
+    const [selectedArea, setSelectedArea] = useState('');
+    const [query, setQuery] = useState('');
+    const [status, setStatus] = useState('all');
+    const [page, setPage] = useState(1);
     const pageSize = 50;
 
     useEffect(() => {
-        async function init() {
+        async function loadReport() {
+            if (!currentUser?.school_id || !academicYear || !semester) return;
+            setLoading(true);
             try {
-                const [{ data: los }, studs] = await Promise.all([
-                    supabase.from('learning_outcomes').select('competency_area')
+                const [studentRows, loRows, decisionRows] = await Promise.all([
+                    fetchAllRows((from, to) => supabase.from('users_students')
+                        .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room')
                         .eq('school_id', currentUser.school_id)
-                        .order('competency_area'),
-                    fetchAllRows((from, to) =>
-                        supabase.from('users_students')
-                            .select('student_id, student_code, prefix, first_name, last_name')
-                            .eq('school_id', currentUser.school_id)
-                            .order('student_code', { ascending: true })
-                            .range(from, to)
-                    )
+                        .eq('student_status', 'active')
+                        .order('student_code')
+                        .range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('learning_outcomes')
+                        .select('competency_area')
+                        .eq('school_id', currentUser.school_id)
+                        .range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
+                        .select('student_id, competency_area, final_level, decision_status, decision_reason, decided_at')
+                        .eq('school_id', currentUser.school_id)
+                        .eq('academic_year', academicYear)
+                        .eq('semester', semester)
+                        .range(from, to)),
                 ]);
-                const uniqueAreas = [...new Set((los || []).map(l => l.competency_area).filter(Boolean))];
-                setCompetencyAreas(uniqueAreas);
-                setStudents(studs || []);
-            } catch (err) {
-                toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
+                const areaNames = [...new Set([...loRows, ...decisionRows].map(row => row.competency_area).filter(Boolean))]
+                    .sort((a, b) => a.localeCompare(b, 'th'));
+                setStudents(studentRows);
+                setAreas(areaNames);
+                setDecisions(decisionRows);
+                setSelectedArea(current => areaNames.includes(current) ? current : areaNames[0] || '');
+            } catch (error) {
+                const migrationHint = error.message?.includes('competency_area_final_decisions')
+                    ? ' กรุณารัน update_schema_formative_pipeline.sql ก่อนใช้งานรายงานนี้'
+                    : '';
+                toast.error(`โหลดรายงานไม่สำเร็จ: ${error.message}${migrationHint}`, { duration: 10000 });
             } finally {
                 setLoading(false);
             }
         }
-        init();
-    }, [currentUser]);
+        loadReport();
+    }, [academicYear, currentUser?.school_id, semester]);
 
-    const handleAreaChange = async (area) => {
-        setSelectedArea(area);
-        setCurrentPage(1); // Reset page on area change
-        if (!area) return;
-        setLoading(true);
-        try {
-            // 1. Get LOs in this area
-            const { data: los } = await supabase
-                .from('learning_outcomes')
-                .select('*')
-                .eq('school_id', currentUser.school_id)
-                .eq('competency_area', area)
-                .order('ability_no', { ascending: true });
-            setLosByArea(los || []);
+    const decisionMap = useMemo(() => new Map(decisions.map(item => [`${item.student_id}:${item.competency_area}`, item])), [decisions]);
+    const filteredStudents = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        return students.filter(student => {
+            const decision = decisionMap.get(`${student.student_id}:${selectedArea}`);
+            const matchesText = !needle || `${student.student_code || ''} ${studentName(student)} ${student.current_room || ''}`.toLowerCase().includes(needle);
+            const matchesStatus = status === 'all' || (status === 'none' ? !decision : decision?.decision_status === status);
+            return matchesText && matchesStatus;
+        });
+    }, [decisionMap, query, selectedArea, status, students]);
+    const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
+    const visibleStudents = filteredStudents.slice((page - 1) * pageSize, page * pageSize);
 
-            const loIds = (los || []).map(l => l.lo_id);
-            if (loIds.length === 0) { setSubjects([]); setEvals([]); setEnrollmentMap({}); setSubjectLoMap({}); setLoading(false); return; }
+    useEffect(() => setPage(1), [query, selectedArea, status]);
 
-            // 2. Get all subject_lo_mapping for these LOs
-            const { data: mappings } = await supabase
-                .from('subject_lo_mapping')
-                .select('lo_id, subject_id, subjects(subject_id, subject_name, grade_level, semester, academic_year)')
-                .in('lo_id', loIds);
-
-            // Build subjectLoMap: lo_id -> Set of subject_ids
-            const slMap = {};
-            const subjectSet = {};
-            (mappings || []).forEach(m => {
-                if (!slMap[m.lo_id]) slMap[m.lo_id] = new Set();
-                slMap[m.lo_id].add(m.subject_id);
-                if (m.subjects && !subjectSet[m.subject_id]) subjectSet[m.subject_id] = m.subjects;
-            });
-            // Convert sets to arrays
-            const slMapArr = {};
-            Object.keys(slMap).forEach(k => { slMapArr[k] = [...slMap[k]]; });
-            setSubjectLoMap(slMapArr);
-
-            const uniqueSubjects = Object.values(subjectSet);
-            setSubjects(uniqueSubjects);
-
-            // 3. Get all enrollments for these subjects
-            const subjectIds = uniqueSubjects.map(s => s.subject_id);
-            if (subjectIds.length === 0) { setEvals([]); setEnrollmentMap({}); setLoading(false); return; }
-
-            const { data: enrolls } = await supabase
-                .from('student_enrollments')
-                .select('enrollment_id, student_id, subject_id')
-                .in('subject_id', subjectIds);
-
-            const eMap = {};
-            (enrolls || []).forEach(e => { eMap[e.enrollment_id] = { student_id: e.student_id, subject_id: e.subject_id }; });
-            setEnrollmentMap(eMap);
-
-            // 4. Get evaluations for all LOs in this area
-            const enrollIds = (enrolls || []).map(e => e.enrollment_id);
-            if (enrollIds.length > 0) {
-                const { data: evData } = await supabase
-                    .from('lo_evaluations')
-                    .select('enrollment_id, lo_id, competency_level')
-                    .in('lo_id', loIds)
-                    .in('enrollment_id', enrollIds);
-                setEvals(evData || []);
-            } else {
-                setEvals([]);
-            }
-        } catch (err) {
-            toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
-        } finally {
-            setLoading(false);
-        }
+    const exportExcel = () => {
+        if (!selectedArea) return toast.error('ยังไม่มีด้านความสามารถสำหรับออกรายงาน');
+        const rows = filteredStudents.map((student, index) => {
+            const decision = decisionMap.get(`${student.student_id}:${selectedArea}`);
+            return [index + 1, student.student_code, studentName(student), student.current_grade_level, student.current_room, decision?.final_level || '', statusLabel(decision?.decision_status), decision?.decision_reason || ''];
+        });
+        const sheet = XLSX.utils.aoa_to_sheet([['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'ผลรับรองรายด้าน', 'สถานะ', 'เหตุผล/หมายเหตุ'], ...rows]);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, sheet, 'ผลรับรองรายด้าน');
+        XLSX.writeFile(workbook, `ผลรับรอง_${selectedArea}_${academicYear}_${semester}.xlsx`);
+        toast.success('จัดทำไฟล์ Excel แล้ว');
     };
-
-    // Build lookup: lo_id + subject_id + student_id -> competency_level
-    const evalLookup = useMemo(() => {
-        const map = {};
-        evals.forEach(ev => {
-            const enrollment = enrollmentMap[ev.enrollment_id];
-            if (enrollment) {
-                const key = `${ev.lo_id}_${enrollment.subject_id}_${enrollment.student_id}`;
-                map[key] = ev.competency_level;
-            }
-        });
-        return map;
-    }, [evals, enrollmentMap]);
-
-    // Build columns: for each LO, list all subjects that include it
-    // Column = { lo, sub } pair
-    const columns = useMemo(() => {
-        const cols = [];
-        losByArea.forEach(lo => {
-            const subIds = subjectLoMap[lo.lo_id] || [];
-            subIds.forEach(subId => {
-                const sub = subjects.find(s => s.subject_id === subId);
-                if (sub) cols.push({ lo, sub });
-            });
-        });
-        return cols;
-    }, [losByArea, subjectLoMap, subjects]);
-
-    // Group columns by LO for colspan
-    const loGroups = useMemo(() => {
-        const groups = [];
-        let last = null;
-        columns.forEach(col => {
-            if (last && last.lo.lo_id === col.lo.lo_id) {
-                last.count++;
-            } else {
-                last = { lo: col.lo, count: 1 };
-                groups.push(last);
-            }
-        });
-        return groups;
-    }, [columns]);
-
-    const totalPages = Math.ceil(students.length / pageSize);
-    const paginatedStudents = students.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
     return (
         <AcademicReportShell
             title="รายงานผลรายด้านความสามารถ"
-            description="ดูผลการประเมินของผู้เรียนในด้านความสามารถเดียวกัน โดยรวบรวมจากทุก LO และทุกวิชาที่เกี่ยวข้อง"
+            description={`ผลที่ฝ่ายวิชาการรับรอง ภาคเรียนที่ ${semester}/${academicYear} — ข้อความราย LO ใช้เป็นหลักฐานประกอบและไม่ถูกเฉลี่ยเป็นระดับ`}
             wide
             actions={<>
-                <button onClick={() => {
-                    if (!selectedArea || columns.length === 0) return toast.error('กรุณาเลือกด้านความสามารถก่อน');
-                    const headers = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', ...columns.map(c => `${c.lo.lo_code || `LO${c.lo.ability_no}`} (${c.sub.subject_name})`)];
-                    const rows = students.map((st, i) => { const row = [i + 1, st.student_code, `${st.prefix || ''}${st.first_name} ${st.last_name}`]; columns.forEach(col => row.push(evalLookup[`${col.lo.lo_id}_${col.sub.subject_id}_${st.student_id}`] || '')); return row; });
-                    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, selectedArea.substring(0, 31)); XLSX.writeFile(wb, `รายงานด้าน_${selectedArea}.xlsx`); toast.success('จัดทำไฟล์ Excel แล้ว');
-                }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> ส่งออก Excel</button>
+                <button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> ส่งออก Excel</button>
                 <button onClick={() => window.print()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-4 text-sm font-bold text-white hover:bg-indigo-800"><Printer className="h-4 w-4" /> พิมพ์รายงาน</button>
             </>}
         >
-            <header className="hidden">
-                <div className="max-w-[1800px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-                    <div className="flex items-center space-x-3 min-w-0">
-                        <button onClick={() => navigate('/admin')} className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-2 rounded-xl transition-colors flex items-center shrink-0">
-                            <ChevronLeft className="w-5 h-5 mr-1" />
-                            <span className="font-semibold text-sm">กลับ</span>
-                        </button>
-                        <div className="hidden sm:block w-px h-6 bg-slate-300 shrink-0"></div>
-                        <h1 className="font-bold text-base text-slate-800 truncate flex items-center">
-                            <BarChart3 className="w-5 h-5 mr-2 text-purple-500 shrink-0" />
-                            ตารางที่ 3 — รายงานประเมินรายด้านความสามารถ (ข้ามทุกวิชา)
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                if (!selectedArea || columns.length === 0) return toast.error('กรุณาเลือกด้านความสามารถก่อน');
-                                const headers = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', ...columns.map(c => `${c.lo.lo_code || 'LO'+c.lo.ability_no} (${c.sub.subject_name})`)];
-                                const rows = students.map((st, i) => {
-                                    const row = [i+1, st.student_code, `${st.prefix||''}${st.first_name} ${st.last_name}`];
-                                    columns.forEach(col => {
-                                        const key = `${col.lo.lo_id}_${col.sub.subject_id}_${st.student_id}`;
-                                        row.push(evalLookup[key] || '');
-                                    });
-                                    return row;
-                                });
-                                const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-                                const wb = XLSX.utils.book_new();
-                                XLSX.utils.book_append_sheet(wb, ws, selectedArea.substring(0,31));
-                                XLSX.writeFile(wb, `รายงานด้าน_${selectedArea}.xlsx`);
-                                toast.success('จัดทำไฟล์ Excel แล้ว');
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0"
-                        >
-                            <Download className="w-4 h-4 mr-2" /> Excel
-                        </button>
-                        <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center shrink-0">
-                            <Printer className="w-4 h-4 mr-2" /> พิมพ์
-                        </button>
-                    </div>
-                </div>
-            </header>
+            <section className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm print:hidden md:grid-cols-[minmax(240px,1fr)_minmax(240px,1fr)_220px]">
+                <label><span className="mb-1.5 block text-xs font-bold text-slate-600">ด้านความสามารถ</span><select value={selectedArea} onChange={event => setSelectedArea(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800"><option value="">ยังไม่มีข้อมูล</option>{areas.map(area => <option key={area} value={area}>{area}</option>)}</select></label>
+                <label><span className="mb-1.5 block text-xs font-bold text-slate-600">ค้นหาผู้เรียน</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ชื่อ รหัส หรือห้องเรียน" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" /></label>
+                <label><span className="mb-1.5 block text-xs font-bold text-slate-600">สถานะ</span><select value={status} onChange={event => setStatus(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold"><option value="all">ทุกสถานะ</option><option value="approved">รับรองแล้ว</option><option value="pending">รอรับรอง</option><option value="returned">ส่งกลับแก้ไข</option><option value="none">ยังไม่มีผล</option></select></label>
+            </section>
 
-            <main className="w-full print:p-4">
-                {/* Area Selector */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
-                    <p className="text-sm font-bold text-slate-700 mb-2">เลือกด้านความสามารถสำหรับจัดทำรายงาน</p>
-                    <div className="relative max-w-xl">
-                        <select
-                            value={selectedArea}
-                            onChange={(e) => handleAreaChange(e.target.value)}
-                            className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-4 pr-10 rounded-xl font-bold focus:ring-2 focus:ring-purple-400 outline-none"
-                        >
-                            <option value="">เลือกด้านความสามารถ</option>
-                            {competencyAreas.map(a => (
-                                <option key={a} value={a}>{a}</option>
-                            ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    </div>
-                </div>
-
-                {!selectedArea ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center text-sm font-medium text-slate-600">
-                        เลือกด้านความสามารถด้านบนเพื่อรวบรวมผลจากทุก LO และทุกวิชาที่เกี่ยวข้อง
-                    </div>
-                ) : loading ? (
-                    <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
-                ) : (
-                    <>
-                        <div className="mb-6">
-                            <p className="text-sm text-slate-600 font-semibold mb-2">ผลการประเมินจากทุก LO และทุกวิชาที่อยู่ในด้านนี้</p>
-                            <div className="bg-white rounded-2xl border border-purple-100 p-5 shadow-sm">
-                                <p className="text-sm font-bold text-indigo-700 mb-1">ด้านความสามารถที่เลือก</p>
-                                <h2 className="text-lg font-extrabold text-slate-800">{selectedArea}</h2>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    จำนวน LO ในด้านนี้: <span className="font-bold text-slate-700">{losByArea.length} ข้อ</span> |
-                                    รายวิชาที่เกี่ยวข้อง: <span className="font-bold text-slate-700">{subjects.length} วิชา</span>
-                                </p>
-                            </div>
-                        </div>
-
-                        {columns.length === 0 ? (
-                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้ในด้านนี้</div>
-                        ) : (
-                            <>
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:border-black print:border">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
-                                        <thead>
-                                            {/* Row 1: LO groups spanning multiple subject columns */}
-                                            <tr className="bg-purple-600 text-white print:bg-transparent print:text-black">
-                                                <th rowSpan={3} className="px-5 py-4 text-left font-extrabold min-w-[200px] border-r border-purple-500 print:border-black align-middle">
-                                                    รายชื่อนักเรียน
-                                                </th>
-                                                {loGroups.map(g => (
-                                                    <th key={g.lo.lo_id} colSpan={g.count} className="px-4 py-3 text-center font-extrabold border-r border-purple-400 print:border-black text-xs">
-                                                        {g.lo.lo_code ? `${g.lo.lo_code} — ` : ''}ข้อ {g.lo.ability_no}
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                            {/* Row 2: subject name under each LO */}
-                                            <tr className="bg-purple-700 text-purple-100 print:bg-transparent print:text-black">
-                                                {columns.map((col, i) => (
-                                                    <th key={i} className="px-3 py-2 text-center border-r border-purple-500 print:border-black min-w-[110px] text-xs">
-                                                        <span className="block font-normal text-purple-200 print:text-slate-500 whitespace-normal leading-tight">{col.sub.subject_name}</span>
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                            {/* Row 3: grade + semester */}
-                                            <tr className="bg-purple-50 print:bg-transparent">
-                                                {columns.map((col, i) => (
-                                                    <th key={i} className="px-3 py-2 text-center border-r border-purple-100 print:border-black text-[11px] font-bold text-purple-600">
-                                                        {col.sub.grade_level} | ภาคเรียนที่ {col.sub.semester}/{col.sub.academic_year}
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white print:divide-black">
-                                            {paginatedStudents.map((st, i) => {
-                                                const globalIdx = (currentPage - 1) * pageSize + i + 1;
-                                                return (
-                                                <tr key={st.student_id} className="hover:bg-slate-50 transition-colors group">
-                                                    <td className="px-5 py-3 font-bold text-slate-800 border-r border-slate-100 print:border-black sticky left-0 bg-white group-hover:bg-slate-50">
-                                                        <span className="text-slate-400 font-normal text-xs mr-2">{globalIdx}.</span>
-                                                        {st.prefix || ''}{st.first_name} {st.last_name}
-                                                        <span className="block text-xs text-slate-400 font-mono">{st.student_code}</span>
-                                                    </td>
-                                                    {columns.map((col, i) => {
-                                                        const key = `${col.lo.lo_id}_${col.sub.subject_id}_${st.student_id}`;
-                                                        const level = evalLookup[key] || '-';
-                                                        return (
-                                                            <td key={i} className="px-3 py-3 text-center border-r border-slate-100 print:border-black">
-                                                                <LevelBadge val={level} />
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            )})}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            
-                            {/* Pagination UI */}
-                            {totalPages > 1 && (
-                                <div className="mt-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden gap-4">
-                                    <p className="text-sm text-slate-500 font-bold">
-                                        แสดงหน้าที่ <span className="text-indigo-600">{currentPage}</span> จากทั้งหมด <span className="text-slate-800">{totalPages}</span> หน้า
-                                        (ทั้งหมด {students.length} คน)
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                            disabled={currentPage === 1}
-                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50 transition"
-                                        >
-                                            หน้าก่อนหน้า
-                                        </button>
-                                        <button
-                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                            disabled={currentPage === totalPages}
-                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition"
-                                        >
-                                            หน้าถัดไป
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                            </>
-                        )}
-                    </>
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 p-5"><p className="text-xs font-bold text-indigo-700">ด้านความสามารถ</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">{selectedArea || 'ยังไม่มีข้อมูล'}</h2><p className="mt-1 text-sm text-slate-600">แสดง {filteredStudents.length} คน · หน่วยรับรองคือผู้เรียน 1 คน ต่อ 1 ด้านความสามารถ ต่อภาคเรียน</p></div>
+                {loading ? <div className="py-20 text-center text-sm font-semibold text-slate-500">กำลังโหลดรายงาน…</div> : (
+                    <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">ผู้เรียน</th><th className="px-4 py-3">ชั้น/ห้อง</th><th className="px-4 py-3 text-center">ผลรับรองรายด้าน</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">เหตุผล/หมายเหตุ</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="px-4 py-3 text-slate-500">{(page - 1) * pageSize + index + 1}</td><td className="px-4 py-3"><strong className="block text-slate-900">{studentName(student)}</strong><span className="text-xs text-slate-500">{student.student_code}</span></td><td className="px-4 py-3 text-slate-700">{student.current_grade_level || '-'} / {student.current_room || '-'}</td><td className="px-4 py-3 text-center">{decision?.final_level ? <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-extrabold ${LEVEL_STYLES[decision.final_level] || LEVEL_STYLES['N/A']}`}>{decision.final_level}</span> : <span className="text-slate-400">-</span>}</td><td className="px-4 py-3 font-bold text-slate-700">{statusLabel(decision?.decision_status)}</td><td className="max-w-md whitespace-normal px-4 py-3 text-slate-600">{decision?.decision_reason || '-'}</td></tr>; })}{!visibleStudents.length && <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">ไม่พบผู้เรียนตามเงื่อนไข</td></tr>}</tbody></table></div>
                 )}
-            </main>
+            </section>
+            {totalPages > 1 && <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 print:hidden"><span className="text-sm font-semibold text-slate-600">หน้า {page} จาก {totalPages}</span><div className="flex gap-2"><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1} className="min-h-10 rounded-lg bg-slate-100 px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="min-h-10 rounded-lg bg-indigo-700 px-4 text-sm font-bold text-white disabled:opacity-40">ถัดไป</button></div></div>}
         </AcademicReportShell>
     );
 }

@@ -21,6 +21,16 @@
   body {
     @apply font-sans bg-slate-50 text-slate-900 antialiased;
   }
+
+  ::placeholder {
+    color: #475569;
+    opacity: 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+  }
 }
 
 .loader {
@@ -34,4 +44,17 @@ select {
   background-size: 1.5em 1.5em;
   padding-right: 2.5rem;
   appearance: none;
+}
+
+@layer components {
+  .surface-selected { background-color: #eef2ff; }
+  .surface-success { background-color: #ecfdf5; }
+  .surface-danger { background-color: #fff1f2; }
+  .surface-warning { background-color: #fffbeb; }
+  .action-primary { background-color: #4338ca; color: #ffffff; }
+  .action-primary:hover { background-color: #3730a3; }
+  .action-success { background-color: #047857; color: #ffffff; }
+  .action-success:hover { background-color: #065f46; }
+  .action-danger { background-color: #be123c; color: #ffffff; }
+  .action-danger:hover { background-color: #9f1239; }
 }

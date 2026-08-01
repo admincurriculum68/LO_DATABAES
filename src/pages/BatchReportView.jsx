@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -130,6 +131,7 @@ function SingleStudentReport({ student, enrollments, evaluations, activities, is
 export default function BatchReportView() {
     const { room, academicYear, semester } = useParams();
     const navigate = useNavigate();
+    const { currentUser } = useAuth();
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -137,11 +139,10 @@ export default function BatchReportView() {
         async function fetchAll() {
             try {
                 // 1. Get all enrollments in this room
-                const { data: enrollments, error: enrollErr } = await supabase
-                    .from('student_enrollments')
-                    .select('*, users_students(*), subjects(*)')
-                    .eq('room', decodeURIComponent(room));
-                if (enrollErr) throw enrollErr;
+                const enrollments = await fetchAllRows((from, to) => supabase.from('student_enrollments')
+                    .select('enrollment_id, student_id, subject_id, room, attendance_percent, users_students!inner(student_id, school_id, student_code, prefix, first_name, last_name, current_grade_level, current_room), subjects!inner(subject_id, school_id, subject_name, subject_group, grade_level, academic_year, semester)')
+                    .eq('room', decodeURIComponent(room)).eq('enrollment_status', 'active')
+                    .eq('users_students.school_id', currentUser.school_id).eq('subjects.school_id', currentUser.school_id).range(from, to));
 
                 // Filter by year/semester
                 const filtered = (enrollments || []).filter(e =>
@@ -172,16 +173,21 @@ export default function BatchReportView() {
                 const enrollmentIds = filtered.map(e => e.enrollment_id);
 
                 // 3. Load evaluations and activity results
-                const [{ data: evalData }, { data: activityData }] = await Promise.all([
-                    supabase.from('lo_evaluations')
-                        .select('*, learning_outcomes(*)')
-                        .in('enrollment_id', enrollmentIds),
+                const [evalData, { data: activityData }, finalData] = await Promise.all([
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
+                        .select('evaluation_id, enrollment_id, lo_id, evidence_note, workflow_status, learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)')
+                        .in('enrollment_id', batch).range(from, to)),
                     supabase.from('student_year_evaluations')
                         .select('*')
                         .in('student_id', studentIds)
                         .eq('academic_year', parseInt(academicYear))
-                        .eq('semester', parseInt(semester))
+                        .eq('semester', parseInt(semester)),
+                    fetchAllByIn(studentIds, (batch, from, to) => supabase.from('competency_area_final_decisions')
+                        .select('student_id, competency_area, final_level').eq('school_id', currentUser.school_id)
+                        .eq('academic_year', Number(academicYear)).eq('semester', Number(semester)).eq('decision_status', 'approved')
+                        .in('student_id', batch).range(from, to)),
                 ]);
+                const finalByStudentArea = new Map(finalData.map(result => [`${result.student_id}:${result.competency_area}`, result.final_level]));
 
                 // Build activity map
                 const actMap = {};
@@ -192,7 +198,10 @@ export default function BatchReportView() {
                     .sort((a, b) => (a.student.student_code || '').localeCompare(b.student.student_code || ''))
                     .map(item => {
                         const studentEvalIds = item.enrollments.map(e => e.enrollment_id);
-                        const studentEvals = (evalData || []).filter(ev => studentEvalIds.includes(ev.enrollment_id));
+                        const studentEvals = evalData.filter(ev => studentEvalIds.includes(ev.enrollment_id)).map(evaluation => ({
+                            ...evaluation,
+                            competency_level: finalByStudentArea.get(`${item.student.student_id}:${evaluation.learning_outcomes?.competency_area}`) || null,
+                        }));
                         return {
                             student: item.student,
                             enrollments: item.enrollments,
@@ -209,7 +218,7 @@ export default function BatchReportView() {
             }
         }
         fetchAll();
-    }, [room, academicYear, semester]);
+    }, [academicYear, currentUser.school_id, room, semester]);
 
     if (loading) {
         return (

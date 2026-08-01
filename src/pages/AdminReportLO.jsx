@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, fetchAllRows } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
+import { useAcademic } from '../AcademicContext';
 import { ChevronLeft, Printer, FileBarChart2, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -14,6 +15,7 @@ const EvidenceCell = ({ value }) => {
 
 export default function AdminReportLO() {
     const { currentUser } = useAuth();
+    const { academicYear, semester } = useAcademic();
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
@@ -61,8 +63,11 @@ export default function AdminReportLO() {
             // 1. Find all subjects mapped to this LO
             const { data: mappings } = await supabase
                 .from('subject_lo_mapping')
-                .select('subject_id, subjects(subject_id, subject_name, grade_level, semester, academic_year)')
-                .eq('lo_id', loId);
+                .select('subject_id, subjects!inner(subject_id, subject_name, grade_level, semester, academic_year, school_id)')
+                .eq('lo_id', loId)
+                .eq('subjects.school_id', currentUser.school_id)
+                .eq('subjects.academic_year', academicYear)
+                .eq('subjects.semester', semester);
 
             const mappedSubjects = (mappings || []).map(m => m.subjects).filter(Boolean);
             // Filter to this school's subjects
@@ -73,24 +78,27 @@ export default function AdminReportLO() {
             if (subjectIds.length === 0) { setEvalsByLO([]); setEnrollmentMap({}); setLoading(false); return; }
 
             // 2. Get all enrollments for those subjects
-            const { data: enrolls } = await supabase
+            const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
                 .from('student_enrollments')
                 .select('enrollment_id, student_id, subject_id')
-                .in('subject_id', subjectIds);
+                .in('subject_id', batch)
+                .eq('enrollment_status', 'active')
+                .range(from, to));
 
             const eMap = {};
-            (enrolls || []).forEach(e => { eMap[e.enrollment_id] = { student_id: e.student_id, subject_id: e.subject_id }; });
+            enrolls.forEach(e => { eMap[e.enrollment_id] = { student_id: e.student_id, subject_id: e.subject_id }; });
             setEnrollmentMap(eMap);
 
             // 3. Get evaluations for this LO
-            const enrollIds = (enrolls || []).map(e => e.enrollment_id);
+            const enrollIds = enrolls.map(e => e.enrollment_id);
             if (enrollIds.length > 0) {
-                const { data: evals } = await supabase
+                const evals = await fetchAllByIn(enrollIds, (batch, from, to) => supabase
                     .from('lo_evaluations')
                     .select('enrollment_id, lo_id, evidence_note, workflow_status')
                     .eq('lo_id', loId)
-                    .in('enrollment_id', enrollIds);
-                setEvalsByLO(evals || []);
+                    .in('enrollment_id', batch)
+                    .range(from, to));
+                setEvalsByLO(evals);
             } else {
                 setEvalsByLO([]);
             }

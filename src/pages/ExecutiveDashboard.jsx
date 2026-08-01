@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import Layout from '../components/Layout';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formalLevelLabel } from '../lib/terminology';
+import { calculateEvidenceProgress, isReviewableWorkflow } from '../lib/evaluationProgress';
 
 const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
 const PASSING_LEVELS = ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
@@ -75,65 +76,55 @@ export default function ExecutiveDashboard() {
             setLoading(true);
             try {
                 const schoolId = currentUser.school_id;
-                const [subjectsRes, teachersRes, studentsRes, losRes, contextsRes, decisionsRes] = await Promise.all([
-                    supabase.from('subjects').select('subject_id, subject_name, grade_level, teacher_id')
-                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
-                    supabase.from('users_teachers').select('teacher_id, prefix, first_name, last_name')
-                        .eq('school_id', schoolId),
-                    supabase.from('users_students').select('student_id, current_room, current_grade_level')
-                        .eq('school_id', schoolId),
-                    supabase.from('learning_outcomes').select('lo_id, competency_area, ability_no')
-                        .eq('school_id', schoolId),
-                    supabase.from('learning_contexts').select('context_id, context_type')
-                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
-                    supabase.from('lo_final_decisions').select('student_id, lo_id, final_level, decision_status')
-                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
+                const [subjects, teachers, students, los, contexts, decisions] = await Promise.all([
+                    fetchAllRows((from, to) => supabase.from('subjects').select('subject_id, subject_name, grade_level, teacher_id')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('users_teachers').select('teacher_id, prefix, first_name, last_name')
+                        .eq('school_id', schoolId).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('users_students').select('student_id, current_room, current_grade_level')
+                        .eq('school_id', schoolId).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('learning_outcomes').select('lo_id, competency_area, ability_no')
+                        .eq('school_id', schoolId).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('learning_contexts').select('context_id, context_type')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('competency_area_final_decisions').select('student_id, competency_area, final_level, decision_status')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
                 ]);
-
-                const firstError = [subjectsRes, teachersRes, studentsRes, losRes, contextsRes, decisionsRes].find(r => r.error)?.error;
-                if (firstError) throw firstError;
-
-                const subjects = subjectsRes.data || [];
-                const contexts = contextsRes.data || [];
                 const subjectIds = subjects.map(item => item.subject_id);
                 const contextIds = contexts.map(item => item.context_id);
 
-                const [enrollmentsRes, mappingsRes, submissionsRes] = await Promise.all([
-                    subjectIds.length
-                        ? supabase.from('student_enrollments').select('enrollment_id, subject_id, student_id').in('subject_id', subjectIds)
-                        : Promise.resolve({ data: [] }),
-                    subjectIds.length
-                        ? supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', subjectIds)
-                        : Promise.resolve({ data: [] }),
-                    supabase.from('assessment_submissions').select('subject_id, status')
-                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester),
+                const [enrollments, mappings, submissions] = await Promise.all([
+                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('student_enrollments').select('enrollment_id, subject_id, student_id')
+                        .in('subject_id', batch).eq('enrollment_status', 'active').range(from, to)),
+                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping').select('subject_id, lo_id')
+                        .in('subject_id', batch).range(from, to)),
+                    fetchAllRows((from, to) => supabase.from('assessment_submissions').select('subject_id, status')
+                        .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
                 ]);
-
-                const enrollments = enrollmentsRes.data || [];
-                const mappings = mappingsRes.data || [];
                 const enrollmentIds = enrollments.map(item => item.enrollment_id);
 
-                const [evaluationsRes, contextEvaluationsRes] = await Promise.all([
-                    enrollmentIds.length
-                        ? supabase.from('lo_evaluations').select('enrollment_id, lo_id, competency_level, workflow_status').in('enrollment_id', enrollmentIds)
-                        : Promise.resolve({ data: [] }),
-                    contextIds.length
-                        ? supabase.from('learning_context_evaluations').select('student_id, lo_id, competency_level, workflow_status').in('context_id', contextIds)
-                        : Promise.resolve({ data: [] }),
+                const [evaluations, contextEvaluations, areaEvaluations] = await Promise.all([
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations').select('enrollment_id, lo_id, evidence_note, workflow_status')
+                        .in('enrollment_id', batch).range(from, to)),
+                    fetchAllByIn(contextIds, (batch, from, to) => supabase.from('learning_context_evaluations').select('student_id, lo_id, evidence_note, workflow_status')
+                        .in('context_id', batch).range(from, to)),
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('competency_area_evaluations').select('enrollment_id, competency_area, competency_level, workflow_status')
+                        .in('enrollment_id', batch).range(from, to)),
                 ]);
 
                 setData({
                     subjects,
                     contexts,
-                    teachers: teachersRes.data || [],
-                    students: studentsRes.data || [],
-                    los: losRes.data || [],
-                    decisions: decisionsRes.data || [],
+                    teachers,
+                    students,
+                    los,
+                    decisions,
                     enrollments,
                     mappings,
-                    submissions: submissionsRes.data || [],
-                    evaluations: evaluationsRes.data || [],
-                    contextEvaluations: contextEvaluationsRes.data || [],
+                    submissions,
+                    evaluations,
+                    contextEvaluations,
+                    areaEvaluations,
                 });
             } catch (err) {
                 toast.error('ไม่สามารถโหลดข้อมูลสารสนเทศสำหรับผู้บริหารได้: ' + err.message);
@@ -163,9 +154,9 @@ export default function ExecutiveDashboard() {
         const subjectRows = data.subjects.map(subject => {
             const subjectEnrollments = data.enrollments.filter(item => item.subject_id === subject.subject_id);
             const subjectLoCount = data.mappings.filter(item => item.subject_id === subject.subject_id).length;
-            const total = subjectEnrollments.length * subjectLoCount;
             const enrollmentIdSet = new Set(subjectEnrollments.map(item => item.enrollment_id));
-            const filled = validEvaluations.filter(item => enrollmentIdSet.has(item.enrollment_id) && item.competency_level).length;
+            const filled = validEvaluations.filter(item => enrollmentIdSet.has(item.enrollment_id) && item.evidence_note?.trim()).length;
+            const progress = calculateEvidenceProgress({ enrollmentCount: subjectEnrollments.length, loCount: subjectLoCount, filledCount: filled });
             return {
                 id: subject.subject_id,
                 name: subject.subject_name,
@@ -173,9 +164,9 @@ export default function ExecutiveDashboard() {
                 teacher: teacherName(teacherById.get(subject.teacher_id)),
                 studentCount: subjectEnrollments.length,
                 loCount: subjectLoCount,
-                total,
+                total: progress.total,
                 filled,
-                percent: total > 0 ? Math.round((filled / total) * 100) : 0,
+                percent: progress.percent,
                 status: submissionBySubject.get(subject.subject_id) || 'draft',
                 blocked: subjectEnrollments.length === 0 || subjectLoCount === 0,
             };
@@ -185,15 +176,26 @@ export default function ExecutiveDashboard() {
         const filledCells = subjectRows.reduce((sum, row) => sum + row.filled, 0);
         const overallPercent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
 
-        // 2. คอขวดการรับรองผล นับเป็นคู่ ผู้เรียน x LO เหมือนศูนย์รับรองผล
+        // 2. คอขวดการรับรองผล นับเป็นคู่ ผู้เรียน x ด้านความสามารถ
         const pairKeys = new Set();
-        validEvaluations.forEach(item => {
+        data.areaEvaluations.forEach(item => {
+            if (!isReviewableWorkflow(item.workflow_status)) return;
             const enrollment = enrollmentById.get(item.enrollment_id);
-            if (enrollment) pairKeys.add(`${enrollment.student_id}:${item.lo_id}`);
+            if (enrollment) pairKeys.add(`${enrollment.student_id}:${item.competency_area}`);
         });
-        data.contextEvaluations.forEach(item => pairKeys.add(`${item.student_id}:${item.lo_id}`));
+        validEvaluations.forEach(item => {
+            if (!isReviewableWorkflow(item.workflow_status)) return;
+            const enrollment = enrollmentById.get(item.enrollment_id);
+            const area = loById.get(item.lo_id)?.competency_area;
+            if (enrollment && area) pairKeys.add(`${enrollment.student_id}:${area}`);
+        });
+        data.contextEvaluations.forEach(item => {
+            if (!isReviewableWorkflow(item.workflow_status)) return;
+            const area = loById.get(item.lo_id)?.competency_area;
+            if (area) pairKeys.add(`${item.student_id}:${area}`);
+        });
 
-        const decisionByPair = new Map(data.decisions.map(item => [`${item.student_id}:${item.lo_id}`, item]));
+        const decisionByPair = new Map(data.decisions.map(item => [`${item.student_id}:${item.competency_area}`, item]));
         let approvedCount = 0;
         let returnedCount = 0;
         pairKeys.forEach(key => {
@@ -211,7 +213,7 @@ export default function ExecutiveDashboard() {
         // 3. ผลแยกตามด้านความสามารถ ใช้เฉพาะผลที่รับรองแล้ว
         const areaMap = new Map();
         data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
-            const area = loById.get(item.lo_id)?.competency_area || 'ไม่ระบุด้านความสามารถ';
+            const area = item.competency_area || 'ไม่ระบุด้านความสามารถ';
             if (!areaMap.has(area)) areaMap.set(area, { area, total: 0, passed: 0, counts: { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 } });
             const entry = areaMap.get(area);
             entry.total += 1;
@@ -237,7 +239,7 @@ export default function ExecutiveDashboard() {
         });
         validEvaluations.forEach(item => {
             const enrollment = enrollmentById.get(item.enrollment_id);
-            if (!enrollment || !item.competency_level) return;
+            if (!enrollment || !item.evidence_note?.trim()) return;
             ensureRoom(studentById.get(enrollment.student_id)?.current_room || 'ไม่ระบุห้อง').filled += 1;
         });
         data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
@@ -257,11 +259,11 @@ export default function ExecutiveDashboard() {
             }))
             .sort((a, b) => a.room.localeCompare(b.room, 'th'));
 
-        // 5. การกระจายระดับ แยกผลที่ครูยืนยันแล้วออกจากฉบับร่าง
+        // 5. การกระจายระดับ Formative รายด้าน แยกผลที่ส่งแล้วออกจากฉบับร่าง
         const confirmedCounts = { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 };
         let confirmedTotal = 0;
         let draftTotal = 0;
-        [...validEvaluations, ...data.contextEvaluations].forEach(item => {
+        data.areaEvaluations.forEach(item => {
             if (!item.competency_level) return;
             if (['submitted', 'approved'].includes(item.workflow_status)) {
                 if (confirmedCounts[item.competency_level] !== undefined) {
@@ -337,14 +339,14 @@ export default function ExecutiveDashboard() {
                         <StatCard title="ครูและบุคลากร" value={view.teacherCount} unit="คน" icon={Users} tone="bg-blue-50 text-blue-700" />
                         <StatCard title="จำนวนนักเรียน" value={view.studentCount} unit="คน" icon={GraduationCap} tone="bg-emerald-50 text-emerald-700" />
                         <StatCard title="รูปแบบการจัดการเรียนรู้" value={view.formatCount} unit="รายการ" icon={BookOpenCheck} tone="bg-violet-50 text-violet-700" />
-                        <StatCard title="ความคืบหน้าการประเมิน" value={`${view.overallPercent}%`} icon={TrendingUp} tone="bg-amber-50 text-amber-700" />
+                        <StatCard title="บันทึกข้อความ LO แล้ว" value={`${view.overallPercent}%`} icon={TrendingUp} tone="bg-amber-50 text-amber-800" />
                     </div>
 
                     {/* 1. คอขวดของกระบวนการ */}
                     <SectionCard
                         icon={ClipboardCheck}
                         title="สถานะการรับรองผลลัพธ์การเรียนรู้"
-                        description="นับเป็นคู่ ผู้เรียน × LO ที่มีผลประเมินแล้ว ตัวเลขชุดนี้ตรงกับศูนย์ตรวจสอบและรับรองผลของฝ่ายวิชาการ"
+                        description="นับเป็นคู่ ผู้เรียน × ด้านความสามารถที่ครูส่งตรวจแล้ว ตัวเลขนี้เป็นขั้นหลังจากการบันทึกข้อความ LO จึงอาจมีร้อยละต่างกัน"
                     >
                         <div className="grid grid-cols-2 divide-slate-200 border-b border-slate-200 sm:grid-cols-4 sm:divide-x">
                             {[
@@ -375,8 +377,8 @@ export default function ExecutiveDashboard() {
                     {/* 2. ความคืบหน้ารายวิชา */}
                     <SectionCard
                         icon={LayoutGrid}
-                        title="ความคืบหน้าการประเมินรายวิชาและรายครู"
-                        description="เรียงจากวิชาที่ค้างมากที่สุด ใช้ติดตามว่าควรเข้าไปสนับสนุนครูคนใดก่อน"
+                        title="ความครบถ้วนของข้อความ LO รายวิชาและรายครู"
+                        description="นับช่องข้อความพฤติกรรมราย LO ที่บันทึกแล้ว เรียงจากวิชาที่ค้างมากที่สุด เพื่อดูว่าควรสนับสนุนครูคนใดก่อน"
                     >
                         {view.subjectRows.length === 0 ? (
                             <EmptyRow>ยังไม่มีรายวิชาในภาคเรียนนี้</EmptyRow>

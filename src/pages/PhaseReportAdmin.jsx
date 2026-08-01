@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
@@ -50,12 +50,12 @@ export default function PhaseReportAdmin() {
     // ─── Load students ───────────────────────────────────────────────────────
     useEffect(() => {
         const load = async () => {
-            const { data } = await supabase
-                .from('users_students')
+            const data = await fetchAllRows((from, to) => supabase.from('users_students')
                 .select('student_id, prefix, first_name, last_name, student_code')
                 .eq('school_id', currentUser.school_id)
-                .order('student_code');
-            setAllStudents(data || []);
+                .order('student_code')
+                .range(from, to));
+            setAllStudents(data);
         };
         load();
     }, [currentUser.school_id]);
@@ -82,26 +82,47 @@ export default function PhaseReportAdmin() {
 
     // ─── Load existing results ───────────────────────────────────────────────
     const loadResult = useCallback(async (studentId, phase, year) => {
-        const { data } = await supabase
-            .from('phase_completion_results')
-            .select('*')
-            .eq('student_id', studentId)
-            .eq('phase', phase)
-            .eq('academic_year', year)
-            .maybeSingle();
+        const [{ data, error }, { data: approved, error: approvedError }] = await Promise.all([
+            supabase.from('phase_completion_results')
+                .select('*')
+                .eq('school_id', currentUser.school_id)
+                .eq('student_id', studentId)
+                .eq('phase', phase)
+                .eq('academic_year', year)
+                .maybeSingle(),
+            supabase.from('competency_area_final_decisions')
+                .select('competency_area, final_level, semester')
+                .eq('school_id', currentUser.school_id)
+                .eq('student_id', studentId)
+                .eq('academic_year', year)
+                .eq('decision_status', 'approved')
+                .order('semester', { ascending: false }),
+        ]);
+        if (error) throw error;
+        if (approvedError) throw approvedError;
+
+        const levels = { ...(data?.ability_levels || {}) };
+        const abilityByName = new Map(ALL_ABILITIES(phase).map(ability => [ability.name, ability.key]));
+        const populatedKeys = new Set();
+        (approved || []).forEach(item => {
+            const key = abilityByName.get(item.competency_area);
+            if (key && item.final_level && !populatedKeys.has(key)) {
+                levels[key] = item.final_level;
+                populatedKeys.add(key);
+            }
+        });
 
         if (data) {
             setExistingResultId(data.result_id);
-            setAchievedLevels(data.ability_levels || {});
             setLearnerActivities(data.learner_activities || 'ผ่าน');
             setDesirableChars(data.desirable_chars || 'ผ่าน');
         } else {
             setExistingResultId(null);
-            setAchievedLevels({});
             setLearnerActivities('ผ่าน');
             setDesirableChars('ผ่าน');
         }
-    }, []);
+        setAchievedLevels(levels);
+    }, [currentUser.school_id]);
 
     useEffect(() => {
         if (selectedStudent) {
@@ -131,7 +152,7 @@ export default function PhaseReportAdmin() {
             };
 
             if (existingResultId) {
-                const { error } = await supabase.from('phase_completion_results').update(payload).eq('result_id', existingResultId);
+                const { error } = await supabase.from('phase_completion_results').update(payload).eq('result_id', existingResultId).eq('school_id', currentUser.school_id);
                 if (error) throw error;
             } else {
                 const { data, error } = await supabase.from('phase_completion_results').insert(payload).select().single();

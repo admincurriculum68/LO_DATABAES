@@ -3,32 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { loginWithCitizenId } from '../lib/auth';
 import {
-    Award,
     BookOpen,
-    Check,
     CheckCircle2,
     Eye,
     EyeOff,
-    GraduationCap,
     HelpCircle,
-    KeyRound,
     Loader2,
     Lock,
     LogIn,
     ShieldCheck,
     Sparkles,
     User,
-    UserCheck,
-    Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const DEMO_ACCOUNTS = [
-    { role: 'ฝ่ายวิชาการ', name: 'นางพิมพ์ชนก (Admin)', citizenId: '1111111111111', dob: '01012540', badge: 'bg-purple-500/20 text-purple-200 border-purple-400/30' },
-    { role: 'ครูประจำชั้น', name: 'นางกมลวรรณ (ป.1/1)', citizenId: '2222222222222', dob: '01012540', badge: 'bg-indigo-500/20 text-indigo-200 border-indigo-400/30' },
-    { role: 'ผู้บริหาร', name: 'นายณรงค์ชัย (Exec)', citizenId: '5555555555555', dob: '01012540', badge: 'bg-amber-500/20 text-amber-200 border-amber-400/30' },
-    { role: 'นักเรียน', name: 'ด.ช.ภูมิพัฒน์ (ป.1)', citizenId: '9100000000001', dob: '01012540', badge: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' },
-];
 
 const LEARNING_FORMATS = ['วิชา', 'หน่วยการเรียนรู้', 'โครงงาน', 'กิจกรรม'];
 
@@ -72,12 +59,6 @@ export default function Login() {
         }
     };
 
-    const fillDemoAccount = (acc) => {
-        setCitizenId(acc.citizenId);
-        setDob(acc.dob);
-        toast.success(`เลือกบัญชีสาธิต: ${acc.role} (${acc.name})`);
-    };
-
     const idComplete = citizenId.length === 13;
     const dobComplete = dob.length === 8;
 
@@ -115,7 +96,7 @@ export default function Login() {
                         <div className="space-y-3 pt-2">
                             <h2 className="text-xl font-black text-white sm:text-2xl leading-snug">
                                 ประเมินอย่างมีความหมาย <br />
-                                <span className="bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 bg-clip-text text-transparent">
+                                <span className="text-indigo-200">
                                     ตัดสินผลด้วยหลักฐานเชิงประจักษ์
                                 </span>
                             </h2>
@@ -147,33 +128,11 @@ export default function Login() {
                                 <ShieldCheck className="h-4 w-4 text-emerald-400" /> มาตรฐานความปลอดภัยข้อมูลสถานศึกษา
                             </div>
                             <p className="text-[11px] leading-relaxed text-slate-400">
-                                ข้อมูลถูกจำกัดสิทธิการเข้าถึงตามบทบาท (Row Level Security) และทุกการอนุมัติจะถูกบันทึกประวัติการเปลี่ยนแปลง (Audit Logs)
+                                ใช้ข้อมูลเข้าสู่ระบบเฉพาะของตนเอง และออกจากระบบทุกครั้งเมื่อใช้อุปกรณ์ร่วมกัน การรับรองผลจะถูกบันทึกประวัติเพื่อตรวจสอบย้อนหลัง
                             </p>
                         </div>
                     </div>
 
-                    {/* Quick Demo Login Pill Selector (Ideal for Real Testing & Demo Sessions) */}
-                    <div className="mt-8 border-t border-white/10 pt-6 space-y-3">
-                        <div className="flex items-center justify-between text-xs">
-                            <span className="font-extrabold text-indigo-200 flex items-center gap-1.5">
-                                <UserCheck className="h-4 w-4 text-indigo-400" /> เลือกบัญชีสาธิตเพื่อทดลองใช้งานด่วน:
-                            </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                            {DEMO_ACCOUNTS.map(acc => (
-                                <button
-                                    key={acc.role}
-                                    type="button"
-                                    onClick={() => fillDemoAccount(acc)}
-                                    className={`flex flex-col items-start rounded-xl border p-2.5 text-left transition hover:scale-[1.02] active:scale-95 ${acc.badge}`}
-                                >
-                                    <span className="text-xs font-black">{acc.role}</span>
-                                    <span className="text-[10px] opacity-80 truncate w-full">{acc.name}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                 </aside>
 
                 {/* ═══ Right Side: Clean Login Form ═══ */}
@@ -214,7 +173,7 @@ export default function Login() {
                                         value={citizenId}
                                         onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
                                         placeholder="เช่น 1111111111111"
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-10 pr-10 py-3 text-sm font-extrabold tracking-wider text-slate-900 placeholder-slate-400 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
+                                        className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50/50 pl-10 pr-10 py-3 text-sm font-extrabold tracking-wider text-slate-900 placeholder:text-slate-600 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
                                     />
                                     {idComplete && (
                                         <CheckCircle2 className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-emerald-500" />
@@ -245,15 +204,16 @@ export default function Login() {
                                         value={dob}
                                         onChange={(e) => setDob(e.target.value.replace(/\D/g, ''))}
                                         placeholder="เช่น 01012540"
-                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-10 pr-12 py-3 text-sm font-extrabold tracking-widest text-slate-900 placeholder-slate-400 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
+                                        className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50/50 pl-10 pr-14 py-3 text-sm font-extrabold tracking-widest text-slate-900 placeholder:text-slate-600 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(v => !v)}
-                                        className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-700 transition"
+                                        aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                        className="absolute right-1 top-0 flex h-12 w-12 items-center justify-center text-slate-600 hover:text-slate-900 transition"
                                         title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
                                     >
-                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                     </button>
                                 </div>
 

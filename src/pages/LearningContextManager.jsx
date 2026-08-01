@@ -32,7 +32,7 @@ import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
-import { supabase } from '../lib/supabase';
+import { fetchAllByIn, supabase } from '../lib/supabase';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
 import { ACTIVITY_CATEGORIES_51, CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
@@ -164,16 +164,10 @@ export default function LearningContextManager() {
             const contexts = contextsResult.data || [];
             const subjectIds = subjects.map(item => item.subject_id);
             const contextIds = contexts.map(item => item.context_id);
-            const [subjectMappingsResult, contextMappingsResult] = await Promise.all([
-                subjectIds.length
-                    ? supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', subjectIds)
-                    : Promise.resolve({ data: [], error: null }),
-                contextIds.length
-                    ? supabase.from('learning_context_lo_mappings').select('context_id, lo_id').in('context_id', contextIds)
-                    : Promise.resolve({ data: [], error: null }),
+            const [subjectMappings, contextMappings] = await Promise.all([
+                fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', batch).range(from, to)),
+                fetchAllByIn(contextIds, (batch, from, to) => supabase.from('learning_context_lo_mappings').select('context_id, lo_id').in('context_id', batch).range(from, to)),
             ]);
-            if (subjectMappingsResult.error) throw subjectMappingsResult.error;
-            if (contextMappingsResult.error) throw contextMappingsResult.error;
 
             const items = [
                 ...subjects.map(subject => ({
@@ -202,12 +196,12 @@ export default function LearningContextManager() {
                 || (a.context_name || '').localeCompare(b.context_name || '', 'th'));
 
             const mappingMap = {};
-            (subjectMappingsResult.data || []).forEach(mapping => {
+            subjectMappings.forEach(mapping => {
                 const key = itemKey('subject', mapping.subject_id);
                 if (!mappingMap[key]) mappingMap[key] = [];
                 mappingMap[key].push(mapping.lo_id);
             });
-            (contextMappingsResult.data || []).forEach(mapping => {
+            contextMappings.forEach(mapping => {
                 const key = itemKey('context', mapping.context_id);
                 if (!mappingMap[key]) mappingMap[key] = [];
                 mappingMap[key].push(mapping.lo_id);
@@ -348,7 +342,11 @@ export default function LearningContextManager() {
 
     const openCreate = type => {
         if (!confirmDiscardMapping()) return;
-        setForm({ ...EMPTY_FORM, context_type: type || 'subject' });
+        setForm({
+            ...EMPTY_FORM,
+            context_type: type || 'subject',
+            grade_level: GRADE_LEVELS.includes(gradeFilter) ? gradeFilter : '',
+        });
         setCustomGroupInput(false);
         setFormPhaseTab('auto');
         setViewMode('create');
@@ -362,6 +360,10 @@ export default function LearningContextManager() {
             toast.error(`กรุณาระบุชื่อ${formatLabel}`);
             return;
         }
+        if (!GRADE_LEVELS.includes(form.grade_level)) {
+            toast.error('กรุณาเลือกระดับชั้น ป.1–ป.6');
+            return;
+        }
         setSaving(true);
         try {
             let createdItem;
@@ -372,7 +374,7 @@ export default function LearningContextManager() {
                     semester,
                     subject_code: null,
                     subject_name: form.context_name.trim(),
-                    grade_level: form.grade_level || null,
+                    grade_level: form.grade_level,
                     subject_group: form.subject_group.trim() || null,
                     teacher_id: form.responsible_teacher_id || null,
                     teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
@@ -389,7 +391,7 @@ export default function LearningContextManager() {
                     subject_group: form.subject_group.trim() || null,
                     academic_year: academicYear,
                     semester,
-                    grade_level: form.grade_level || null,
+                    grade_level: form.grade_level,
                     responsible_teacher_id: form.responsible_teacher_id || null,
                     teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
                     activity_category: form.context_type === 'activity' ? (form.activity_category || null) : null,
@@ -413,7 +415,10 @@ export default function LearningContextManager() {
             setSelectedItemKey(itemKey(createdItem.source, createdItem.id));
             setViewMode('manage');
         } catch (error) {
-            toast.error('ไม่สามารถเพิ่มรูปแบบการจัดการเรียนรู้ได้: ' + error.message);
+            const message = error.code === '23502' && error.message?.includes('grade_level')
+                ? 'กรุณาเลือกระดับชั้น ป.1–ป.6'
+                : error.message;
+            toast.error('ไม่สามารถเพิ่มรูปแบบการจัดการเรียนรู้ได้: ' + message);
         } finally {
             setSaving(false);
         }
@@ -877,13 +882,14 @@ export default function LearningContextManager() {
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <label className="text-xs font-extrabold text-slate-800">ระดับชั้น</label>
+                                                    <label className="text-xs font-extrabold text-slate-800">ระดับชั้น <span className="text-rose-500">*</span></label>
                                                     <select
+                                                        required
                                                         value={form.grade_level}
                                                         onChange={e => updateForm('grade_level', e.target.value)}
                                                         className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
-                                                        <option value="">ทุกระดับชั้น</option>
+                                                        <option value="">-- กรุณาเลือกระดับชั้น --</option>
                                                         {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
                                                     </select>
                                                 </div>
@@ -1026,7 +1032,7 @@ export default function LearningContextManager() {
                                             </button>
                                             <button
                                                 type="submit"
-                                                disabled={saving}
+                                                disabled={saving || !form.context_name.trim() || !GRADE_LEVELS.includes(form.grade_level)}
                                                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-6 py-2.5 text-xs font-black text-white shadow-md hover:bg-indigo-800 disabled:opacity-50"
                                             >
                                                 {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-4 w-4" />}

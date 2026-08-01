@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase, fetchAllRows } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck, Database, School, Lock } from 'lucide-react';
@@ -24,6 +24,11 @@ const WORKSPACE_TABS = [
 ];
 
 const SCHOOL_SCOPED_TABLES = ['users_students', 'users_teachers', 'subjects', 'learning_outcomes'];
+const SAFE_TABLE_SELECT = {
+    users_students: 'student_id, school_id, citizen_id, student_code, prefix, first_name, last_name, current_room, current_grade_level, student_status, created_at',
+    users_teachers: 'teacher_id, school_id, citizen_id, prefix, first_name, last_name, role, homeroom, is_active, created_at',
+};
+const READ_ONLY_TABLES = new Set(['behavior_templates']);
 const WIZARD_IMPORT_TYPES = new Set(['students', 'teachers', 'subjects', 'learning_units', 'projects', 'activities', 'enrollments', 'learning_outcomes']);
 
 const FIELD_LABELS = {
@@ -93,9 +98,14 @@ export default function AdminDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const requestedTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState(['data', 'import', 'mapping', 'enrollment', 'progress', 'promotion'].includes(requestedTab) ? requestedTab : 'overview');
+
+    useEffect(() => {
+        const nextTab = WORKSPACE_TABS.some(tab => tab.id === requestedTab) ? requestedTab : 'overview';
+        setActiveTab(nextTab);
+    }, [requestedTab]);
 
     // Stats for Dashboard Overview
     const [stats, setStats] = useState({ students: 0, teachers: 0, subjects: 0, contexts: 0, learningOutcomes: 0 });
@@ -177,7 +187,7 @@ export default function AdminDashboard() {
             
         // ใช้ fetchAllRows เพื่อดึงนักเรียนทุกคน (ไม่ติด Supabase 1,000 row limit)
         fetchAllRows((from, to) =>
-            supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+            supabase.from('users_students').select('student_id, citizen_id, student_code, prefix, first_name, last_name, current_room, current_grade_level, student_status').eq('school_id', currentUser.school_id).range(from, to)
         ).then(data => {
             setAllStudents(data || []);
             setStats(prev => ({ ...prev, students: data?.length || 0 }));
@@ -216,7 +226,7 @@ export default function AdminDashboard() {
             const from = (page - 1) * limit;
             const to = from + limit - 1;
 
-            let query = supabase.from(table).select('*', { count: 'exact' });
+            let query = supabase.from(table).select(SAFE_TABLE_SELECT[table] || '*', { count: 'exact' });
             if (SCHOOL_SCOPED_TABLES.includes(table)) {
                 query = query.eq('school_id', currentUser.school_id);
             }
@@ -241,6 +251,10 @@ export default function AdminDashboard() {
     };
 
     const handleDelete = async (idValue, idCol) => {
+        if (READ_ONLY_TABLES.has(selectedTable)) {
+            toast.error('คลังคำบรรยายกลางเป็นข้อมูลอ่านอย่างเดียว เพื่อไม่ให้โรงเรียนหนึ่งแก้ข้อมูลที่ทุกโรงเรียนใช้ร่วมกัน');
+            return;
+        }
         if (!window.confirm('ยืนยันการลบข้อมูลรายการนี้ หากมีผลการประเมินเชื่อมโยงอยู่ ระบบจะไม่อนุญาตให้ลบ')) return;
         try {
             let query = supabase.from(selectedTable).delete().eq(idCol, idValue);
@@ -257,6 +271,10 @@ export default function AdminDashboard() {
     };
 
     const handleUpdate = async (idValue, idCol, updatedObj) => {
+        if (READ_ONLY_TABLES.has(selectedTable)) {
+            toast.error('คลังคำบรรยายกลางเป็นข้อมูลอ่านอย่างเดียว');
+            return;
+        }
         const problems = validateRowEdit(selectedTable, updatedObj);
         if (problems.length > 0) {
             toast.error(problems[0], { duration: 6000 });
@@ -377,6 +395,46 @@ export default function AdminDashboard() {
         if (!cleanDob) errors.push(`แถว ${rowNum}: dob ว่างเปล่า`);
         else if (cleanDob.length !== 8) errors.push(`แถว ${rowNum}: dob "${cleanDob}" ต้องมี 8 หลัก DDMMYYYY`);
         return errors;
+    };
+
+    // ห้าม upsert เลขบัตรที่เป็นของโรงเรียนอื่น เพราะ onConflict แบบ global
+    // สามารถย้ายเจ้าของบัญชีและเปลี่ยนรหัสผ่านโดยไม่ตั้งใจได้
+    const saveIdentityRowsSafely = async (table, rows) => {
+        const deduplicated = [...new Map(rows.map(row => [row.citizen_id, row])).values()];
+        const ids = deduplicated.map(row => row.citizen_id);
+        const existing = await fetchAllByIn(ids, (batch, from, to) => supabase.from(table)
+            .select('citizen_id, school_id').in('citizen_id', batch).range(from, to));
+        const existingById = new Map(existing.map(row => [row.citizen_id, row]));
+        const crossSchool = deduplicated.filter(row => {
+            const found = existingById.get(row.citizen_id);
+            return found && found.school_id !== currentUser.school_id;
+        });
+        const safeRows = deduplicated.filter(row => !crossSchool.some(item => item.citizen_id === row.citizen_id));
+        const existingHere = safeRows.filter(row => existingById.get(row.citizen_id)?.school_id === currentUser.school_id);
+        const newRows = safeRows.filter(row => !existingById.has(row.citizen_id));
+
+        if (existingHere.length) {
+            const { error } = await supabase.from(table).upsert(existingHere, { onConflict: 'citizen_id' });
+            if (error) throw error;
+        }
+        if (newRows.length) {
+            // ignoreDuplicates ปิดช่อง race condition: ถ้าโรงเรียนอื่นเพิ่มเลขเดียวกัน
+            // หลังขั้นตรวจสอบ แถวใหม่จะถูกข้าม ไม่เขียนทับบัญชีที่เพิ่งสร้าง
+            const { error } = await supabase.from(table).upsert(newRows, { onConflict: 'citizen_id', ignoreDuplicates: true });
+            if (error) throw error;
+        }
+        if (crossSchool.length) {
+            await supabase.from('audit_logs').insert({
+                school_id: currentUser.school_id,
+                actor_id: currentUser.teacher_id || currentUser.id,
+                actor_role: currentUser.role,
+                action: 'reject_cross_school_identity_import',
+                entity_type: table,
+                detail: { rejected_count: crossSchool.length },
+            });
+            toast.error(`ไม่นำเข้า ${crossSchool.length} รายการ เพราะเลขประจำตัวนี้อยู่ในโรงเรียนอื่นแล้ว กรุณาติดต่อผู้ดูแลระบบเพื่อดำเนินการย้ายสถานศึกษา`, { duration: 12000 });
+        }
+        return { savedRows: safeRows, rejectedCount: crossSchool.length };
     };
     // ────────────────────────────────────────────────────────────────────────
 
@@ -503,14 +561,14 @@ export default function AdminDashboard() {
                 student_status: 'active',
             })));
 
-            const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
-            if (error) throw error;
+            const { savedRows } = await saveIdentityRowsSafely('users_students', payload);
+            if (!savedRows.length) throw new Error('ไม่มีรายการที่นำเข้าได้ เนื่องจากเลขประจำตัวอยู่ในโรงเรียนอื่นทั้งหมด');
             const updated = await fetchAllRows((from, to) =>
-                supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+                supabase.from('users_students').select('student_id, citizen_id, student_code, prefix, first_name, last_name, current_room, current_grade_level, student_status').eq('school_id', currentUser.school_id).range(from, to)
             );
             setAllStudents(updated || []);
             setStats(prev => ({ ...prev, students: updated?.length || 0 }));
-            toast.success(`นำเข้าข้อมูลนักเรียนจาก DMC แล้ว ${payload.length} คน`, { id: 'dmc' });
+            toast.success(`นำเข้าข้อมูลนักเรียนจาก DMC แล้ว ${savedRows.length} คน`, { id: 'dmc' });
             if (selectedTable === 'users_students') loadTableData('users_students');
         } catch (err) {
             toast.error('นำเข้าผิดพลาด: ' + err.message, { id: 'dmc' });
@@ -569,8 +627,9 @@ export default function AdminDashboard() {
                             student_status: 'active'
                         })));
                         if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
-                        const { error } = await supabase.from('users_students').upsert(payload, { onConflict: 'citizen_id' });
-                        if (error) throw error;
+                        const result = await saveIdentityRowsSafely('users_students', payload);
+                        payload = result.savedRows;
+                        if (!payload.length) { toast.error('ไม่มีรายการนักเรียนที่นำเข้าได้', { id: 'csv' }); return; }
                     }
                     else if (importType === 'teachers') {
                         if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง: ต้องมี citizen_id และ dob', { id: 'csv' }); return; }
@@ -613,8 +672,9 @@ export default function AdminDashboard() {
                             is_active: true
                         })));
                         if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
-                        const { error } = await supabase.from('users_teachers').upsert(payload, { onConflict: 'citizen_id' });
-                        if (error) throw error;
+                        const result = await saveIdentityRowsSafely('users_teachers', payload);
+                        payload = result.savedRows;
+                        if (!payload.length) { toast.error('ไม่มีรายการครูที่นำเข้าได้', { id: 'csv' }); return; }
                     }
                     else if (importType === 'subjects') {
                         // Create a map to lookup teacher_id from citizen_id
@@ -644,9 +704,9 @@ export default function AdminDashboard() {
                             };
                         });
                         
-                        // ป้องกันข้อมูลซ้ำ (ชื่อวิชา_ปี_เทอม)
-                        const existingSet = new Set(subjects.map(s => `${s.subject_name}_${s.academic_year}_${s.semester}`));
-                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_name}_${p.academic_year}_${p.semester}`));
+                        // ชื่อวิชาเดียวกันเปิดได้หลายระดับชั้นในภาคเรียนเดียวกัน
+                        const existingSet = new Set(subjects.map(s => `${s.subject_name}_${s.grade_level}_${s.academic_year}_${s.semester}`));
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_name}_${p.grade_level}_${p.academic_year}_${p.semester}`));
 
                         if (payload.length > 0) {
                             const { error } = await supabase.from('subjects').insert(payload);
@@ -686,21 +746,26 @@ export default function AdminDashboard() {
                         const studentMap = {};
                         allStudents.forEach(st => studentMap[st.citizen_id] = st.student_id);
                         
-                        const subjectMap = {};
-                        subjects.forEach(su => subjectMap[su.subject_name] = su.subject_id);
-
                         let tempPayload = [];
                         let missingData = 0;
+                        let ambiguousData = 0;
 
                         data.forEach(e => {
                             const cId = e.student_citizen_id ? String(e.student_citizen_id).replace(/\D/g, '') : null;
                             const sName = e.subject_name?.trim();
                             const stId = studentMap[cId];
-                            const suId = subjectMap[sName];
-                            
+                            const room = e.room?.trim() || '';
+                            const grade = room.match(/ป\.[1-6]/)?.[0] || allStudents.find(student => student.student_id === stId)?.current_grade_level;
+                            const candidates = subjects.filter(subject => subject.subject_name === sName
+                                && subject.academic_year === academicYear
+                                && subject.semester === semester
+                                && (!grade || subject.grade_level === grade));
+                            const suId = candidates.length === 1 ? candidates[0].subject_id : null;
+
                             if (stId && suId) {
-                                tempPayload.push({ student_id: stId, subject_id: suId, room: e.room?.trim() });
+                                tempPayload.push({ student_id: stId, subject_id: suId, room, enrollment_status: 'active' });
                             } else {
+                                if (stId && candidates.length > 1) ambiguousData++;
                                 missingData++;
                             }
                         });
@@ -708,6 +773,7 @@ export default function AdminDashboard() {
                         if (missingData > 0) {
                             toast.error(`ข้ามข้อมูล ${missingData} แถว เนื่องจากไม่พบเลข ปชช. นร. หรือ ชื่อวิชา ในระบบ`, { id: 'csv' });
                         }
+                        if (ambiguousData > 0) toast.error(`มี ${ambiguousData} แถวที่ชื่อวิชาซ้ำและระบุชั้น/ห้องไม่ชัดเจน จึงไม่นำเข้า`, { duration: 10000 });
 
                         if (tempPayload.length === 0) {
                             toast.error('ไม่มีข้อมูลที่ถูกต้องให้เพิ่มเข้าสู่ระบบ', { id: 'csv' });
@@ -715,12 +781,10 @@ export default function AdminDashboard() {
                         }
                         
                         // ดึงข้อมูลการลงทะเบียนทั้งหมดมาเทียบ (paginated, filter by school via subjects)
-                        const { data: schoolSubjects } = await supabase.from('subjects').select('subject_id').eq('school_id', currentUser.school_id);
-                        const schoolSubjectIds = (schoolSubjects || []).map(s => s.subject_id);
+                        const schoolSubjectIds = subjects.map(subject => subject.subject_id);
                         const existingEn = schoolSubjectIds.length > 0
-                            ? await fetchAllRows((from, to) =>
-                                supabase.from('student_enrollments').select('student_id, subject_id').in('subject_id', schoolSubjectIds).range(from, to)
-                              )
+                            ? await fetchAllByIn(schoolSubjectIds, (batch, from, to) => supabase.from('student_enrollments')
+                                .select('student_id, subject_id').in('subject_id', batch).eq('enrollment_status', 'active').range(from, to))
                             : [];
                         const existingSet = new Set((existingEn || []).map(e => `${e.student_id}_${e.subject_id}`));
                         
@@ -743,11 +807,11 @@ export default function AdminDashboard() {
                             is_custom_competency: String(l.is_custom_competency).toLowerCase() === 'true'
                         }));
                         
-                        // เซ็คซ้ำ (lo_code และ ability_no ของโรงเรียนนี้)
-                        const { data: existingLO } = await supabase.from('learning_outcomes').select('lo_code, ability_no').eq('school_id', currentUser.school_id);
-                        const existingSet = new Set((existingLO || []).map(l => `${l.lo_code}_${l.ability_no}`));
+                        // LO แยกตามระดับชั้น รหัส/ลำดับเดียวกันคนละชั้นต้องนำเข้าได้
+                        const { data: existingLO } = await supabase.from('learning_outcomes').select('grade_level, lo_code, ability_no').eq('school_id', currentUser.school_id);
+                        const existingSet = new Set((existingLO || []).map(l => `${l.grade_level}_${l.lo_code}_${l.ability_no}`));
                         
-                        payload = tempPayload.filter(p => !existingSet.has(`${p.lo_code}_${p.ability_no}`));
+                        payload = tempPayload.filter(p => !existingSet.has(`${p.grade_level}_${p.lo_code}_${p.ability_no}`));
 
                         if (payload.length > 0) {
                             const { error } = await supabase.from('learning_outcomes').insert(payload);
@@ -758,29 +822,15 @@ export default function AdminDashboard() {
                         }
                     }
                     else if (importType === 'behaviors') {
-                        let tempPayload = data.map(b => ({
-                            competency_area: b.competency_area?.trim(), competency_level: b.competency_level?.trim(), behavior_text: b.behavior_text?.trim()
-                        }));
-                        
-                        // เซ็คซ้ำ 
-                        const { data: existingB } = await supabase.from('behavior_templates').select('competency_area, competency_level, behavior_text');
-                        const existingSet = new Set((existingB || []).map(b => `${b.competency_area}_${b.competency_level}_${b.behavior_text}`));
-                        
-                        payload = tempPayload.filter(p => !existingSet.has(`${p.competency_area}_${p.competency_level}_${p.behavior_text}`));
-
-                        if (payload.length > 0) {
-                            const { error } = await supabase.from('behavior_templates').insert(payload);
-                            if (error) throw error;
-                        } else {
-                            toast.error('ข้อมูลคลังพฤติกรรม ซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
-                            return;
-                        }
+                        toast.error('คลังคำบรรยายกลางเป็นข้อมูลอ่านอย่างเดียว กรุณาใช้คำอธิบายรายโรงเรียนหรือรายชั้นปีแทน', { id: 'csv', duration: 8000 });
+                        return;
                     }
                     else if (importType === 'yearly_competencies') {
                         let tempPayload = data.map(c => ({
                             school_id: currentUser.school_id, 
                             grade_level: c.grade_level?.trim(),
                             competency_no: parseInt(c.competency_no),
+                            competency_area: c.competency_area?.trim() || null,
                             description: c.description?.trim(),
                             expected_level: c.expected_level?.trim()
                         }));
@@ -830,7 +880,7 @@ export default function AdminDashboard() {
                         setStats(prev => ({ ...prev, subjects: updatedSubjects?.length || 0 }));
                     } else if (importType === 'students') {
                         const updatedStudents = await fetchAllRows((from, to) =>
-                            supabase.from('users_students').select('*').eq('school_id', currentUser.school_id).range(from, to)
+                            supabase.from('users_students').select('student_id, citizen_id, student_code, prefix, first_name, last_name, current_room, current_grade_level, student_status').eq('school_id', currentUser.school_id).range(from, to)
                         );
                         setAllStudents(updatedStudents || []);
                         setStats(prev => ({ ...prev, students: updatedStudents?.length || 0 }));
@@ -923,6 +973,7 @@ export default function AdminDashboard() {
 
     const openWorkspaceTab = tabId => {
         setActiveTab(tabId);
+        setSearchParams(tabId === 'overview' ? {} : { tab: tabId });
         if (tabId === 'data' && !selectedTable) loadTableData('users_students');
     };
     const activeWorkspace = WORKSPACE_TABS.find(tab => tab.id === activeTab) || WORKSPACE_TABS[1];
@@ -986,7 +1037,7 @@ export default function AdminDashboard() {
                                     done: stats.teachers > 0,
                                     label: 'นำเข้าข้อมูลครูและบุคลากร',
                                     desc: `${stats.teachers > 0 ? `มีข้อมูลครูและบุคลากร ${stats.teachers} คน` : 'ยังไม่มีข้อมูลครูและบุคลากร'}`,
-                                    action: () => setActiveTab('import'),
+                                    action: () => openWorkspaceTab('import'),
                                     actionLabel: 'นำเข้าข้อมูลครู'
                                 },
                                 {
@@ -994,7 +1045,7 @@ export default function AdminDashboard() {
                                     done: stats.students > 0,
                                     label: 'นำเข้าข้อมูลนักเรียน',
                                     desc: `${stats.students > 0 ? `มีข้อมูลนักเรียน ${stats.students} คน` : 'ยังไม่มีข้อมูลนักเรียน'}`,
-                                    action: () => setActiveTab('import'),
+                                    action: () => openWorkspaceTab('import'),
                                     actionLabel: 'นำเข้าข้อมูลนักเรียน'
                                 },
                                 {
@@ -1002,7 +1053,7 @@ export default function AdminDashboard() {
                                     done: stats.subjects > 0,
                                     label: 'กำหนดรายวิชาและเชื่อมโยงผลลัพธ์การเรียนรู้',
                                     desc: `${stats.subjects > 0 ? `มีรายวิชาที่เปิดสอน ${stats.subjects} วิชา` : 'ยังไม่มีข้อมูลรายวิชาที่เปิดสอน'}`,
-                                    action: () => setActiveTab('import'),
+                                    action: () => openWorkspaceTab('import'),
                                     actionLabel: 'กำหนดรายวิชา'
                                 },
                                 {
@@ -1010,7 +1061,7 @@ export default function AdminDashboard() {
                                     done: stats.subjects > 0 && stats.students > 0,
                                     label: 'จัดนักเรียนเข้าชั้นเรียนและรายวิชา',
                                     desc: 'กำหนดห้องเรียนและรายวิชาที่นักเรียนลงทะเบียน',
-                                    action: () => setActiveTab('enrollment'),
+                                    action: () => openWorkspaceTab('enrollment'),
                                     actionLabel: 'จัดนักเรียนเข้ารายวิชา'
                                 },
                             ].map(item => (
@@ -1117,7 +1168,7 @@ export default function AdminDashboard() {
 
             <div className="academic-workspace mb-10 space-y-5">
                 <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div><button onClick={() => openWorkspaceTab('overview')} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><LayoutDashboard className="h-4 w-4" /> กลับ Dashboard</button><h2 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h2><p className="mt-1 text-sm text-slate-600">{activeWorkspace.description}</p></div>
+                    <div><button onClick={() => openWorkspaceTab('overview')} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><LayoutDashboard className="h-4 w-4" /> กลับหน้าหลัก</button><h2 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h2><p className="mt-1 text-sm text-slate-600">{activeWorkspace.description}</p></div>
                     <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600">ภาคเรียนที่ <strong className="text-slate-900">{semester}/{academicYear}</strong></div>
                 </header>
 
@@ -1274,8 +1325,8 @@ export default function AdminDashboard() {
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <button onClick={() => setEditingRow({ id: idValue, data: { ...row } })} className="text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"><Edit className="w-4 h-4" /></button>
-                                                                <button onClick={() => handleDelete(idValue, idCol)} className="text-red-600 bg-red-50 p-2 rounded-xl hover:bg-red-100 transition-colors border border-red-100"><Trash2 className="w-4 h-4" /></button>
+                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => setEditingRow({ id: idValue, data: { ...row } })} className="text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"><Edit className="w-4 h-4" /></button>}
+                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => handleDelete(idValue, idCol)} className="text-red-600 bg-red-50 p-2 rounded-xl hover:bg-red-100 transition-colors border border-red-100"><Trash2 className="w-4 h-4" /></button>}
                                                             </>
                                                         )}
                                                     </td>
@@ -1368,7 +1419,7 @@ export default function AdminDashboard() {
                                         { id: 'enrollments', title: 'ข้อมูลกลุ่มเรียน', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
                                         { id: 'learning_outcomes', title: 'ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'grade_level,lo_code,ability_no,level_group,competency_area,is_custom_competency,lo_description\nป.1,SCH-P1-LO-03,3,ป.ต้น,ความสามารถด้านการคิดคำนวณ,false,ใช้จำนวนนับ การบวก และการลบเพื่อแก้ปัญหาใกล้ตัว พร้อมอธิบายวิธีคิดได้' },
                                         { id: 'behaviors', title: 'คำบรรยายระดับความสามารถ', desc: 'คำบรรยายพฤติกรรมสำหรับแต่ละระดับความสามารถ', template: 'competency_area,competency_level,behavior_text\nความสามารถด้านการคิดคำนวณ,พัฒนา,ปฏิบัติได้ในสถานการณ์ที่คุ้นเคยเมื่อได้รับคำชี้แนะบางส่วน และเริ่มตรวจสอบงานของตน' },
-                                        { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดระดับความสามารถที่คาดหวังในแต่ละชั้น', template: 'grade_level,competency_no,description,expected_level\nป.1,1,เข้าใจความหมายของคำ...,พัฒนา\nป.1,2,เขียนประโยคง่ายๆ...,พัฒนา' },
+                                        { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดด้านความสามารถและระดับที่คาดหวังในแต่ละชั้น เพื่อดึงผลรับรองมาใช้ได้ตรงด้าน', template: 'grade_level,competency_no,competency_area,description,expected_level\nป.1,1,ความสามารถด้านการอ่าน,เข้าใจความหมายของคำและข้อความสั้น ๆ,พัฒนา\nป.1,2,ความสามารถด้านการเขียน,เขียนประโยคง่าย ๆ เพื่อสื่อความหมาย,พัฒนา' },
                                         { id: 'yearly_behavior_templates', title: 'คำบรรยายรายชั้นปี (ปพ.๖)', desc: 'คำบรรยายพฤติกรรมในแต่ละระดับ แยกตามข้อและชั้นปี', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
                                     ].map(card => (
                                         <div key={card.id} className="flex flex-col gap-4 border-b border-slate-200 bg-white p-5 last:border-b-0 sm:flex-row sm:items-center">
@@ -1534,8 +1585,8 @@ export default function AdminDashboard() {
                                             if (!e.target.value) return;
                                             setLoadingEnrollments(true);
                                             const { data } = await supabase.from('student_enrollments')
-                                                .select('*, users_students(*)')
-                                                .eq('subject_id', e.target.value);
+                                                .select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)')
+                                                .eq('subject_id', e.target.value).eq('enrollment_status', 'active');
                                             setSubjectEnrollments(data || []);
                                             setLoadingEnrollments(false);
                                         }}
@@ -1577,8 +1628,8 @@ export default function AdminDashboard() {
                                                                     }
                                                                     toast.loading('กำลังเพิ่มนักเรียน...', { id: 'add_en' });
                                                                     const { data, error } = await supabase.from('student_enrollments').insert([
-                                                                        { student_id: st.student_id, subject_id: enrollSubject, room: enrollRoom }
-                                                                    ]).select('*, users_students(*)');
+                                                                        { student_id: st.student_id, subject_id: enrollSubject, room: enrollRoom, enrollment_status: 'active' }
+                                                                    ]).select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)');
                                                                     if (error) {
                                                                         toast.error('เพิ่มไม่สำเร็จ ' + error.message, { id: 'add_en' });
                                                                     } else {
@@ -1659,7 +1710,8 @@ export default function AdminDashboard() {
                                                     const payload = newStudents.map(s => ({
                                                         student_id: s.student_id,
                                                         subject_id: enrollSubject,
-                                                        room: enrollRoom
+                                                        room: enrollRoom,
+                                                        enrollment_status: 'active'
                                                     }));
                                                     const { error } = await supabase.from('student_enrollments').insert(payload);
                                                     if (error) {
@@ -1669,8 +1721,9 @@ export default function AdminDashboard() {
                                                         // Reload enrollments (paginated)
                                                         const reloaded = await fetchAllRows((from, to) =>
                                                             supabase.from('student_enrollments')
-                                                                .select('*, users_students(*)')
+                                                                .select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)')
                                                                 .eq('subject_id', enrollSubject)
+                                                                .eq('enrollment_status', 'active')
                                                                 .range(from, to)
                                                         );
                                                         setSubjectEnrollments(reloaded || []);
@@ -1747,43 +1800,49 @@ export default function AdminDashboard() {
                                                     .from('subjects')
                                                     .select('subject_id, subject_name, grade_level, semester, academic_year, teacher_id, users_teachers(prefix, first_name, last_name)')
                                                     .eq('school_id', currentUser.school_id)
-                                                    .order('academic_year', { ascending: false });
+                                                    .eq('academic_year', academicYear)
+                                                    .eq('semester', semester)
+                                                    .order('subject_name');
+                                                if (!subs) throw new Error('ไม่พบข้อมูลรายวิชา');
 
                                                 const subjectIds = (subs || []).map(s => s.subject_id);
                                                 if (subjectIds.length === 0) { setEvalProgress([]); setLoadingProgress(false); return; }
 
                                                 // Load enrollments
-                                                const { data: enrolls } = await supabase
+                                                const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
                                                     .from('student_enrollments')
                                                     .select('enrollment_id, subject_id')
-                                                    .in('subject_id', subjectIds);
+                                                    .in('subject_id', batch)
+                                                    .eq('enrollment_status', 'active')
+                                                    .range(from, to));
 
                                                 // Load LO mappings
-                                                const { data: loMaps } = await supabase
+                                                const loMaps = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
                                                     .from('subject_lo_mapping')
                                                     .select('subject_id, lo_id')
-                                                    .in('subject_id', subjectIds);
+                                                    .in('subject_id', batch)
+                                                    .range(from, to));
 
                                                 // Load evaluations
                                                 const enrollIds = (enrolls || []).map(e => e.enrollment_id);
                                                 let evals = [];
                                                 if (enrollIds.length > 0) {
-                                                    const { data } = await supabase
+                                                    evals = await fetchAllByIn(enrollIds, (batch, from, to) => supabase
                                                         .from('lo_evaluations')
                                                         .select('enrollment_id, lo_id, evidence_note')
-                                                        .in('enrollment_id', enrollIds);
-                                                    evals = data || [];
+                                                        .in('enrollment_id', batch)
+                                                        .range(from, to));
                                                 }
 
                                                 // Calculate per subject
                                                 const progress = (subs || []).map(sub => {
-                                                    const subEnrolls = (enrolls || []).filter(e => e.subject_id === sub.subject_id);
-                                                    const subLOs = (loMaps || []).filter(m => m.subject_id === sub.subject_id);
+                                                    const subEnrolls = enrolls.filter(e => e.subject_id === sub.subject_id);
+                                                    const subLOs = loMaps.filter(m => m.subject_id === sub.subject_id);
                                                     const totalCells = subEnrolls.length * subLOs.length;
-                                                    const subEnrollIds = subEnrolls.map(e => e.enrollment_id);
-                                                    const subLoIds = subLOs.map(l => l.lo_id);
+                                                    const subEnrollIds = new Set(subEnrolls.map(e => e.enrollment_id));
+                                                    const subLoIds = new Set(subLOs.map(l => l.lo_id));
                                                     const filled = evals.filter(ev =>
-                                                        subEnrollIds.includes(ev.enrollment_id) && subLoIds.includes(ev.lo_id) && ev.evidence_note?.trim()
+                                                        subEnrollIds.has(ev.enrollment_id) && subLoIds.has(ev.lo_id) && ev.evidence_note?.trim()
                                                     ).length;
                                                     const pct = totalCells > 0 ? Math.round((filled / totalCells) * 100) : 0;
                                                     const teacher = sub.users_teachers;
@@ -1913,7 +1972,7 @@ export default function AdminDashboard() {
                                                     try {
                                                         const { data, error } = await supabase
                                                             .from('users_students')
-                                                            .select('*')
+                                                            .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room, student_status')
                                                             .eq('school_id', currentUser.school_id)
                                                             .eq('current_room', promoFromRoom.trim())
                                                             .order('student_code');
@@ -1965,11 +2024,13 @@ export default function AdminDashboard() {
                                                 onClick={async () => {
                                                     if (!window.confirm(`ยืนยันการเปลี่ยนนักเรียนที่เลือกทั้ง ${promoSelectedStudents.length} คน ไปยังชั้น ${promoToGrade} ห้อง ${promoToRoom} หรือไม่?`)) return;
                                                     try {
-                                                        const { error } = await supabase
-                                                            .from('users_students')
-                                                            .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
-                                                            .in('student_id', promoSelectedStudents);
-                                                        if (error) throw error;
+                                                        for (let index = 0; index < promoSelectedStudents.length; index += 200) {
+                                                            const { error } = await supabase.from('users_students')
+                                                                .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
+                                                                .eq('school_id', currentUser.school_id)
+                                                                .in('student_id', promoSelectedStudents.slice(index, index + 200));
+                                                            if (error) throw error;
+                                                        }
                                                         toast.success('บันทึกการเลื่อนชั้นและจัดห้องเรียนแล้ว');
                                                         setPromoStudents([]);
                                                         setPromoSelectedStudents([]);

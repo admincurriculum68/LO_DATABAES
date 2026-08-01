@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
-import { supabase } from '../lib/supabase';
+import { fetchAllRows, supabase } from '../lib/supabase';
 
 const EMPTY_FORM = { source_competency_area: '', source_evidence: '', target_learning_area: '', target_subject_name: '', target_result: '', decision_reason: '' };
 
@@ -21,18 +21,18 @@ export default function CurriculumEquivalency() {
     const [saving, setSaving] = useState(false);
 
     const loadData = useCallback(async () => {
-        if (!currentUser?.school_id) return;
-        const [studentResult, recordResult] = await Promise.all([
-            supabase.from('users_students').select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room').eq('school_id', currentUser.school_id).order('student_code'),
-            supabase.from('curriculum_equivalency_results').select('*').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).order('updated_at', { ascending: false }),
-        ]);
-        if (studentResult.error || recordResult.error) {
-            toast.error('โหลดข้อมูลการเทียบผลไม่สำเร็จ: ' + (studentResult.error || recordResult.error).message);
-            return;
+        if (!currentUser?.school_id || !academicYear) return;
+        try {
+            const [studentRows, recordRows] = await Promise.all([
+                fetchAllRows((from, to) => supabase.from('users_students').select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room').eq('school_id', currentUser.school_id).order('student_code').range(from, to)),
+                fetchAllRows((from, to) => supabase.from('curriculum_equivalency_results').select('*').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).order('updated_at', { ascending: false }).range(from, to)),
+            ]);
+            setStudents(studentRows);
+            setRecords(recordRows);
+            setStudentId(current => current || studentRows[0]?.student_id || '');
+        } catch (error) {
+            toast.error('โหลดข้อมูลการเทียบผลไม่สำเร็จ: ' + error.message);
         }
-        setStudents(studentResult.data || []);
-        setRecords(recordResult.data || []);
-        setStudentId(current => current || studentResult.data?.[0]?.student_id || '');
     }, [academicYear, currentUser?.school_id]);
 
     useEffect(() => { loadData(); }, [loadData]);

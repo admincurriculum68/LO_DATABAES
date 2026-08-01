@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
 import { Search, Printer, Save, CheckCircle, XCircle, Loader } from 'lucide-react';
@@ -45,12 +45,12 @@ export default function YearlyReportAdmin() {
     // ─── Load students ──────────────────────────────────────────────────
     useEffect(() => {
         const loadStudents = async () => {
-            const { data } = await supabase
-                .from('users_students')
+            const data = await fetchAllRows((from, to) => supabase.from('users_students')
                 .select('student_id, prefix, first_name, last_name, student_code')
                 .eq('school_id', currentUser.school_id)
-                .order('student_code');
-            setAllStudents(data || []);
+                .order('student_code')
+                .range(from, to));
+            setAllStudents(data);
         };
         loadStudents();
     }, [currentUser.school_id]);
@@ -85,42 +85,63 @@ export default function YearlyReportAdmin() {
 
     // ─── Load existing results for student+grade+year ───────────────────
     const loadExistingResult = useCallback(async (studentId, grade, year) => {
-        const { data: result } = await supabase
-            .from('student_yearly_results')
-            .select('*, student_yearly_competency_evaluations(*)')
-            .eq('student_id', studentId)
-            .eq('grade_level', grade)
-            .eq('academic_year', year)
-            .maybeSingle();
+        const [{ data: result, error: resultError }, { data: approved, error: approvedError }] = await Promise.all([
+            supabase.from('student_yearly_results')
+                .select('*, student_yearly_competency_evaluations(*)')
+                .eq('school_id', currentUser.school_id)
+                .eq('student_id', studentId)
+                .eq('grade_level', grade)
+                .eq('academic_year', year)
+                .maybeSingle(),
+            supabase.from('competency_area_final_decisions')
+                .select('competency_area, final_level, semester')
+                .eq('school_id', currentUser.school_id)
+                .eq('student_id', studentId)
+                .eq('academic_year', year)
+                .eq('decision_status', 'approved')
+                .order('semester', { ascending: false }),
+        ]);
+        if (resultError) throw resultError;
+        if (approvedError) throw approvedError;
+
+        const approvedByArea = new Map();
+        (approved || []).forEach(item => {
+            if (!approvedByArea.has(item.competency_area) && item.final_level) approvedByArea.set(item.competency_area, item.final_level);
+        });
+        const levels = {};
 
         if (result) {
             setExistingResultId(result.result_id);
             setAttendancePercent(result.attendance_percent?.toString() || '');
             setLearnerActivities(result.learner_activities || 'ผ่าน');
             setDesirableChars(result.desirable_chars || 'ผ่าน');
-            const levels = {};
             (result.student_yearly_competency_evaluations || []).forEach(ev => {
                 levels[ev.competency_id] = ev.achieved_level;
             });
-            setAchievedLevels(levels);
         } else {
             setExistingResultId(null);
             setAttendancePercent('');
             setLearnerActivities('ผ่าน');
             setDesirableChars('ผ่าน');
-            setAchievedLevels({});
         }
-    }, []);
+        // ผลรับรองเป็นแหล่งจริง: เขียนทับค่ารายด้านที่เชื่อมไว้ และคงค่าเดิม
+        // เฉพาะรายการเก่าที่ยังไม่ได้กำหนด competency_area
+        competencies.forEach(comp => {
+            const approvedLevel = approvedByArea.get(comp.competency_area);
+            if (approvedLevel) levels[comp.competency_id] = approvedLevel;
+        });
+        setAchievedLevels(levels);
+    }, [competencies, currentUser.school_id]);
 
     useEffect(() => {
         loadCompetencies(selectedGrade);
     }, [selectedGrade, loadCompetencies]);
 
     useEffect(() => {
-        if (selectedStudent) {
+        if (selectedStudent && competencies.length) {
             loadExistingResult(selectedStudent.student_id, selectedGrade, academicYear);
         }
-    }, [selectedStudent, selectedGrade, academicYear, loadExistingResult]);
+    }, [selectedStudent, selectedGrade, academicYear, competencies.length, loadExistingResult]);
 
     // ─── Save results ────────────────────────────────────────────────────
     const handleSave = async () => {
@@ -140,7 +161,7 @@ export default function YearlyReportAdmin() {
             };
 
             if (existingResultId) {
-                const { error } = await supabase.from('student_yearly_results').update(resultPayload).eq('result_id', existingResultId);
+                const { error } = await supabase.from('student_yearly_results').update(resultPayload).eq('result_id', existingResultId).eq('school_id', currentUser.school_id);
                 if (error) throw error;
             } else {
                 const { data, error } = await supabase.from('student_yearly_results').insert(resultPayload).select().single();

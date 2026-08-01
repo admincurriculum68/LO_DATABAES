@@ -17,15 +17,12 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
 import { useAuth } from '../AuthContext';
-import { supabase, fetchAllRows } from '../lib/supabase';
-import { formalLevelLabel } from '../lib/terminology';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { calculateCompletion } from '../lib/evaluationProgress';
 
-const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
+const LEVELS = ['มีข้อความ'];
 const levelMeta = {
-    เริ่มต้น: { badge: 'border-rose-200 bg-rose-50 text-rose-800', bar: 'bg-rose-500' },
-    พัฒนา: { badge: 'border-amber-200 bg-amber-50 text-amber-800', bar: 'bg-amber-500' },
-    ชำนาญ: { badge: 'border-blue-200 bg-blue-50 text-blue-800', bar: 'bg-blue-600' },
-    เชี่ยวชาญ: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', bar: 'bg-emerald-600' },
+    มีข้อความ: { badge: 'border-emerald-200 bg-emerald-50 text-emerald-800', bar: 'bg-emerald-600' },
     ยังไม่ประเมิน: { badge: 'border-slate-200 bg-slate-50 text-slate-600', bar: 'bg-slate-300' },
 };
 
@@ -56,9 +53,14 @@ export default function SummaryView() {
                     .select('*')
                     .eq('subject_id', subjectId)
                     .eq('school_id', currentUser.school_id)
-                    .eq('teacher_id', currentUser.teacher_id)
                     .single();
                 if (subjectError) throw subjectError;
+                if (currentUser.role === 'teacher' && subjectData.teacher_id !== currentUser.teacher_id) {
+                    const { data: assignment, error: assignmentError } = await supabase.from('subject_teachers')
+                        .select('assignment_id').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id).limit(1).maybeSingle();
+                    if (assignmentError) throw assignmentError;
+                    if (!assignment) throw new Error('คุณไม่ได้รับมอบหมายให้ดูรายงานของรายวิชานี้');
+                }
                 setSubject(subjectData);
 
                 const [mappingResult, enrollments] = await Promise.all([
@@ -68,6 +70,7 @@ export default function SummaryView() {
                     fetchAllRows((from, to) => supabase.from('student_enrollments')
                         .select('enrollment_id, room, users_students!inner(student_code, prefix, first_name, last_name, school_id)')
                         .eq('subject_id', subjectId)
+                        .eq('enrollment_status', 'active')
                         .eq('users_students.school_id', currentUser.school_id)
                         .range(from, to)),
                 ]);
@@ -83,12 +86,11 @@ export default function SummaryView() {
                 const enrollmentIds = sortedEnrollments.map(item => item.enrollment_id);
                 let evaluations = [];
                 if (enrollmentIds.length) {
-                    const { data: evaluationData, error: evaluationError } = await supabase
+                    evaluations = await fetchAllByIn(enrollmentIds, (batch, from, to) => supabase
                         .from('lo_evaluations')
-                        .select('lo_id, enrollment_id, competency_level')
-                        .in('enrollment_id', enrollmentIds);
-                    if (evaluationError) throw evaluationError;
-                    evaluations = evaluationData || [];
+                        .select('lo_id, enrollment_id, evidence_note, workflow_status')
+                        .in('enrollment_id', batch)
+                        .range(from, to));
                 }
 
                 setData({ enrollments: sortedEnrollments, learningOutcomes, evaluations });
@@ -100,14 +102,13 @@ export default function SummaryView() {
             }
         }
         loadSummary();
-    }, [currentUser?.school_id, currentUser?.teacher_id, subjectId]);
+    }, [currentUser?.role, currentUser?.school_id, currentUser?.teacher_id, subjectId]);
 
-    const evaluationMap = useMemo(() => new Map(data.evaluations.map(item => [`${item.enrollment_id}:${item.lo_id}`, item.competency_level])), [data.evaluations]);
+    const evaluationMap = useMemo(() => new Map(data.evaluations.map(item => [`${item.enrollment_id}:${item.lo_id}`, item.evidence_note?.trim() || ''])), [data.evaluations]);
     const rooms = useMemo(() => [...new Set(data.enrollments.map(item => item.room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [data.enrollments]);
     const totalExpected = data.enrollments.length * data.learningOutcomes.length;
     const totalEvaluated = data.enrollments.reduce((total, enrollment) => total + data.learningOutcomes.filter(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)).length, 0);
-    const missingCount = Math.max(0, totalExpected - totalEvaluated);
-    const percent = totalExpected ? Math.round((totalEvaluated / totalExpected) * 100) : 0;
+    const { missing: missingCount, percent } = calculateCompletion(totalEvaluated, totalExpected);
 
     const filteredEnrollments = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -126,7 +127,7 @@ export default function SummaryView() {
         const counts = Object.fromEntries([...LEVELS, 'ยังไม่ประเมิน'].map(level => [level, 0]));
         data.enrollments.forEach(enrollment => {
             const value = evaluationMap.get(`${enrollment.enrollment_id}:${distributionLo}`);
-            if (value && counts[value] !== undefined) counts[value] += 1;
+            if (value) counts['มีข้อความ'] += 1;
             else counts['ยังไม่ประเมิน'] += 1;
         });
         return counts;
@@ -187,11 +188,11 @@ export default function SummaryView() {
                         <section className="summary-controls mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="ค้นหาและกรองรายงาน"><div className="flex flex-col gap-3 lg:flex-row"><label className="relative flex-1"><span className="sr-only">ค้นหานักเรียน</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อหรือรหัสนักเรียน" className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" /></label><label className="relative lg:w-56"><span className="sr-only">กรองตามห้องเรียน</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" /><select value={roomFilter} onChange={event => setRoomFilter(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-8 text-sm font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"><option value="all">ทุกห้องเรียน</option>{rooms.map(room => <option key={room} value={room}>{room}</option>)}</select></label><select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 lg:w-52"><option value="all">ทุกสถานะ</option><option value="pending">ผลยังไม่ครบ</option><option value="complete">ประเมินครบแล้ว</option></select></div><p className="mt-2 text-xs font-semibold text-slate-500">แสดง {filteredEnrollments.length} จาก {data.enrollments.length} คน</p></section>
 
                         <section className="summary-document overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                            <div className="summary-controls border-b border-slate-200 p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-extrabold text-slate-950">ผลการประเมินรายบุคคล</h3><p className="mt-1 text-sm text-slate-600">ระดับที่ครูบันทึกในแต่ละ LO และจำนวนรายการที่ประเมินครบ</p></div><div className="flex flex-wrap gap-1.5">{[...LEVELS, 'ยังไม่ประเมิน'].map(level => <span key={level} className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${levelMeta[level].badge}`}>{level}</span>)}</div></div></div>
-                            <div className="overflow-x-auto"><table className="summary-table w-full min-w-[780px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="sticky left-0 z-20 w-16 border-r border-slate-200 bg-slate-100 px-4 py-3 text-center">เลขที่</th><th className="sticky left-16 z-20 min-w-56 border-r border-slate-200 bg-slate-100 px-4 py-3">ผู้เรียน</th><th className="w-24 px-3 py-3 text-center">ห้อง</th>{data.learningOutcomes.map(lo => <th key={lo.lo_id} className="min-w-40 border-l border-slate-200 px-3 py-3 text-center"><span className="block text-indigo-800">{lo.lo_code || `LO ${lo.ability_no}`}</span><span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-600">{lo.competency_area || 'ไม่ระบุด้าน'}</span><span className="mt-1 block max-w-48 whitespace-normal text-[10px] font-normal leading-4 text-slate-500">{lo.lo_description}</span></th>)}<th className="sticky right-0 z-20 w-32 border-l border-slate-200 bg-slate-100 px-4 py-3 text-center">ความครบถ้วน</th></tr></thead><tbody className="divide-y divide-slate-200">{filteredEnrollments.map(enrollment => { const student = enrollment.users_students; const values = data.learningOutcomes.map(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)); const completed = values.filter(Boolean).length; const complete = data.learningOutcomes.length > 0 && completed === data.learningOutcomes.length; return <tr key={enrollment.enrollment_id} className="group hover:bg-slate-50"><td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-4 py-3 text-center font-semibold text-slate-500 group-hover:bg-slate-50">{data.enrollments.indexOf(enrollment) + 1}</td><td className="sticky left-16 z-10 border-r border-slate-200 bg-white px-4 py-3 group-hover:bg-slate-50"><strong className="block text-slate-900">{studentName(student)}</strong><span className="mt-0.5 block text-xs text-slate-500">{student?.student_code}</span></td><td className="px-3 py-3 text-center font-semibold text-slate-600">{enrollment.room || '-'}</td>{data.learningOutcomes.map((lo, loIndex) => { const value = values[loIndex]; return <td key={lo.lo_id} className="border-l border-slate-100 px-3 py-3 text-center">{value ? <span className={`inline-flex rounded-lg border px-2.5 py-1.5 text-xs font-extrabold ${levelMeta[value]?.badge || levelMeta['ยังไม่ประเมิน'].badge}`}>{formalLevelLabel(value)}</span> : <span className={`inline-flex rounded-lg border px-2.5 py-1.5 text-xs font-bold ${levelMeta['ยังไม่ประเมิน'].badge}`}>ยังไม่ประเมิน</span>}</td>; })}<td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-4 py-3 text-center group-hover:bg-slate-50"><span className={`inline-flex rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${complete ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{complete ? 'ครบแล้ว' : `${completed}/${data.learningOutcomes.length}`}</span></td></tr>; })}{filteredEnrollments.length === 0 && <tr><td colSpan={4 + data.learningOutcomes.length} className="px-6 py-14 text-center text-sm text-slate-600">ไม่พบผู้เรียนที่ตรงกับคำค้นหาหรือตัวกรอง</td></tr>}</tbody></table></div>
+                            <div className="summary-controls border-b border-slate-200 p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-extrabold text-slate-950">ข้อความสะท้อนพฤติกรรมรายบุคคล</h3><p className="mt-1 text-sm text-slate-600">LO เก็บข้อความเชิงคุณภาพเท่านั้น การตัดสินระดับทำเป็นรายด้านความสามารถในขั้น Formative</p></div><div className="flex flex-wrap gap-1.5">{[...LEVELS, 'ยังไม่ประเมิน'].map(level => <span key={level} className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${levelMeta[level].badge}`}>{level}</span>)}</div></div></div>
+                            <div className="overflow-x-auto"><table className="summary-table w-full min-w-[780px] border-collapse text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="sticky left-0 z-20 w-16 border-r border-slate-200 bg-slate-100 px-4 py-3 text-center">เลขที่</th><th className="sticky left-16 z-20 min-w-56 border-r border-slate-200 bg-slate-100 px-4 py-3">ผู้เรียน</th><th className="w-24 px-3 py-3 text-center">ห้อง</th>{data.learningOutcomes.map(lo => <th key={lo.lo_id} className="min-w-64 border-l border-slate-200 px-3 py-3 text-center"><span className="block text-indigo-800">{lo.lo_code || `LO ${lo.ability_no}`}</span><span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-600">{lo.competency_area || 'ไม่ระบุด้าน'}</span><span className="mt-1 block max-w-64 whitespace-normal text-[10px] font-normal leading-4 text-slate-500">{lo.lo_description}</span></th>)}<th className="sticky right-0 z-20 w-32 border-l border-slate-200 bg-slate-100 px-4 py-3 text-center">ความครบถ้วน</th></tr></thead><tbody className="divide-y divide-slate-200">{filteredEnrollments.map(enrollment => { const student = enrollment.users_students; const values = data.learningOutcomes.map(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)); const completed = values.filter(Boolean).length; const complete = data.learningOutcomes.length > 0 && completed === data.learningOutcomes.length; return <tr key={enrollment.enrollment_id} className="group hover:bg-slate-50"><td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-4 py-3 text-center font-semibold text-slate-500 group-hover:bg-slate-50">{data.enrollments.indexOf(enrollment) + 1}</td><td className="sticky left-16 z-10 border-r border-slate-200 bg-white px-4 py-3 group-hover:bg-slate-50"><strong className="block text-slate-900">{studentName(student)}</strong><span className="mt-0.5 block text-xs text-slate-500">{student?.student_code}</span></td><td className="px-3 py-3 text-center font-semibold text-slate-600">{enrollment.room || '-'}</td>{data.learningOutcomes.map((lo, loIndex) => { const value = values[loIndex]; return <td key={lo.lo_id} className="border-l border-slate-100 px-3 py-3 align-top">{value ? <p className="min-w-56 whitespace-normal text-xs leading-5 text-slate-700">{value}</p> : <span className="text-xs font-bold text-slate-400">ยังไม่มีข้อความ</span>}</td>; })}<td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-4 py-3 text-center group-hover:bg-slate-50"><span className={`inline-flex rounded-lg px-2.5 py-1.5 text-xs font-extrabold ${complete ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{complete ? 'ครบแล้ว' : `${completed}/${data.learningOutcomes.length}`}</span></td></tr>; })}{filteredEnrollments.length === 0 && <tr><td colSpan={4 + data.learningOutcomes.length} className="px-6 py-14 text-center text-sm text-slate-600">ไม่พบผู้เรียนที่ตรงกับคำค้นหาหรือตัวกรอง</td></tr>}</tbody></table></div>
                         </section>
 
-                        {data.enrollments.length > 0 && data.learningOutcomes.length > 0 && <section className="summary-controls mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ภาพรวมระดับความสามารถราย LO</h3><p className="mt-1 text-sm text-slate-600">เลือก LO เพื่อดูการกระจายระดับของนักเรียนทั้งรายวิชา</p></div><label><span className="mb-1 block text-xs font-bold text-slate-600">เลือก LO</span><select value={distributionLo} onChange={event => setDistributionLo(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-72">{data.learningOutcomes.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} · {lo.competency_area || 'ไม่ระบุด้าน'}</option>)}</select></label></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[...LEVELS].reverse().concat('ยังไม่ประเมิน').map(level => { const count = distribution[level]; const levelPercent = data.enrollments.length ? Math.round((count / data.enrollments.length) * 100) : 0; return <div key={level} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-bold text-slate-700">{level}</span><strong className="text-slate-950">{count} คน</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${levelMeta[level].bar}`} style={{ width: `${levelPercent}%` }} /></div><p className="mt-1.5 text-right text-xs font-semibold text-slate-500">{levelPercent}%</p></div>; })}</div></section>}
+                        {data.enrollments.length > 0 && data.learningOutcomes.length > 0 && <section className="summary-controls mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ความครบถ้วนของข้อความราย LO</h3><p className="mt-1 text-sm text-slate-600">เลือก LO เพื่อดูว่าครูบันทึกข้อความสะท้อนพฤติกรรมแล้วกี่คน</p></div><label><span className="mb-1 block text-xs font-bold text-slate-600">เลือก LO</span><select value={distributionLo} onChange={event => setDistributionLo(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 sm:w-72">{data.learningOutcomes.map(lo => <option key={lo.lo_id} value={lo.lo_id}>{lo.lo_code || `LO ${lo.ability_no}`} · {lo.competency_area || 'ไม่ระบุด้าน'}</option>)}</select></label></div><div className="mt-5 grid gap-3 sm:grid-cols-2">{[...LEVELS].concat('ยังไม่ประเมิน').map(level => { const count = distribution[level]; const levelPercent = data.enrollments.length ? Math.round((count / data.enrollments.length) * 100) : 0; return <div key={level} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-2"><span className="text-sm font-bold text-slate-700">{level}</span><strong className="text-slate-950">{count} คน</strong></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${levelMeta[level].bar}`} style={{ width: `${levelPercent}%` }} /></div><p className="mt-1.5 text-right text-xs font-semibold text-slate-500">{levelPercent}%</p></div>; })}</div></section>}
                     </>
                 )}
             </div>

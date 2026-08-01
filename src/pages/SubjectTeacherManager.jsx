@@ -18,6 +18,7 @@ export default function SubjectTeacherManager() {
     const [subjectId, setSubjectId] = useState('');
     const [rooms, setRooms] = useState([]);
     const [selectedPairs, setSelectedPairs] = useState(new Set());
+    const [savedPairs, setSavedPairs] = useState(new Set());
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -48,18 +49,20 @@ export default function SubjectTeacherManager() {
         async function loadAssignments() {
             if (!subjectId) return;
             const [enrollmentResult, assignmentResult] = await Promise.all([
-                supabase.from('student_enrollments').select('room').eq('subject_id', subjectId),
-                supabase.from('subject_teachers').select('teacher_id, room_name').eq('subject_id', subjectId),
+                supabase.from('student_enrollments').select('room').eq('subject_id', subjectId).eq('enrollment_status', 'active'),
+                supabase.from('subject_teachers').select('teacher_id, room_name').eq('subject_id', subjectId).eq('school_id', currentUser.school_id),
             ]);
             if (enrollmentResult.error || assignmentResult.error) {
                 toast.error('โหลดห้องเรียนหรือครูที่รับผิดชอบไม่สำเร็จ: ' + (enrollmentResult.error || assignmentResult.error).message);
                 return;
             }
             setRooms([...new Set((enrollmentResult.data || []).map(item => item.room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')));
-            setSelectedPairs(new Set((assignmentResult.data || []).filter(item => item.room_name).map(item => pairKey(item.teacher_id, item.room_name))));
+            const loadedPairs = new Set((assignmentResult.data || []).filter(item => item.room_name).map(item => pairKey(item.teacher_id, item.room_name)));
+            setSelectedPairs(loadedPairs);
+            setSavedPairs(new Set(loadedPairs));
         }
         loadAssignments();
-    }, [subjectId]);
+    }, [currentUser.school_id, subjectId]);
 
     const visibleTeachers = useMemo(() => {
         const normalized = query.trim().toLowerCase();
@@ -83,14 +86,33 @@ export default function SubjectTeacherManager() {
         });
         setSaving(true);
         try {
-            const { error: deleteError } = await supabase.from('subject_teachers').delete().eq('subject_id', subjectId);
-            if (deleteError) throw deleteError;
-            if (payload.length) {
-                const { error: insertError } = await supabase.from('subject_teachers').insert(payload);
+            const additions = payload.filter(item => !savedPairs.has(pairKey(item.teacher_id, item.room_name)));
+            const removals = [...savedPairs].filter(key => !selectedPairs.has(key));
+            // เพิ่มรายการใหม่ก่อนเสมอ ถ้า insert ล้ม การมอบหมายเดิมจะไม่หาย
+            if (additions.length) {
+                const { error: insertError } = await supabase.from('subject_teachers').insert(additions);
                 if (insertError) throw insertError;
-                const { error: legacyError } = await supabase.from('subjects').update({ teacher_id: payload[0].teacher_id }).eq('subject_id', subjectId);
+            }
+            for (const key of removals) {
+                const [teacherId, roomName] = key.split('::');
+                const { error: deleteError } = await supabase.from('subject_teachers').delete()
+                    .eq('school_id', currentUser.school_id).eq('subject_id', subjectId)
+                    .eq('teacher_id', teacherId).eq('room_name', roomName);
+                if (deleteError) throw deleteError;
+            }
+            if (payload.length) {
+                const currentPrimary = subjects.find(subject => subject.subject_id === subjectId)?.teacher_id;
+                const teacherIds = [...new Set(payload.map(item => item.teacher_id))].sort();
+                const primaryTeacherId = teacherIds.includes(currentPrimary) ? currentPrimary : teacherIds[0];
+                const { error: legacyError } = await supabase.from('subjects').update({ teacher_id: primaryTeacherId })
+                    .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
+                if (legacyError) throw legacyError;
+            } else {
+                const { error: legacyError } = await supabase.from('subjects').update({ teacher_id: null })
+                    .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
                 if (legacyError) throw legacyError;
             }
+            setSavedPairs(new Set(selectedPairs));
             toast.success(`บันทึกครูผู้สอน ${new Set(payload.map(item => item.teacher_id)).size} คน ครอบคลุม ${new Set(payload.map(item => item.room_name)).size} ห้องแล้ว`);
         } catch (error) {
             toast.error('บันทึกไม่สำเร็จ: ' + error.message);

@@ -27,3 +27,25 @@ export async function fetchAllRows(queryFn, pageSize = 1000) {
     }
     return all;
 }
+
+/**
+ * fetchAllByIn — แบ่งรายการ id ก่อนใช้ .in() เพื่อไม่ให้ URL ยาวเกินไป และ
+ * ใช้ fetchAllRows ภายในแต่ละชุดเพื่อไม่ให้ข้อมูลหยุดที่ 1,000 แถว
+ *
+ * @param {unknown[]} values ค่าที่จะใช้กับ .in()
+ * @param {(batch: unknown[], from: number, to: number) => PromiseLike<{data, error}>} queryFn
+ * @param {number} [batchSize=200]
+ * @returns {Promise<any[]>}
+ */
+export async function fetchAllByIn(values, queryFn, batchSize = 200) {
+    const uniqueValues = [...new Set((values || []).filter(value => value !== null && value !== undefined && value !== ''))];
+    if (uniqueValues.length === 0) return [];
+
+    const all = [];
+    for (let index = 0; index < uniqueValues.length; index += batchSize) {
+        const batch = uniqueValues.slice(index, index + batchSize);
+        const rows = await fetchAllRows((from, to) => queryFn(batch, from, to));
+        all.push(...rows);
+    }
+    return all;
+}

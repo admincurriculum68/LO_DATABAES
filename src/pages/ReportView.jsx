@@ -1,29 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useParams, useNavigate } from 'react-router-dom';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ReportView() {
     const { studentId, academicYear, semester } = useParams();
     const navigate = useNavigate();
-    const location = useLocation();
+    const { currentUser } = useAuth();
 
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // use location.state.subject if navigated from teacher dashboard EvalView
-    const subjectPassed = location.state?.subject;
-
     useEffect(() => {
         async function fetchReport() {
             try {
-                const { data: enrollData, error: enrollErr } = await supabase
-                    .from('student_enrollments')
-                    .select('*, users_students(*), subjects(*)')
-                    .eq('student_id', studentId);
-
-                if (enrollErr) throw enrollErr;
+                const enrollData = await fetchAllRows((from, to) => supabase.from('student_enrollments')
+                    .select('enrollment_id, student_id, subject_id, room, attendance_percent, users_students!inner(student_id, school_id, student_code, prefix, first_name, last_name, current_grade_level, current_room), subjects!inner(subject_id, school_id, subject_name, subject_group, grade_level, academic_year, semester)')
+                    .eq('student_id', studentId).eq('enrollment_status', 'active')
+                    .eq('users_students.school_id', currentUser.school_id).eq('subjects.school_id', currentUser.school_id).range(from, to));
 
                 // Filter by academicYear and semester
                 const targetEnrollments = enrollData.filter(e =>
@@ -36,10 +32,10 @@ export default function ReportView() {
 
                 const enrollmentIds = targetEnrollments.map(e => e.enrollment_id);
 
-                const [{ data: evalData, error: evalErr }, { data: behaviorData }, { data: activityData }] = await Promise.all([
-                    supabase.from('lo_evaluations')
-                        .select('*, learning_outcomes(*)')
-                        .in('enrollment_id', enrollmentIds),
+                const [evalData, { data: behaviorData }, { data: activityData }, finalData] = await Promise.all([
+                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
+                        .select('evaluation_id, enrollment_id, lo_id, evidence_note, workflow_status, learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)')
+                        .in('enrollment_id', batch).range(from, to)),
                     supabase.from('behavior_templates')
                         .select('*'),
                     supabase.from('student_year_evaluations')
@@ -47,15 +43,22 @@ export default function ReportView() {
                         .eq('student_id', studentId)
                         .eq('academic_year', academicYear)
                         .eq('semester', semester)
-                        .maybeSingle()
+                        .maybeSingle(),
+                    fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
+                        .select('competency_area, final_level, decision_reason').eq('school_id', currentUser.school_id)
+                        .eq('student_id', studentId).eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+                        .eq('decision_status', 'approved').range(from, to)),
                 ]);
-
-                if (evalErr) throw evalErr;
+                const finalByArea = new Map(finalData.map(result => [result.competency_area, result]));
+                const reportEvaluations = evalData.map(evaluation => ({
+                    ...evaluation,
+                    competency_level: finalByArea.get(evaluation.learning_outcomes?.competency_area)?.final_level || null,
+                }));
 
                 setData({
                     student: targetEnrollments[0].users_students,
-                    representativeSubject: subjectPassed || targetEnrollments[0].subjects,
-                    evaluations: evalData || [],
+                    representativeSubject: targetEnrollments[0].subjects,
+                    evaluations: reportEvaluations,
                     behaviors: behaviorData || [],
                     enrollments: targetEnrollments,
                     activities: activityData || { activity_status: 'ผ่าน', character_status: 'ผ่าน' }
@@ -67,7 +70,7 @@ export default function ReportView() {
             }
         }
         if (studentId) fetchReport();
-    }, [studentId, academicYear, semester, subjectPassed]);
+    }, [academicYear, currentUser.school_id, semester, studentId]);
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-slate-100"><Loader2 className="animate-spin text-indigo-600 w-10 h-10" /></div>;
@@ -254,11 +257,11 @@ export default function ReportView() {
                                 const level = ev.competency_level;
                                 const area = lo.competency_area || 'ทั่วไป';
 
-                                let behaviorText = '';
+                                let behaviorText = ev.evidence_note?.trim() || '';
                                 const bMatch = behaviors.find(b => b.competency_area === area && b.competency_level === level);
-                                if (bMatch) {
+                                if (!behaviorText && bMatch) {
                                     behaviorText = bMatch.behavior_text;
-                                } else {
+                                } else if (!behaviorText) {
                                     behaviorText = `(ยังไม่มีคำอธิบายพฤติกรรมในฐานข้อมูลสำหรับด้าน ${area} ระดับ ${level})`;
                                 }
 
