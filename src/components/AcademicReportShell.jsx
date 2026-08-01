@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart3, FileBarChart2, FileSpreadsheet, GraduationCap } from 'lucide-react';
+import { BarChart3, FileBarChart2, FileSpreadsheet, GraduationCap } from 'lucide-react';
 import Layout from './Layout';
 import { useAuth } from '../AuthContext';
 
@@ -16,7 +16,6 @@ export default function AcademicReportShell({ title, description, actions, child
     const location = useLocation();
     const { currentUser } = useAuth();
     const role = currentUser?.role || 'admin';
-    const homePath = role === 'executive' ? '/executive' : '/admin';
     const visibleReports = REPORTS.filter(report => report.roles.includes(role));
 
     return (
@@ -32,8 +31,7 @@ export default function AcademicReportShell({ title, description, actions, child
                 <div className="report-controls mb-6 space-y-4">
                     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <button onClick={() => navigate(homePath)} className="mb-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับ Dashboard</button>
-                            <h2 className="text-2xl font-extrabold text-slate-950">{title}</h2>
+                            <h1 className="text-2xl font-extrabold text-slate-950">{title}</h1>
                             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
                         </div>
                         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

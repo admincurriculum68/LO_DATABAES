@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ChevronRight, Plus, Search, UserPlus, Users, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Check, ChevronRight, Plus, Search, UserPlus, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
@@ -20,7 +19,6 @@ const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} $
 export default function LearningGroupManager() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
-    const navigate = useNavigate();
     const [groups, setGroups] = useState([]);
     const [students, setStudents] = useState([]);
     const [teachers, setTeachers] = useState([]);
@@ -229,7 +227,7 @@ export default function LearningGroupManager() {
     return (
         <Layout title="จัดการกลุ่มเรียน">
             <div className="mx-auto max-w-[1680px] space-y-5 pb-12">
-                <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><button onClick={() => navigate('/admin')} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button><div><h1 className="text-xl font-extrabold text-slate-950">ห้องประจำชั้นและกลุ่มเรียนเป็นคนละส่วน</h1><p className="mt-1 text-sm text-slate-600">สร้างกลุ่มแบบรวมหลายห้อง แบ่งกลุ่มย่อย หรือเลือกนักเรียนรายบุคคลได้ โดยไม่เปลี่ยนห้องประจำชั้น</p></div></div><button onClick={() => setShowCreate(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white"><Plus className="h-4 w-4" />สร้างกลุ่มใหม่</button></header>
+                <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-2xl font-extrabold text-slate-950">จัดการกลุ่มเรียน</h1><p className="mt-1 text-sm leading-6 text-slate-600">สร้างกลุ่มแบบรวมหลายห้อง แบ่งกลุ่มย่อย หรือเลือกนักเรียนรายบุคคลได้ โดยไม่เปลี่ยนห้องประจำชั้น</p></div><button onClick={() => setShowCreate(true)} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-extrabold"><Plus className="h-4 w-4" />สร้างกลุ่มใหม่</button></header>
 
                 {showCreate && <form onSubmit={createGroup} className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
                     <div className="flex items-center justify-between"><div><h2 className="font-extrabold text-slate-950">สร้างกลุ่มเรียนแบบยืดหยุ่น</h2><p className="mt-1 text-xs text-slate-700">กลุ่มรายวิชาและกิจกรรมต้องเชื่อมกับรายการที่ใช้ประเมิน เพื่อให้นักเรียนปรากฏในหน้าครูทันที</p></div><button type="button" onClick={() => setShowCreate(false)} className="flex h-11 w-11 items-center justify-center rounded-xl text-blue-700 hover:bg-blue-100" aria-label="ปิดแบบฟอร์มสร้างกลุ่ม"><X className="h-5 w-5" /></button></div>

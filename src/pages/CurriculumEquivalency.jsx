@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Save, Scale, Search } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, Save, Scale, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
@@ -12,7 +11,6 @@ const EMPTY_FORM = { source_competency_area: '', source_evidence: '', target_lea
 export default function CurriculumEquivalency() {
     const { currentUser } = useAuth();
     const { academicYear } = useAcademic();
-    const navigate = useNavigate();
     const [students, setStudents] = useState([]);
     const [studentId, setStudentId] = useState('');
     const [query, setQuery] = useState('');
@@ -84,7 +82,7 @@ export default function CurriculumEquivalency() {
     return (
         <Layout title="เทียบผลการเรียน 2568 ไป 2551">
             <div className="mx-auto max-w-7xl space-y-5 pb-12">
-                <header className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><button onClick={() => navigate('/admin')} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button><div><h1 className="flex items-center gap-2 text-xl font-extrabold text-slate-950"><Scale className="h-6 w-6 text-indigo-700" />เทียบผลการเรียน หลักสูตร 2568 → 2551</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">บันทึกหลักฐานต้นทางและผลปลายทางเป็นรายบุคคล ระบบไม่แปลงผลอัตโนมัติ การรับรองต้องใช้ดุลยพินิจฝ่ายวิชาการและมีเหตุผลตรวจสอบได้</p></div></header>
+                <header className="border-b border-slate-200 pb-5"><h1 className="flex items-center gap-2 text-2xl font-extrabold text-slate-950"><Scale className="h-6 w-6 text-indigo-700" />เทียบผลการเรียน หลักสูตร 2568 → 2551</h1><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">บันทึกหลักฐานต้นทางและผลปลายทางเป็นรายบุคคล ระบบไม่แปลงผลอัตโนมัติ การรับรองต้องใช้ดุลยพินิจฝ่ายวิชาการและมีเหตุผลตรวจสอบได้</p></header>
                 <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
                     <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="border-b border-slate-200 p-4"><label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหารหัส ชื่อ หรือห้อง" className="min-h-10 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm" /></label></div><div className="max-h-[650px] divide-y divide-slate-100 overflow-y-auto">{visibleStudents.map(student => <button key={student.student_id} onClick={() => setStudentId(student.student_id)} className={`w-full p-4 text-left ${studentId === student.student_id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}><p className="font-extrabold text-slate-900">{student.prefix || ''}{student.first_name} {student.last_name}</p><p className="mt-1 text-xs text-slate-500">{student.student_code || '-'} · {student.current_room || 'ไม่ระบุห้อง'}</p></button>)}</div></aside>
                     <main className="space-y-5">

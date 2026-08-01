@@ -30,7 +30,12 @@ export default function Layout({ children, title, onActionClick, actionText, act
     const navigationByRole = {
         admin: [
             { label: 'หน้าหลัก', path: '/admin', exact: true },
-            { label: 'ตั้งค่าข้อมูล', path: '/admin/setup' },
+            {
+                label: 'ตั้งค่าข้อมูล',
+                path: '/admin/setup',
+                tabs: ['data', 'import', 'mapping', 'enrollment', 'promotion'],
+                relatedPaths: ['/admin/learning-contexts', '/admin/subject-teachers', '/admin/curriculum-equivalency'],
+            },
             { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
             { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
             { label: 'รับรองผล', path: '/admin/approval' },
@@ -47,7 +52,10 @@ export default function Layout({ children, title, onActionClick, actionText, act
     };
     const navigation = navigationByRole[currentUser?.role] || [];
     const isActive = item => {
+        const activeAdminTab = location.pathname === '/admin' ? new URLSearchParams(location.search).get('tab') : null;
         if (item.tab) return location.pathname === '/admin' && new URLSearchParams(location.search).get('tab') === item.tab;
+        if (item.tabs?.includes(activeAdminTab)) return true;
+        if (item.relatedPaths?.some(path => location.pathname.startsWith(path))) return true;
         if (item.exact) return location.pathname === item.path && !location.search;
         return location.pathname.startsWith(item.path);
     };

@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { Settings, Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, LayoutDashboard, GraduationCap, CheckCircle, BookOpen, FileBarChart2, BarChart3, UsersRound, ArrowUpCircle, ShieldCheck, Database, School, Lock } from 'lucide-react';
+import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -14,13 +14,13 @@ import { CBE_CAPABILITIES_2568 } from '../constants/curriculum2568';
 import FlexibleImportWizard from '../components/FlexibleImportWizard';
 
 const WORKSPACE_TABS = [
-    { id: 'overview', label: 'Dashboard', shortLabel: 'หน้าหลัก', description: 'กลับไปดูภาพรวมงานวิชาการ', icon: LayoutDashboard },
-    { id: 'data', label: 'ข้อมูลสถานศึกษา', shortLabel: 'ข้อมูล', description: 'ตรวจสอบและแก้ไขข้อมูลครู นักเรียน วิชา และ LO', icon: Database },
-    { id: 'import', label: 'ตั้งค่าและเพิ่มข้อมูล', shortLabel: 'เพิ่มข้อมูล', description: 'เพิ่มข้อมูลจาก DMC หรือ Excel รูปแบบใดก็ได้ด้วยตัวช่วยทีละขั้น', icon: Upload },
-    { id: 'mapping', label: 'กำหนด LO ของวิชา', shortLabel: 'กำหนด LO', description: 'เลือกผลลัพธ์การเรียนรู้ที่ใช้ประเมินในแต่ละวิชา', icon: LinkIcon },
-    { id: 'enrollment', label: 'จัดกลุ่มเรียน', shortLabel: 'กลุ่มเรียน', description: 'จัดนักเรียนเข้าวิชาและตรวจสอบรายชื่อในแต่ละกลุ่ม', icon: Users },
-    { id: 'progress', label: 'ติดตามการรายงานผลการเรียน', shortLabel: 'รายงานผล', description: 'ตรวจสอบความก้าวหน้าของครูผู้สอนและแต่ละวิชา', icon: CheckCircle },
-    { id: 'promotion', label: 'เลื่อนชั้นและจัดห้อง', shortLabel: 'เลื่อนชั้น', description: 'ปรับระดับชั้นและห้องเรียนสำหรับปีการศึกษาถัดไป', icon: ArrowUpCircle },
+    { id: 'overview', label: 'หน้าหลักฝ่ายวิชาการ', description: 'ภาพรวมและงานที่ควรดำเนินการต่อ' },
+    { id: 'data', label: 'ข้อมูลสถานศึกษา', description: 'ตรวจสอบและแก้ไขข้อมูลครู นักเรียน วิชา และ LO' },
+    { id: 'import', label: 'ตั้งค่าและเพิ่มข้อมูล', description: 'เพิ่มข้อมูลจาก DMC หรือ Excel รูปแบบใดก็ได้ด้วยตัวช่วยทีละขั้น' },
+    { id: 'mapping', label: 'กำหนด LO ของวิชา', description: 'เลือกผลลัพธ์การเรียนรู้ที่ใช้ประเมินในแต่ละวิชา' },
+    { id: 'enrollment', label: 'จัดนักเรียนเข้ารายวิชา', description: 'จัดนักเรียนเข้าวิชาและตรวจสอบรายชื่อในแต่ละกลุ่ม' },
+    { id: 'progress', label: 'ติดตามการรายงานผลการเรียน', description: 'ตรวจสอบความก้าวหน้าของครูผู้สอนและแต่ละวิชา' },
+    { id: 'promotion', label: 'เลื่อนชั้นและจัดห้อง', description: 'ปรับระดับชั้นและห้องเรียนสำหรับปีการศึกษาถัดไป' },
 ];
 
 const SCHOOL_SCOPED_TABLES = ['users_students', 'users_teachers', 'subjects', 'learning_outcomes'];
@@ -164,6 +164,109 @@ export default function AdminDashboard() {
     // Evaluation Progress States
     const [evalProgress, setEvalProgress] = useState([]);
     const [loadingProgress, setLoadingProgress] = useState(false);
+    const [progressLoaded, setProgressLoaded] = useState(false);
+    const [progressError, setProgressError] = useState('');
+
+    const loadEvaluationProgress = useCallback(async () => {
+        if (!currentUser?.school_id) return;
+
+        setLoadingProgress(true);
+        setProgressError('');
+        try {
+            const { data: subs, error: subjectsError } = await supabase
+                .from('subjects')
+                .select('subject_id, subject_name, grade_level, semester, academic_year, teacher_id, users_teachers(prefix, first_name, last_name)')
+                .eq('school_id', currentUser.school_id)
+                .eq('academic_year', academicYear)
+                .eq('semester', semester)
+                .order('subject_name');
+            if (subjectsError) throw subjectsError;
+
+            const subjectIds = (subs || []).map(subject => subject.subject_id);
+            if (subjectIds.length === 0) {
+                setEvalProgress([]);
+                return;
+            }
+
+            const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
+                .from('student_enrollments')
+                .select('enrollment_id, subject_id')
+                .in('subject_id', batch)
+                .eq('enrollment_status', 'active')
+                .range(from, to));
+
+            const loMaps = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
+                .from('subject_lo_mapping')
+                .select('subject_id, lo_id')
+                .in('subject_id', batch)
+                .range(from, to));
+
+            const enrollmentIds = enrolls.map(enrollment => enrollment.enrollment_id);
+            const evaluations = enrollmentIds.length > 0
+                ? await fetchAllByIn(enrollmentIds, (batch, from, to) => supabase
+                    .from('lo_evaluations')
+                    .select('enrollment_id, lo_id, evidence_note')
+                    .in('enrollment_id', batch)
+                    .range(from, to))
+                : [];
+
+            const enrollmentCountBySubject = new Map();
+            const subjectByEnrollment = new Map();
+            enrolls.forEach(enrollment => {
+                enrollmentCountBySubject.set(enrollment.subject_id, (enrollmentCountBySubject.get(enrollment.subject_id) || 0) + 1);
+                subjectByEnrollment.set(enrollment.enrollment_id, enrollment.subject_id);
+            });
+
+            const loIdsBySubject = new Map();
+            loMaps.forEach(mapping => {
+                if (!loIdsBySubject.has(mapping.subject_id)) loIdsBySubject.set(mapping.subject_id, new Set());
+                loIdsBySubject.get(mapping.subject_id).add(mapping.lo_id);
+            });
+
+            const filledCountBySubject = new Map();
+            evaluations.forEach(evaluation => {
+                if (!evaluation.evidence_note?.trim()) return;
+                const subjectId = subjectByEnrollment.get(evaluation.enrollment_id);
+                if (!subjectId || !loIdsBySubject.get(subjectId)?.has(evaluation.lo_id)) return;
+                filledCountBySubject.set(subjectId, (filledCountBySubject.get(subjectId) || 0) + 1);
+            });
+
+            const progress = (subs || []).map(subject => {
+                const studentCount = enrollmentCountBySubject.get(subject.subject_id) || 0;
+                const loCount = loIdsBySubject.get(subject.subject_id)?.size || 0;
+                const totalCells = studentCount * loCount;
+                const filledCells = filledCountBySubject.get(subject.subject_id) || 0;
+                const percent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
+                const teacher = subject.users_teachers;
+
+                return {
+                    ...subject,
+                    teacherName: teacher ? `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}` : 'ยังไม่มอบหมาย',
+                    studentCount,
+                    loCount,
+                    totalCells,
+                    filledCells,
+                    percent,
+                };
+            }).sort((a, b) => a.percent - b.percent || (a.subject_name || '').localeCompare(b.subject_name || '', 'th'));
+
+            setEvalProgress(progress);
+        } catch (error) {
+            const message = error.message || 'ไม่สามารถโหลดสถานะการรายงานผลได้';
+            setProgressError(message);
+            toast.error('โหลดข้อมูลไม่สำเร็จ: ' + message);
+        } finally {
+            setLoadingProgress(false);
+            setProgressLoaded(true);
+        }
+    }, [academicYear, currentUser?.school_id, semester]);
+
+    useEffect(() => {
+        if (activeTab !== 'progress') return;
+        setProgressLoaded(false);
+        setEvalProgress([]);
+        loadEvaluationProgress();
+    }, [activeTab, loadEvaluationProgress]);
 
     // Promotion States
     const [promoFromRoom, setPromoFromRoom] = useState('');
@@ -994,202 +1097,11 @@ export default function AdminDashboard() {
 
     return (
         <Layout title="งานบริหารวิชาการ">
-            {/* Overview Stats Dashboard */}
-            <div className="hidden">
-                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
-                    <div>
-                        <p className="text-indigo-100 font-medium mb-1">นักเรียนทั้งหมด</p>
-                        <h3 className="text-4xl font-extrabold">{stats.students.toLocaleString()} <span className="text-lg font-normal">คน</span></h3>
-                    </div>
-                    <div className="bg-white/20 p-4 rounded-2xl"><Users className="w-8 h-8" /></div>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
-                    <div>
-                        <p className="text-blue-100 font-medium mb-1">ครูและบุคลากร</p>
-                        <h3 className="text-4xl font-extrabold">{stats.teachers.toLocaleString()} <span className="text-lg font-normal">คน</span></h3>
-                    </div>
-                    <div className="bg-white/20 p-4 rounded-2xl"><GraduationCap className="w-8 h-8" /></div>
-                </div>
-                <div className="bg-gradient-to-br from-slate-700 to-slate-900 rounded-3xl p-6 text-white shadow-lg flex items-center justify-between">
-                    <div>
-                        <p className="text-slate-200 font-medium mb-1">รายวิชาที่เปิดสอน</p>
-                        <h3 className="text-4xl font-extrabold">{stats.subjects.toLocaleString()} <span className="text-lg font-normal">วิชา</span></h3>
-                    </div>
-                    <div className="bg-white/20 p-4 rounded-2xl"><BookOpen className="w-8 h-8" /></div>
-                </div>
-            </div>
-
-            {/* Setup Checklist — shown until all steps complete */}
-            {(stats.teachers === 0 || stats.students === 0 || stats.subjects === 0) && (
-                <div className="hidden">
-                    <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100 flex items-center gap-3">
-                        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700 shrink-0"><Settings className="h-4 w-4" /></div>
-                        <div>
-                            <p className="font-extrabold text-amber-900 text-sm">การเตรียมข้อมูลก่อนเริ่มประเมินผล</p>
-                            <p className="text-xs text-amber-700 font-medium">ดำเนินการตามขั้นตอนให้ครบเพื่อให้โครงสร้างการประเมินพร้อมใช้งาน</p>
-                        </div>
-                    </div>
-                    <div className="p-6">
-                        <div className="space-y-3">
-                            {[
-                                {
-                                    step: 1,
-                                    done: stats.teachers > 0,
-                                    label: 'นำเข้าข้อมูลครูและบุคลากร',
-                                    desc: `${stats.teachers > 0 ? `มีข้อมูลครูและบุคลากร ${stats.teachers} คน` : 'ยังไม่มีข้อมูลครูและบุคลากร'}`,
-                                    action: () => openWorkspaceTab('import'),
-                                    actionLabel: 'นำเข้าข้อมูลครู'
-                                },
-                                {
-                                    step: 2,
-                                    done: stats.students > 0,
-                                    label: 'นำเข้าข้อมูลนักเรียน',
-                                    desc: `${stats.students > 0 ? `มีข้อมูลนักเรียน ${stats.students} คน` : 'ยังไม่มีข้อมูลนักเรียน'}`,
-                                    action: () => openWorkspaceTab('import'),
-                                    actionLabel: 'นำเข้าข้อมูลนักเรียน'
-                                },
-                                {
-                                    step: 3,
-                                    done: stats.subjects > 0,
-                                    label: 'กำหนดรายวิชาและเชื่อมโยงผลลัพธ์การเรียนรู้',
-                                    desc: `${stats.subjects > 0 ? `มีรายวิชาที่เปิดสอน ${stats.subjects} วิชา` : 'ยังไม่มีข้อมูลรายวิชาที่เปิดสอน'}`,
-                                    action: () => openWorkspaceTab('import'),
-                                    actionLabel: 'กำหนดรายวิชา'
-                                },
-                                {
-                                    step: 4,
-                                    done: stats.subjects > 0 && stats.students > 0,
-                                    label: 'จัดนักเรียนเข้าชั้นเรียนและรายวิชา',
-                                    desc: 'กำหนดห้องเรียนและรายวิชาที่นักเรียนลงทะเบียน',
-                                    action: () => openWorkspaceTab('enrollment'),
-                                    actionLabel: 'จัดนักเรียนเข้ารายวิชา'
-                                },
-                            ].map(item => (
-                                <div key={item.step} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${item.done ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30'}`}>
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-extrabold shrink-0 ${item.done ? 'bg-green-500 text-white' : 'bg-white border-2 border-slate-300 text-slate-500'}`}>
-                                        {item.done ? '✓' : item.step}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`font-bold text-sm ${item.done ? 'text-green-800 line-through decoration-green-400' : 'text-slate-800'}`}>{item.label}</p>
-                                        <p className={`text-xs mt-0.5 ${item.done ? 'text-green-600' : 'text-slate-500'}`}>{item.desc}</p>
-                                    </div>
-                                    {!item.done && (
-                                        <button onClick={item.action} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-xl transition-all shrink-0">
-                                            {item.actionLabel}
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Admin Reports Quick Access */}
-            <div className="hidden">
-                <button
-                    onClick={() => navigate('/admin/approval')}
-                    className="mb-5 flex w-full flex-col gap-4 rounded-3xl border border-indigo-300 bg-indigo-700 p-6 text-left text-white shadow-lg shadow-indigo-950/10 transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 md:flex-row md:items-center md:justify-between"
-                >
-                    <div className="flex items-start gap-4">
-                        <div className="rounded-2xl bg-white/15 p-3" aria-hidden="true">
-                            <ShieldCheck className="h-7 w-7" />
-                        </div>
-                        <div>
-                            <p className="text-xl font-extrabold">ตรวจสอบและรับรองผลลัพธ์การเรียนรู้</p>
-                            <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-100">รวบรวมผลลัพธ์การเรียนรู้เดียวกันจากวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม เพื่อพิจารณาหลักฐานและรับรองผลของผู้เรียน</p>
-                        </div>
-                    </div>
-                    <span className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-white px-4 font-extrabold text-indigo-800">ตรวจสอบรายการรอรับรอง</span>
-                </button>
-                <button
-                    onClick={() => navigate('/admin/learning-contexts')}
-                    className="mb-5 flex w-full flex-col gap-4 rounded-2xl border border-slate-300 bg-white p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 focus:outline-none focus:ring-2 focus:ring-indigo-500 md:flex-row md:items-center md:justify-between"
-                >
-                    <div className="flex items-start gap-4">
-                        <div className="rounded-xl bg-violet-100 p-3 text-violet-700" aria-hidden="true"><LinkIcon className="h-6 w-6" /></div>
-                        <div><p className="font-extrabold text-slate-900">รูปแบบการจัดการเรียนรู้</p><p className="mt-1 text-sm leading-6 text-slate-600">กำหนดวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรม พร้อมเชื่อมโยงผลลัพธ์การเรียนรู้ที่ต้องการประเมิน</p></div>
-                    </div>
-                    <span className="font-extrabold text-indigo-700">จัดการรูปแบบการเรียนรู้</span>
-                </button>
-                <h3 className="mb-4 text-sm font-extrabold text-slate-600">รายงานสารสนเทศทางวิชาการ</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <button
-                        onClick={() => navigate('/admin/report-lo')}
-                        className="group flex items-center gap-4 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
-                    >
-                        <div className="w-12 h-12 bg-indigo-100 group-hover:bg-indigo-600 rounded-2xl flex items-center justify-center transition-colors">
-                            <FileBarChart2 className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
-                        </div>
-                        <div>
-                            <p className="font-extrabold text-slate-800">ตารางที่ 2 — ผลการประเมินรายผลลัพธ์การเรียนรู้</p>
-                            <p className="text-sm text-slate-500 mt-0.5">สรุปผลการประเมินแต่ละผลลัพธ์การเรียนรู้ จำแนกตามรายวิชาที่เชื่อมโยง</p>
-                        </div>
-                    </button>
-                    <button
-                        onClick={() => navigate('/admin/report-competency')}
-                        className="group flex items-center gap-4 bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
-                    >
-                        <div className="w-12 h-12 bg-purple-100 group-hover:bg-purple-600 rounded-2xl flex items-center justify-center transition-colors">
-                            <BarChart3 className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
-                        </div>
-                        <div>
-                            <p className="font-extrabold text-slate-800">ตารางที่ 3 — ผลการประเมินรายด้านความสามารถ</p>
-                            <p className="text-sm text-slate-500 mt-0.5">สรุปผลการประเมินผู้เรียนตามด้านความสามารถจากรายวิชาที่เชื่อมโยง</p>
-                        </div>
-                    </button>
-                    <button
-                        onClick={() => navigate('/admin/yearly-report')}
-                        className="group flex items-center gap-4 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
-                    >
-                        <div className="w-12 h-12 bg-emerald-100 group-hover:bg-emerald-600 rounded-2xl flex items-center justify-center transition-colors">
-                            <GraduationCap className="w-6 h-6 text-emerald-600 group-hover:text-white transition-colors" />
-                        </div>
-                        <div>
-                            <p className="font-extrabold text-slate-800">รายงานผลการเรียนรายบุคคล (ปพ.๖)</p>
-                            <p className="text-sm text-slate-500 mt-0.5">บันทึกผลและพิมพ์แบบรายงานผลการเรียนชั้นปีรายบุคคล</p>
-                        </div>
-                    </button>
-                    <button
-                        onClick={() => navigate('/admin/phase-report')}
-                        className="group flex items-center gap-4 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-300 rounded-2xl p-5 text-left transition-all shadow-sm hover:shadow-md"
-                    >
-                        <div className="w-12 h-12 bg-teal-100 group-hover:bg-teal-600 rounded-2xl flex items-center justify-center transition-colors">
-                            <GraduationCap className="h-6 w-6 text-teal-700 group-hover:text-white" />
-                        </div>
-                        <div>
-                            <p className="font-extrabold text-slate-800">รายงานผลการเรียนจบช่วงชั้น</p>
-                            <p className="text-sm text-slate-500 mt-0.5">บันทึกและพิมพ์ผลจบช่วงชั้นตอนต้น (ป.1–ป.3) / ตอนปลาย (ป.4–ป.6)</p>
-                        </div>
-                    </button>
-                </div>
-            </div>
-
-
             <div className="academic-workspace mb-10 space-y-5">
-                <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div><button onClick={() => openWorkspaceTab('overview')} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><LayoutDashboard className="h-4 w-4" /> กลับหน้าหลัก</button><h2 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h2><p className="mt-1 text-sm text-slate-600">{activeWorkspace.description}</p></div>
-                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600">ภาคเรียนที่ <strong className="text-slate-900">{semester}/{academicYear}</strong></div>
+                <header className="border-b border-slate-200 pb-5">
+                    <h1 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h1>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{activeWorkspace.description}</p>
                 </header>
-
-                <nav className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm" aria-label="เมนูงานบริหารวิชาการ">
-                    <div className="flex min-w-max gap-1">
-                        {WORKSPACE_TABS.map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => openWorkspaceTab(tab.id)}
-                                className={`flex min-h-11 items-center gap-2 rounded-xl px-3.5 text-sm font-bold whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                                    activeTab === tab.id 
-                                    ? 'bg-indigo-700 text-white'
-                                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                                }`}
-                            >
-                                <tab.icon className="h-4 w-4 flex-shrink-0" />
-                                <span>{tab.shortLabel}</span>
-                            </button>
-                        ))}
-                    </div>
-                </nav>
 
                 {/* Main Content Area */}
                 <div className="min-w-0">
@@ -1490,7 +1402,7 @@ export default function AdminDashboard() {
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><LinkIcon className="w-6 h-6 mr-3 text-indigo-500" /> กำหนดผลลัพธ์การเรียนรู้ของวิชา</h2>
+                                        <h2 className="flex items-center text-lg font-extrabold text-slate-900"><LinkIcon className="mr-2 h-5 w-5 text-indigo-600" />เลือกวิชาและ LO ที่ใช้ประเมิน</h2>
                                         <p className="text-slate-600 mt-1 text-sm">เลือกวิชา แล้วทำเครื่องหมาย LO ที่ครูผู้สอนต้องประเมิน</p>
                                     </div>
                                     <div className="w-full md:w-1/3">
@@ -1572,8 +1484,8 @@ export default function AdminDashboard() {
                         {activeTab === 'enrollment' && (
                             <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><Users className="w-6 h-6 mr-3 text-indigo-500" /> จัดนักเรียนเข้ากลุ่มเรียน</h2>
-                                    <p className="text-slate-600 text-sm">เลือกวิชา จากนั้นเพิ่มนักเรียนเป็นรายคนหรือเพิ่มพร้อมกันทั้งห้อง</p>
+                                    <h2 className="mb-2 flex items-center text-lg font-extrabold text-slate-900"><Users className="mr-2 h-5 w-5 text-indigo-600" />เลือกรายวิชาและจัดรายชื่อนักเรียน</h2>
+                                    <p className="text-sm text-slate-600">เพิ่มนักเรียนรายบุคคลหรือทั้งห้อง โดยไม่เปลี่ยนห้องประจำชั้น</p>
                                 </div>
 
                                 <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -1788,99 +1700,43 @@ export default function AdminDashboard() {
                         {/* --- TAB 5: EVALUATION PROGRESS --- */}
                         {activeTab === 'progress' && (
                             <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><CheckCircle className="w-6 h-6 mr-3 text-emerald-500" /> ติดตามการรายงานผลการเรียน</h2>
-                                    <p className="text-slate-500 font-medium text-sm">ติดตามความครบถ้วนของข้อความพฤติกรรมราย LO จำแนกตามครูผู้สอนและรายวิชา</p>
+                                <div className="mb-6 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <h2 className="flex items-center text-lg font-extrabold text-slate-900"><CheckCircle className="mr-2 h-5 w-5 text-emerald-600" />สถานะรายวิชาทั้งหมด</h2>
+                                        <p className="mt-1 text-sm leading-6 text-slate-600">แสดงวิชาที่ยังรายงานไม่ครบก่อน เพื่อให้ติดตามงานต่อได้ทันที</p>
+                                    </div>
                                     <button
-                                        onClick={async () => {
-                                            setLoadingProgress(true);
-                                            try {
-                                                // Load all subjects with teacher info
-                                                const { data: subs } = await supabase
-                                                    .from('subjects')
-                                                    .select('subject_id, subject_name, grade_level, semester, academic_year, teacher_id, users_teachers(prefix, first_name, last_name)')
-                                                    .eq('school_id', currentUser.school_id)
-                                                    .eq('academic_year', academicYear)
-                                                    .eq('semester', semester)
-                                                    .order('subject_name');
-                                                if (!subs) throw new Error('ไม่พบข้อมูลรายวิชา');
-
-                                                const subjectIds = (subs || []).map(s => s.subject_id);
-                                                if (subjectIds.length === 0) { setEvalProgress([]); setLoadingProgress(false); return; }
-
-                                                // Load enrollments
-                                                const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                                                    .from('student_enrollments')
-                                                    .select('enrollment_id, subject_id')
-                                                    .in('subject_id', batch)
-                                                    .eq('enrollment_status', 'active')
-                                                    .range(from, to));
-
-                                                // Load LO mappings
-                                                const loMaps = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                                                    .from('subject_lo_mapping')
-                                                    .select('subject_id, lo_id')
-                                                    .in('subject_id', batch)
-                                                    .range(from, to));
-
-                                                // Load evaluations
-                                                const enrollIds = (enrolls || []).map(e => e.enrollment_id);
-                                                let evals = [];
-                                                if (enrollIds.length > 0) {
-                                                    evals = await fetchAllByIn(enrollIds, (batch, from, to) => supabase
-                                                        .from('lo_evaluations')
-                                                        .select('enrollment_id, lo_id, evidence_note')
-                                                        .in('enrollment_id', batch)
-                                                        .range(from, to));
-                                                }
-
-                                                // Calculate per subject
-                                                const progress = (subs || []).map(sub => {
-                                                    const subEnrolls = enrolls.filter(e => e.subject_id === sub.subject_id);
-                                                    const subLOs = loMaps.filter(m => m.subject_id === sub.subject_id);
-                                                    const totalCells = subEnrolls.length * subLOs.length;
-                                                    const subEnrollIds = new Set(subEnrolls.map(e => e.enrollment_id));
-                                                    const subLoIds = new Set(subLOs.map(l => l.lo_id));
-                                                    const filled = evals.filter(ev =>
-                                                        subEnrollIds.has(ev.enrollment_id) && subLoIds.has(ev.lo_id) && ev.evidence_note?.trim()
-                                                    ).length;
-                                                    const pct = totalCells > 0 ? Math.round((filled / totalCells) * 100) : 0;
-                                                    const teacher = sub.users_teachers;
-                                                    return {
-                                                        ...sub,
-                                                        teacherName: teacher ? `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}` : 'ยังไม่มอบหมาย',
-                                                        studentCount: subEnrolls.length,
-                                                        loCount: subLOs.length,
-                                                        totalCells,
-                                                        filledCells: filled,
-                                                        percent: pct
-                                                    };
-                                                });
-
-                                                setEvalProgress(progress);
-                                            } catch (err) {
-                                                toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
-                                            } finally {
-                                                setLoadingProgress(false);
-                                            }
-                                        }}
-                                        className="mt-4 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+                                        type="button"
+                                        onClick={loadEvaluationProgress}
+                                        disabled={loadingProgress}
+                                        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
                                     >
-                                        <CheckCircle className="w-4 h-4" />
-                                        แสดงสถานะล่าสุด
+                                        <RefreshCw className={`h-4 w-4 ${loadingProgress ? 'animate-spin' : ''}`} />
+                                        {loadingProgress ? 'กำลังอัปเดต' : 'รีเฟรชข้อมูล'}
                                     </button>
                                 </div>
 
-                                {loadingProgress ? (
-                                    <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
+                                {loadingProgress && !progressLoaded ? (
+                                    <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-sm font-bold text-slate-600" role="status">
+                                        <div className="loader scale-125"></div>
+                                        กำลังรวบรวมสถานะการรายงานผล
+                                    </div>
+                                ) : progressError ? (
+                                    <div className="surface-danger rounded-2xl border border-rose-200 px-5 py-10 text-center" role="alert">
+                                        <p className="font-extrabold text-rose-950">โหลดสถานะการรายงานผลไม่สำเร็จ</p>
+                                        <p className="mt-1 text-sm text-rose-800">{progressError}</p>
+                                        <button type="button" onClick={loadEvaluationProgress} className="action-danger mt-4 min-h-11 rounded-xl px-4 text-sm font-extrabold">ลองโหลดอีกครั้ง</button>
+                                    </div>
                                 ) : evalProgress.length === 0 ? (
-                                    <div className="text-center py-20 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                        เลือก “แสดงสถานะล่าสุด” เพื่อดูความก้าวหน้าของทุกวิชา
+                                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-16 text-center">
+                                        <p className="font-extrabold text-slate-800">ยังไม่มีรายวิชาในภาคเรียนนี้</p>
+                                        <p className="mt-1 text-sm text-slate-600">ตรวจสอบปีการศึกษาและภาคเรียน หรือเพิ่มข้อมูลรายวิชาก่อนติดตามผล</p>
+                                        <button type="button" onClick={() => navigate('/admin/setup')} className="mt-4 min-h-11 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-extrabold text-indigo-700 hover:bg-indigo-50">ไปที่ตั้งค่าข้อมูล</button>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {/* Summary bar */}
-                                        <div className="grid grid-cols-3 gap-4 mb-6">
+                                        <div className="mb-6 grid gap-3 sm:grid-cols-3">
                                             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
                                                 <p className="text-3xl font-extrabold text-emerald-700">{evalProgress.filter(p => p.percent === 100).length}</p>
                                                 <p className="text-xs font-bold text-emerald-600">ประเมินครบแล้ว</p>
@@ -1944,8 +1800,8 @@ export default function AdminDashboard() {
                         {activeTab === 'promotion' && (
                             <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                                 <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="text-xl font-extrabold text-slate-800 flex items-center mb-2"><ArrowUpCircle className="w-6 h-6 mr-3 text-indigo-500" /> เลื่อนชั้นและจัดห้องเรียนสำหรับปีการศึกษาถัดไป</h2>
-                                    <p className="text-slate-500 font-medium text-sm">ปรับระดับชั้นและห้องเรียนของนักเรียนเป็นกลุ่มเมื่อสิ้นสุดปีการศึกษา</p>
+                                    <h2 className="mb-2 flex items-center text-lg font-extrabold text-slate-900"><ArrowUpCircle className="mr-2 h-5 w-5 text-indigo-600" />เลือกนักเรียนและกำหนดห้องใหม่</h2>
+                                    <p className="text-sm font-medium text-slate-600">จัดการทั้งห้องหรือเลือกเฉพาะนักเรียนที่ย้ายห้องและต้องดูแลรายบุคคล</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">

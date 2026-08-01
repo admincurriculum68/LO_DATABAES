@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, Save, Search, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Check, Save, Search, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
@@ -12,7 +11,6 @@ const pairKey = (teacherId, room) => `${teacherId}::${room}`;
 export default function SubjectTeacherManager() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
-    const navigate = useNavigate();
     const [subjects, setSubjects] = useState([]);
     const [teachers, setTeachers] = useState([]);
     const [subjectId, setSubjectId] = useState('');
@@ -124,9 +122,9 @@ export default function SubjectTeacherManager() {
     return (
         <Layout title="กำหนดครูประจำรายวิชา">
             <div className="mx-auto max-w-6xl space-y-5 pb-12">
-                <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3"><button onClick={() => navigate('/admin')} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button><div><h1 className="text-xl font-extrabold text-slate-950">กำหนดครูผู้สอนและห้องเรียน</h1><p className="mt-1 text-sm text-slate-600">หนึ่งรายวิชามีครูได้มากกว่า 1 คน และกำหนดขอบเขตห้องของครูแต่ละคนได้</p></div></div>
-                    <button onClick={saveAssignments} disabled={!subjectId || saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white disabled:opacity-40"><Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกการมอบหมาย'}</button>
+                <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div><h1 className="text-2xl font-extrabold text-slate-950">กำหนดครูผู้สอนและห้องเรียน</h1><p className="mt-1 text-sm leading-6 text-slate-600">หนึ่งรายวิชามีครูได้มากกว่า 1 คน และกำหนดขอบเขตห้องของครูแต่ละคนได้</p></div>
+                    <button onClick={saveAssignments} disabled={!subjectId || saving} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-extrabold disabled:opacity-40"><Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกการมอบหมาย'}</button>
                 </header>
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

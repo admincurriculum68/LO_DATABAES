@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertCircle,
-    ArrowLeft,
     BookOpen,
     Check,
     CheckCircle2,
@@ -22,12 +21,10 @@ import {
     Save,
     Search,
     ShieldCheck,
-    Sparkles,
     User,
     Users,
     X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
@@ -110,7 +107,6 @@ function LoadingRows() {
 export default function LearningContextManager() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
-    const navigate = useNavigate();
     const detailRef = useRef(null);
     const [learningFormats, setLearningFormats] = useState([]);
     const [teachers, setTeachers] = useState([]);
@@ -486,48 +482,19 @@ export default function LearningContextManager() {
         <Layout title="รูปแบบการจัดการเรียนรู้">
             <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
                 
-                {/* Top Header Hero Banner */}
-                <header className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl ring-1 ring-white/10">
-                    <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
-                    <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
-
-                    <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="space-y-3 max-w-3xl">
-                            <div className="flex flex-wrap items-center gap-2.5">
-                                <button
-                                    onClick={() => navigate('/admin')}
-                                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1 text-xs font-semibold text-white backdrop-blur-md transition hover:bg-white/20"
-                                >
-                                    <ArrowLeft className="h-3.5 w-3.5" /> กลับ Dashboard วิชาการ
-                                </button>
-                                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-200 border border-indigo-400/20 backdrop-blur-md">
-                                    <Sparkles className="h-3.5 w-3.5 text-indigo-300" /> หลักสูตรฐานสมรรถนะ พ.ศ. 2568
-                                </span>
-                            </div>
-
-                            <h1 className="text-2xl font-black tracking-tight sm:text-3xl text-white">
-                                รูปแบบการจัดการเรียนรู้ (Learning Contexts)
-                            </h1>
-
-                            <p className="text-xs sm:text-sm leading-relaxed text-indigo-100/80">
-                                จัดการรายวิชา, หน่วยการเรียนรู้, โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมระบุ <strong>กลุ่มวิชา</strong> แยกช่วงชั้น ป.ต้น/ป.ปลาย และเชื่อมโยง LO สำหรับประเมิน
-                            </p>
+                <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="max-w-3xl">
+                        <h1 className="text-2xl font-extrabold text-slate-950">รูปแบบการจัดการเรียนรู้</h1>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">จัดการวิชา หน่วยการเรียนรู้ โครงงาน และกิจกรรมพัฒนาผู้เรียน พร้อมเชื่อมโยง LO ที่ใช้ประเมิน</p>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-600">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            กำหนด LO แล้ว <strong className="font-extrabold text-slate-900">{totalMappedItems}/{learningFormats.length}</strong> รายการ
                         </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className="hidden sm:flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2.5 text-xs text-white backdrop-blur-md border border-white/15">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                                <span>กำหนด LO แล้ว <strong className="font-extrabold text-emerald-300">{totalMappedItems}</strong>/{learningFormats.length} รายการ</span>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => openCreate('subject')}
-                                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500 to-indigo-700 px-5 py-3 text-xs font-black text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-600 hover:to-indigo-800"
-                            >
-                                <Plus className="h-4 w-4" /> เพิ่มรูปแบบการเรียนรู้ใหม่
-                            </button>
-                        </div>
+                        <button type="button" onClick={() => openCreate('subject')} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-extrabold">
+                            <Plus className="h-4 w-4" />เพิ่มรูปแบบใหม่
+                        </button>
                     </div>
                 </header>
 
