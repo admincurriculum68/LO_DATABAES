@@ -48,7 +48,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                     label: 'ตั้งค่าข้อมูล',
                     path: '/admin/setup',
                     tabs: ['data', 'import', 'mapping', 'enrollment', 'promotion'],
-                    relatedPaths: ['/admin/learning-contexts', '/admin/subject-teachers', '/admin/curriculum-equivalency'],
+                    relatedPaths: ['/admin/people', '/admin/learning-contexts', '/admin/subject-teachers', '/admin/curriculum-equivalency'],
                 },
                 { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
                 { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },

@@ -26,6 +26,7 @@ const SubjectTeacherManager = lazy(() => import('./pages/SubjectTeacherManager')
 const CurriculumEquivalency = lazy(() => import('./pages/CurriculumEquivalency'));
 const LearningGroupManager = lazy(() => import('./pages/LearningGroupManager'));
 const DataSetupCenter = lazy(() => import('./pages/DataSetupCenter'));
+const PeopleManager = lazy(() => import('./pages/PeopleManager'));
 
 export default function App() {
   const { currentUser } = useAuth();
@@ -137,6 +138,11 @@ export default function App() {
         <Route path="/admin/learning-groups" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <LearningGroupManager />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/people" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <PeopleManager />
           </ProtectedRoute>
         } />
         <Route path="/admin/setup" element={

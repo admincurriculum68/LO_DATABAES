@@ -70,7 +70,8 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
     ];
 
     const otherTasks = [
-        { title: 'ข้อมูลพื้นฐาน', description: 'ตรวจสอบครู นักเรียน วิชา และ LO', icon: Database, action: () => onOpenTab('data') },
+        { title: 'ครูและนักเรียน', description: 'ค้นหา แก้ไขข้อมูลรายบุคคล และกำหนดบทบาทของครู', icon: UserCheck, action: () => onNavigate('/admin/people') },
+        { title: 'ข้อมูลหลักสูตร', description: 'ตรวจสอบและแก้ไขรายวิชา LO และคำบรรยายระดับความสามารถ', icon: Database, action: () => onOpenTab('data') },
         { title: 'นำเข้าข้อมูลจากไฟล์', description: 'ใช้ไฟล์ DMC, Excel หรือ CSV ที่โรงเรียนมีอยู่', icon: Upload, action: () => onOpenTab('import') },
         { title: 'วิชา หน่วย โครงงาน และกิจกรรม', description: 'จัดการรูปแบบการเรียนรู้และจำนวนชั่วโมง', icon: BookOpenCheck, action: () => onNavigate('/admin/learning-contexts') },
         { title: 'กำหนด LO ของวิชา', description: 'เลือก LO ตามระดับชั้นที่ต้องใช้ในแต่ละวิชา', icon: Link2, action: () => onOpenTab('mapping') },
@@ -108,8 +109,8 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
 
             {!firstRun && (
                 <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="ข้อมูลภาพรวม">
-                    <MetricCard icon={GraduationCap} label="ครูและบุคลากร" value={stats.teachers} unit="คน" onClick={() => onOpenTab('data')} />
-                    <MetricCard icon={UsersRound} label="นักเรียนที่ใช้งาน" value={stats.students} unit="คน" onClick={() => onOpenTab('data')} />
+                    <MetricCard icon={GraduationCap} label="ครูและบุคลากร" value={stats.teachers} unit="คน" onClick={() => onNavigate('/admin/people')} />
+                    <MetricCard icon={UsersRound} label="นักเรียนที่ใช้งาน" value={stats.students} unit="คน" onClick={() => onNavigate('/admin/people?type=students')} />
                     <MetricCard icon={BookOpenCheck} label="วิชา หน่วย โครงงาน และกิจกรรม" value={learningFormatCount} unit="รายการ" onClick={() => onNavigate('/admin/learning-contexts')} />
                     <MetricCard icon={ClipboardCheck} label="ผลลัพธ์การเรียนรู้" value={stats.learningOutcomes} unit="LO" onClick={() => onOpenTab('mapping')} />
                 </section>

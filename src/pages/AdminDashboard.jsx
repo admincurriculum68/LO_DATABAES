@@ -16,7 +16,7 @@ import FlexibleImportWizard from '../components/FlexibleImportWizard';
 
 const WORKSPACE_TABS = [
     { id: 'overview', label: 'หน้าหลักฝ่ายวิชาการ', description: 'ภาพรวมและงานที่ควรดำเนินการต่อ' },
-    { id: 'data', label: 'ข้อมูลสถานศึกษา', description: 'ตรวจสอบและแก้ไขข้อมูลครู นักเรียน วิชา และ LO' },
+    { id: 'data', label: 'ข้อมูลหลักสูตร', description: 'ตรวจสอบและแก้ไขรายวิชา ผลลัพธ์การเรียนรู้ และคำบรรยายระดับความสามารถ' },
     { id: 'import', label: 'ตั้งค่าและเพิ่มข้อมูล', description: 'เพิ่มข้อมูลจาก DMC หรือ Excel รูปแบบใดก็ได้ด้วยตัวช่วยทีละขั้น' },
     { id: 'mapping', label: 'กำหนด LO ของวิชา', description: 'เลือกผลลัพธ์การเรียนรู้ที่ใช้ประเมินในแต่ละวิชา' },
     { id: 'enrollment', label: 'จัดนักเรียนเข้ารายวิชา', description: 'จัดนักเรียนเข้าวิชาและตรวจสอบรายชื่อในแต่ละกลุ่ม' },
@@ -41,7 +41,7 @@ const FIELD_LABELS = {
     new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด', teaching_hours: 'จำนวนชั่วโมงเรียน', is_custom_competency: 'สมรรถนะเพิ่มเติม',
 };
 
-const hiddenField = (key, table) => ['teacher_roles', 'password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'subject_id', 'lo_id', 'id'].includes(key)
+const hiddenField = (key, table) => ['teacher_roles', 'password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'teacher_id', 'subject_id', 'lo_id', 'id'].includes(key)
     || (table === 'subjects' && key === 'subject_code');
 
 const VALUE_LABELS = {
@@ -50,6 +50,8 @@ const VALUE_LABELS = {
 
 // คอลัมน์ที่แก้ไม่ได้ เพราะเป็นรหัสอ้างอิงที่ผูกกับผลการประเมินและการลงทะเบียนไว้แล้ว
 // ถ้าแก้ ข้อมูลที่เชื่อมกันอยู่จะขาดออกจากกันโดยไม่มีทางกู้คืน
+// รหัสอ้างอิงถูกซ่อนไม่ให้แสดงเป็นคอลัมน์อยู่แล้ว รายการนี้กันไว้อีกชั้น
+// เผื่อข้อมูลบางตารางส่งคีย์นี้กลับมา จะได้ไม่ถูกส่งไปแก้โดยไม่ตั้งใจ
 const READONLY_FIELDS = {
     users_teachers: ['teacher_id'],
     users_students: ['student_id'],
@@ -460,6 +462,13 @@ export default function AdminDashboard() {
             toast.error('อัปเดตไม่สำเร็จ: ' + err.message);
         }
     };
+
+    // เปิดแท็บข้อมูลหลักสูตรแล้วเลือกรายวิชาให้เลย ไม่ต้องให้ผู้ใช้เจอหน้าว่างก่อน
+    // วางไว้ที่ effect เพราะเข้าหน้านี้ผ่าน URL ตรงได้ ไม่ได้ผ่านการกดแท็บเสมอไป
+    useEffect(() => {
+        if (activeTab === 'data' && !selectedTable && !loadingData) loadTableData('subjects');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, selectedTable]);
 
     // Filtered data for real-time search
     const filteredTableData = useMemo(() => {
@@ -1065,8 +1074,6 @@ export default function AdminDashboard() {
 
                     // อัปเดตตารางข้อมูลดิบถ้ากำลังเปิดดูตารางนั้นอยู่
                     const mapImportToTable = {
-                        'students': 'users_students',
-                        'teachers': 'users_teachers',
                         'subjects': 'subjects',
                         'enrollments': 'student_enrollments',
                         'learning_outcomes': 'learning_outcomes',
@@ -1145,7 +1152,7 @@ export default function AdminDashboard() {
     const openWorkspaceTab = tabId => {
         setActiveTab(tabId);
         setSearchParams(tabId === 'overview' ? {} : { tab: tabId });
-        if (tabId === 'data' && !selectedTable) loadTableData('users_students');
+        if (tabId === 'data' && !selectedTable) loadTableData('subjects');
     };
     const activeWorkspace = WORKSPACE_TABS.find(tab => tab.id === activeTab) || WORKSPACE_TABS[1];
     const mappingGradeLevel = subjects.find(subject => subject.subject_id === mappingSubject)?.grade_level || '';
@@ -1187,8 +1194,6 @@ export default function AdminDashboard() {
                                         className="w-full md:w-64 bg-slate-50 border border-slate-200 text-slate-700 py-3.5 px-4 rounded-2xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-inner"
                                     >
                                         <option value="" disabled>เลือกประเภทข้อมูล</option>
-                                        <option value="users_students">ข้อมูลนักเรียน</option>
-                                        <option value="users_teachers">ข้อมูลครูและบุคลากร</option>
                                         <option value="subjects">ข้อมูลวิชา</option>
                                         <option value="learning_outcomes">ผลลัพธ์การเรียนรู้ (LO)</option>
                                         <option value="behavior_templates">คำบรรยายระดับความสามารถ</option>
