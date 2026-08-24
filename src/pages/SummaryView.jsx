@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import Layout from '../components/Layout';
 import SchoolReportHeader from '../components/SchoolReportHeader';
 import { useAuth } from '../AuthContext';
+import { hasRole } from '../lib/roles';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { calculateCompletion } from '../lib/evaluationProgress';
 import { loadSchoolProfile } from '../lib/schoolProfile';
@@ -92,6 +93,8 @@ export default function SummaryView() {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
+    // ครูที่มีบทบาท teacher ต้องถูกตรวจการมอบหมายเสมอ แม้จะทำงานฝ่ายวิชาการด้วย
+    const mustCheckAssignment = hasRole(currentUser, 'teacher');
     const [subject, setSubject] = useState(location.state?.subject || null);
     const [data, setData] = useState({ enrollments: [], learningOutcomes: [], evaluations: [] });
     const [loading, setLoading] = useState(true);
@@ -117,7 +120,7 @@ export default function SummaryView() {
                     .eq('school_id', currentUser.school_id)
                     .single();
                 if (subjectError) throw subjectError;
-                if (currentUser.role === 'teacher' && subjectData.teacher_id !== currentUser.teacher_id) {
+                if (mustCheckAssignment && subjectData.teacher_id !== currentUser.teacher_id) {
                     const { data: assignment, error: assignmentError } = await supabase.from('subject_teachers')
                         .select('assignment_id').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id).limit(1).maybeSingle();
                     if (assignmentError) throw assignmentError;
@@ -179,7 +182,7 @@ export default function SummaryView() {
             }
         }
         loadSummary();
-    }, [currentUser?.role, currentUser?.school_id, currentUser?.teacher_id, subjectId]);
+    }, [mustCheckAssignment, currentUser?.school_id, currentUser?.teacher_id, subjectId]);
 
     const evaluationMap = useMemo(() => new Map(data.evaluations.map(item => [`${item.enrollment_id}:${item.lo_id}`, item.evidence_note?.trim() || ''])), [data.evaluations]);
     const rooms = useMemo(() => [...new Set(data.enrollments.map(item => item.room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [data.enrollments]);

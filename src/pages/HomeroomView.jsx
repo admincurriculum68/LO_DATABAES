@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
+import { hasAnyRole } from '../lib/roles';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
@@ -33,6 +34,8 @@ function LoadingState() {
 export default function HomeroomView() {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    // ครูที่ไม่ได้ทำงานฝ่ายวิชาการ ดูได้เฉพาะห้องประจำชั้นของตนเอง
+    const isRoomLocked = !hasAnyRole(currentUser, ['admin', 'executive']);
     const { academicYear, semester } = useAcademic();
     const [room, setRoom] = useState('');
     const [availableRooms, setAvailableRooms] = useState([]);
@@ -48,7 +51,7 @@ export default function HomeroomView() {
     useEffect(() => {
         async function fetchRooms() {
             if (!currentUser?.school_id) return;
-            if (currentUser.role === 'admin' || currentUser.role === 'executive') {
+            if (hasAnyRole(currentUser, ['admin', 'executive'])) {
                 const { data: students, error } = await supabase
                     .from('users_students')
                     .select('current_room')
@@ -138,8 +141,8 @@ export default function HomeroomView() {
     }, [academicYear, currentUser?.school_id, semester]);
 
     useEffect(() => {
-        if (currentUser?.role === 'teacher' && room && academicYear && semester) loadHomeroom(room);
-    }, [academicYear, currentUser?.role, loadHomeroom, room, semester]);
+        if (isRoomLocked && room && academicYear && semester) loadHomeroom(room);
+    }, [academicYear, isRoomLocked, loadHomeroom, room, semester]);
 
     const students = useMemo(() => {
         if (!data) return [];
@@ -289,12 +292,12 @@ export default function HomeroomView() {
                     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"><span className="block text-xs font-semibold text-slate-500">รอบการประเมิน</span><strong className="text-slate-900">ภาคเรียนที่ {semester}/{academicYear}</strong></div>
                 </header>
 
-                {!currentUser?.homeroom && currentUser?.role === 'teacher' ? (
+                {!currentUser?.homeroom && isRoomLocked ? (
                     <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-amber-800" /><div><h3 className="font-extrabold text-amber-950">ยังไม่ได้กำหนดห้องประจำชั้น</h3><p className="mt-1 text-sm leading-6 text-amber-900">กรุณาติดต่อฝ่ายวิชาการเพื่อกำหนดห้องประจำชั้นก่อนเริ่มประเมิน</p></div></div></section>
                 ) : (
                     <>
                         <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end" aria-label="เลือกห้องเรียน">
-                            <label className="flex-1"><span className="mb-1.5 block text-sm font-extrabold text-slate-800">ห้องเรียนที่รับผิดชอบ</span><select value={room} onChange={event => setRoom(event.target.value)} disabled={currentUser?.role === 'teacher'} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-700">{availableRooms.length ? availableRooms.map(item => <option key={item} value={item}>{item}</option>) : <option value="">ไม่มีห้องเรียน</option>}</select></label>
+                            <label className="flex-1"><span className="mb-1.5 block text-sm font-extrabold text-slate-800">ห้องเรียนที่รับผิดชอบ</span><select value={room} onChange={event => setRoom(event.target.value)} disabled={isRoomLocked} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-700">{availableRooms.length ? availableRooms.map(item => <option key={item} value={item}>{item}</option>) : <option value="">ไม่มีห้องเรียน</option>}</select></label>
                             <button onClick={() => loadHomeroom(room)} disabled={loading || !room} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50">{loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" /> : <RefreshCw className="h-4 w-4" />} โหลดข้อมูลล่าสุด</button>
                         </section>
 

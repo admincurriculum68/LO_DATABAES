@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, CheckCircle2, Info, Save, Send } from 'lucide-reac
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAuth } from '../AuthContext';
+import { hasRole } from '../lib/roles';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { CBE_LEVELS_2568 } from '../constants/curriculum2568';
 
@@ -14,6 +15,8 @@ export default function FormativeCompetencyView() {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
+    // ครูที่มีบทบาท teacher ต้องถูกตรวจการมอบหมายเสมอ แม้จะทำงานฝ่ายวิชาการด้วย
+    const mustCheckAssignment = hasRole(currentUser, 'teacher');
     const roomParam = new URLSearchParams(location.search).get('room');
     const [subject, setSubject] = useState(location.state?.subject || null);
     const [enrollments, setEnrollments] = useState([]);
@@ -42,7 +45,7 @@ export default function FormativeCompetencyView() {
                 if (mappingResult.error) throw mappingResult.error;
                 if (assignmentResult.error) throw assignmentResult.error;
                 let allowedRooms = null;
-                if (currentUser.role === 'teacher') {
+                if (mustCheckAssignment) {
                     const isPrimary = subjectResult.data.teacher_id === currentUser.teacher_id;
                     const assignedAll = (assignmentResult.data || []).some(item => !item.room_name);
                     const assignedRooms = (assignmentResult.data || []).map(item => item.room_name).filter(Boolean);
@@ -94,7 +97,7 @@ export default function FormativeCompetencyView() {
             }
         }
         loadData();
-    }, [currentUser.role, currentUser.school_id, currentUser.teacher_id, roomParam, subjectId]);
+    }, [mustCheckAssignment, currentUser.school_id, currentUser.teacher_id, roomParam, subjectId]);
 
     const areas = useMemo(() => [...new Set(los.map(lo => lo.competency_area || 'ไม่ระบุด้านความสามารถ'))], [los]);
     const loById = useMemo(() => new Map(los.map(lo => [lo.lo_id, lo])), [los]);

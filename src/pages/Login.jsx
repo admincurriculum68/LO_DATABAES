@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { loginWithCitizenId } from '../lib/auth';
+import { defaultRouteFor } from '../lib/roles';
 import {
     BookOpen,
     CheckCircle2,
@@ -43,12 +44,7 @@ export default function Login() {
             if (res.status === 'success') {
                 toast.success(res.message);
                 loginUser(res.user);
-                switch (res.user.role) {
-                    case 'admin': navigate('/admin'); break;
-                    case 'executive': navigate('/executive'); break;
-                    case 'student': navigate('/student'); break;
-                    default: navigate('/');
-                }
+                navigate(defaultRouteFor(res.user));
             } else {
                 toast.error(res.message);
             }

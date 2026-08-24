@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import Login from './pages/Login';
 import ProtectedRoute from './ProtectedRoute';
+import { defaultRouteFor } from './lib/roles';
 import { Toaster } from 'react-hot-toast';
 
 const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
@@ -34,7 +35,7 @@ export default function App() {
       <Toaster position="top-right" />
       <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><div className="loader" aria-label="กำลังเปิดหน้า" /></div>}>
       <Routes>
-        <Route path="/login" element={!currentUser ? <Login /> : <Navigate to="/" />} />
+        <Route path="/login" element={!currentUser ? <Login /> : <Navigate to={defaultRouteFor(currentUser)} />} />
 
         {/* Core Teacher Routes */}
         <Route path="/" element={
@@ -144,7 +145,7 @@ export default function App() {
           </ProtectedRoute>
         } />
 
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to={defaultRouteFor(currentUser)} />} />
       </Routes>
       </Suspense>
     </div>

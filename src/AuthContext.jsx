@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { resolveTeacherRoles } from './lib/auth';
+import { hasRole } from './lib/roles';
 
 const AuthContext = createContext();
 
@@ -14,7 +16,7 @@ export function AuthProvider({ children }) {
                 try {
                     const savedUser = JSON.parse(savedUserStr);
                     // Fetch from database to prevent LocalStorage modification bypass
-                    if (savedUser.role === 'student') {
+                    if (hasRole(savedUser, 'student')) {
                         const { data } = await supabase.from('users_students').select('student_status').eq('student_id', savedUser.id).single();
                         if (data && data.student_status === 'active') {
                             setCurrentUser(savedUser);
@@ -23,10 +25,14 @@ export function AuthProvider({ children }) {
                         }
                     } else {
                         // Check teachers table
-                        const { data } = await supabase.from('users_teachers').select('role, is_active').eq('teacher_id', savedUser.id).single();
+                        // ดึงบทบาททั้งหมดจากฐานข้อมูลใหม่ทุกครั้ง ไม่ใช่แค่คอลัมน์ role
+                        // มิฉะนั้นบทบาทที่ฝ่ายวิชาการเพิ่งเพิ่มให้จะหายทุกครั้งที่รีเฟรชหน้า
+                        const { data } = await supabase.from('users_teachers')
+                            .select('role, is_active, teacher_roles(role, is_primary)')
+                            .eq('teacher_id', savedUser.id).single();
                         if (data && data.is_active) {
-                            // Overwrite role to whatever is in the database to prevent manual tampering
-                            const verifiedUser = { ...savedUser, role: data.role };
+                            // เขียนทับบทบาทด้วยค่าจากฐานข้อมูลเสมอ เพื่อกันการแก้ localStorage
+                            const verifiedUser = { ...savedUser, ...resolveTeacherRoles(data) };
                             setCurrentUser(verifiedUser);
                             localStorage.setItem('loUser', JSON.stringify(verifiedUser));
                         } else {

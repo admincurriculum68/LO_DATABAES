@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
+import { parseRoleList } from '../lib/roles';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
 import { CBE_CAPABILITIES_2568 } from '../constants/curriculum2568';
@@ -26,7 +27,7 @@ const WORKSPACE_TABS = [
 const SCHOOL_SCOPED_TABLES = ['users_students', 'users_teachers', 'subjects', 'learning_outcomes'];
 const SAFE_TABLE_SELECT = {
     users_students: 'student_id, school_id, citizen_id, student_code, prefix, first_name, last_name, current_room, current_grade_level, student_status, created_at',
-    users_teachers: 'teacher_id, school_id, citizen_id, prefix, first_name, last_name, role, homeroom, is_active, created_at',
+    users_teachers: 'teacher_id, school_id, citizen_id, prefix, first_name, last_name, role, homeroom, is_active, created_at, teacher_roles(role, is_primary)',
 };
 const READ_ONLY_TABLES = new Set(['behavior_templates']);
 const WIZARD_IMPORT_TYPES = new Set(['students', 'teachers', 'subjects', 'learning_units', 'projects', 'activities', 'enrollments', 'learning_outcomes']);
@@ -40,7 +41,7 @@ const FIELD_LABELS = {
     new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด', teaching_hours: 'จำนวนชั่วโมงเรียน', is_custom_competency: 'สมรรถนะเพิ่มเติม',
 };
 
-const hiddenField = (key, table) => ['password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'subject_id', 'lo_id', 'id'].includes(key)
+const hiddenField = (key, table) => ['teacher_roles', 'password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'subject_id', 'lo_id', 'id'].includes(key)
     || (table === 'subjects' && key === 'subject_code');
 
 const VALUE_LABELS = {
@@ -59,14 +60,51 @@ const isReadonlyField = (key, table) => (READONLY_FIELDS[table] || []).includes(
 
 // ช่องที่มีค่าที่เป็นไปได้จำกัด ต้องเลือกจากรายการ พิมพ์เองแล้วผิดเพียงตัวอักษรเดียว
 // เช่น admi แทน admin จะทำให้บัญชีนั้นเข้าใช้งานไม่ได้ทันที
+const ROLE_CHOICES = [['teacher', 'ครูผู้สอน'], ['admin', 'ฝ่ายวิชาการ'], ['executive', 'ผู้บริหาร']];
+
 const FIELD_OPTIONS = {
-    role: [['teacher', 'ครูผู้สอน'], ['admin', 'ฝ่ายวิชาการ'], ['executive', 'ผู้บริหาร']],
     is_active: [['true', 'ใช้งาน'], ['false', 'ระงับการใช้งาน']],
     student_status: [['active', 'ใช้งาน'], ['inactive', 'ไม่ใช้งาน']],
     semester: [['1', 'ภาคเรียนที่ 1'], ['2', 'ภาคเรียนที่ 2']],
     is_custom_competency: [['true', 'ใช่'], ['false', 'ไม่ใช่']],
     grade_level: [['ป.1', 'ป.1'], ['ป.2', 'ป.2'], ['ป.3', 'ป.3'], ['ป.4', 'ป.4'], ['ป.5', 'ป.5'], ['ป.6', 'ป.6']],
 };
+
+
+// ครู 1 คนมีได้หลายบทบาท teacher_roles คือแหล่งข้อมูลจริง
+// ส่วน users_teachers.role คงไว้เป็นบทบาทหลักเพื่อให้โค้ดเดิมและ session ยังทำงานได้
+async function syncTeacherRoles(teacherId, roles, primaryRole) {
+    const wanted = [...new Set(roles)].filter(Boolean);
+    if (wanted.length === 0) return;
+    const primary = wanted.includes(primaryRole) ? primaryRole : wanted[0];
+
+    const { data: existing, error: readError } = await supabase.from('teacher_roles')
+        .select('teacher_role_id, role').eq('teacher_id', teacherId);
+    if (readError) throw readError;
+
+    const current = new Set((existing || []).map(row => row.role));
+    const toAdd = wanted.filter(role => !current.has(role));
+    const toRemove = (existing || []).filter(row => !wanted.includes(row.role));
+
+    if (toAdd.length) {
+        const { error } = await supabase.from('teacher_roles')
+            .insert(toAdd.map(role => ({ teacher_id: teacherId, role, is_primary: false })));
+        if (error) throw error;
+    }
+    for (const row of toRemove) {
+        const { error } = await supabase.from('teacher_roles').delete().eq('teacher_role_id', row.teacher_role_id);
+        if (error) throw error;
+    }
+    // ตั้งบทบาทหลักทีละขั้น เพื่อไม่ให้ชน unique index ที่อนุญาตให้มี primary ได้คนละ 1 แถว
+    const { error: clearError } = await supabase.from('teacher_roles')
+        .update({ is_primary: false, updated_at: new Date().toISOString() })
+        .eq('teacher_id', teacherId).neq('role', primary);
+    if (clearError) throw clearError;
+    const { error: setError } = await supabase.from('teacher_roles')
+        .update({ is_primary: true, updated_at: new Date().toISOString() })
+        .eq('teacher_id', teacherId).eq('role', primary);
+    if (setError) throw setError;
+}
 
 // ตรวจก่อนบันทึก คืนข้อความเตือนถ้าพบข้อผิดพลาด
 function validateRowEdit(table, data) {
@@ -86,7 +124,13 @@ function validateRowEdit(table, data) {
     return errors;
 }
 
-const displayValue = (value, key) => {
+const displayValue = (value, key, row) => {
+    if (key === 'role' && Array.isArray(row?.teacher_roles) && row.teacher_roles.length > 0) {
+        // ครูที่ปฏิบัติหลายหน้าที่ ต้องเห็นครบทุกบทบาท ไม่ใช่เฉพาะบทบาทหลัก
+        return row.teacher_roles
+            .map(item => (item.is_primary ? `${VALUE_LABELS[item.role] || item.role} (หลัก)` : VALUE_LABELS[item.role] || item.role))
+            .join(' · ');
+    }
     if (key === 'is_custom_competency') return value === true ? 'เพิ่มเติมจากหลักสูตร' : 'ตามหลักสูตร';
     if (value === true) return 'ใช้งาน';
     if (value === false) return 'ไม่ใช้งาน';
@@ -396,12 +440,19 @@ export default function AdminDashboard() {
                 delete payload.new_password;
             }
 
+            // บทบาทหลายค่าเก็บในตารางแยก ไม่ส่งไปกับ payload ของ users_teachers
+            const nextRoles = selectedTable === 'users_teachers' && Array.isArray(payload.roles) ? payload.roles : null;
+            delete payload.roles;
+            delete payload.teacher_roles;
+            if (nextRoles) payload.role = nextRoles.includes(payload.role) ? payload.role : nextRoles[0];
+
             let query = supabase.from(selectedTable).update(payload).eq(idCol, idValue);
             if (SCHOOL_SCOPED_TABLES.includes(selectedTable)) {
                 query = query.eq('school_id', currentUser.school_id);
             }
             const { error } = await query;
             if (error) throw error;
+            if (nextRoles) await syncTeacherRoles(idValue, nextRoles, payload.role);
             toast.success('อัปเดตข้อมูลสำเร็จ');
             setEditingRow(null);
             loadTableData(selectedTable);
@@ -771,13 +822,30 @@ export default function AdminDashboard() {
                             prefix: t.prefix?.trim() || '',
                             first_name: t.first_name?.trim(),
                             last_name: t.last_name?.trim(),
-                            role: t.role?.trim() || 'teacher',
+                            // ไฟล์นำเข้าระบุได้หลายบทบาท เช่น "teacher,admin" บทบาทแรกเป็นบทบาทหลัก
+                            role: (parseRoleList(t.role)[0]) || 'teacher',
                             is_active: true
                         })));
                         if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
                         const result = await saveIdentityRowsSafely('users_teachers', payload);
                         payload = result.savedRows;
                         if (!payload.length) { toast.error('ไม่มีรายการครูที่นำเข้าได้', { id: 'csv' }); return; }
+
+                        // ซิงก์บทบาททั้งหมดของแต่ละคนหลังบันทึกแถวหลักเสร็จ
+                        const rolesByCitizen = new Map(validRows.map(t => {
+                            const parsed = parseRoleList(t.role);
+                            return [String(t.citizen_id).replace(/\D/g, ''), parsed.length ? parsed : ['teacher']];
+                        }));
+                        const savedTeachers = await fetchAllByIn(
+                            payload.map(item => item.citizen_id),
+                            (batch, from, to) => supabase.from('users_teachers')
+                                .select('teacher_id, citizen_id').eq('school_id', currentUser.school_id)
+                                .in('citizen_id', batch).range(from, to)
+                        );
+                        for (const teacher of savedTeachers) {
+                            const roles = rolesByCitizen.get(teacher.citizen_id);
+                            if (roles) await syncTeacherRoles(teacher.teacher_id, roles, roles[0]);
+                        }
                     }
                     else if (importType === 'subjects') {
                         // Create a map to lookup teacher_id from citizen_id
@@ -1204,6 +1272,47 @@ export default function AdminDashboard() {
                                                                     <option value="">เลือกด้านความสามารถตามหลักสูตร</option>
                                                                     {CBE_CAPABILITIES_2568.map(capability => <option key={capability.key} value={capability.name}>{capability.name}</option>)}
                                                                 </select>
+                                                            ) : isEditing && selectedTable === 'users_teachers' && key === 'role' ? (
+                                                                <div className="min-w-[15rem] space-y-1.5 rounded-lg border-2 border-indigo-400 bg-white p-2.5">
+                                                                    <p className="text-[11px] font-bold text-slate-600">เลือกได้มากกว่า 1 บทบาท</p>
+                                                                    {ROLE_CHOICES.map(([val, label]) => {
+                                                                        const selected = (editingRow.data.roles || []).includes(val);
+                                                                        const isPrimary = editingRow.data.role === val;
+                                                                        return (
+                                                                            <div key={val} className="flex items-center gap-2">
+                                                                                <label className="flex flex-1 cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        className="h-4 w-4 accent-indigo-700"
+                                                                                        checked={selected}
+                                                                                        onChange={(e) => {
+                                                                                            const current = new Set(editingRow.data.roles || []);
+                                                                                            if (e.target.checked) current.add(val); else current.delete(val);
+                                                                                            const nextRoles = ROLE_CHOICES.map(([r]) => r).filter(r => current.has(r));
+                                                                                            if (nextRoles.length === 0) {
+                                                                                                toast.error('ต้องมีอย่างน้อย 1 บทบาท');
+                                                                                                return;
+                                                                                            }
+                                                                                            const nextPrimary = nextRoles.includes(editingRow.data.role) ? editingRow.data.role : nextRoles[0];
+                                                                                            setEditingRow({ ...editingRow, data: { ...editingRow.data, roles: nextRoles, role: nextPrimary } });
+                                                                                        }}
+                                                                                    />
+                                                                                    {label}
+                                                                                </label>
+                                                                                {selected && (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setEditingRow({ ...editingRow, data: { ...editingRow.data, role: val } })}
+                                                                                        className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${isPrimary ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 text-slate-600 hover:border-indigo-400'}`}
+                                                                                        title="บทบาทหลักใช้ตัดสินหน้าแรกหลังเข้าสู่ระบบ"
+                                                                                    >
+                                                                                        {isPrimary ? 'บทบาทหลัก' : 'ตั้งเป็นหลัก'}
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             ) : isEditing && FIELD_OPTIONS[key] ? (
                                                                 <select
                                                                     className="w-full min-w-[9rem] rounded-lg border-2 border-indigo-400 bg-white px-3 py-1.5 font-bold text-indigo-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -1224,7 +1333,7 @@ export default function AdminDashboard() {
                                                                 />
                                                             ) : (
                                                                 <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
-                                                                    {displayValue(row[key], key)}
+                                                                    {displayValue(row[key], key, row)}
                                                                 </span>
                                                             )}
                                                         </td>
@@ -1237,7 +1346,7 @@ export default function AdminDashboard() {
                                                             </>
                                                         ) : (
                                                             <>
-                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => setEditingRow({ id: idValue, data: { ...row } })} className="text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"><Edit className="w-4 h-4" /></button>}
+                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => setEditingRow({ id: idValue, data: { ...row, roles: Array.isArray(row.teacher_roles) && row.teacher_roles.length ? row.teacher_roles.map(item => item.role) : (row.role ? [row.role] : []) } })} className="text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"><Edit className="w-4 h-4" /></button>}
                                                                 {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => handleDelete(idValue, idCol)} className="text-red-600 bg-red-50 p-2 rounded-xl hover:bg-red-100 transition-colors border border-red-100"><Trash2 className="w-4 h-4" /></button>}
                                                             </>
                                                         )}

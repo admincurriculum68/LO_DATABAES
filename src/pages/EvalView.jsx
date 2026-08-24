@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
+import { hasRole } from '../lib/roles';
 import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -10,6 +11,8 @@ export default function EvalView() {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
+    // ครูที่มีบทบาท teacher ต้องถูกตรวจการมอบหมายเสมอ แม้จะทำงานฝ่ายวิชาการด้วย
+    const mustCheckAssignment = hasRole(currentUser, 'teacher');
 
     const [subject, setSubject] = useState(location.state?.subject || null);
     const [enrollments, setEnrollments] = useState([]);
@@ -34,7 +37,7 @@ export default function EvalView() {
                 if (subjectError || !subjectRecord) throw new Error('ไม่พบรายวิชานี้ในโรงเรียนของคุณ');
 
                 let allowedRooms = null;
-                if (currentUser.role === 'teacher') {
+                if (mustCheckAssignment) {
                     const { data: assignments, error: assignmentError } = await supabase.from('subject_teachers')
                         .select('room_name').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id);
                     if (assignmentError) throw assignmentError;
@@ -111,7 +114,7 @@ export default function EvalView() {
             }
         }
         loadData();
-    }, [currentUser.role, currentUser.school_id, currentUser.teacher_id, roomParam, subjectId]);
+    }, [mustCheckAssignment, currentUser.school_id, currentUser.teacher_id, roomParam, subjectId]);
 
     useEffect(() => {
         if (!subjectId) return;

@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, FileBarChart2, FileSpreadsheet, GraduationCap } from 'lucide-react';
 import Layout from './Layout';
 import { useAuth } from '../AuthContext';
+import { hasAnyRole } from '../lib/roles';
 
 // ผู้บริหารดูรายงานภาพรวมได้ แต่แบบบันทึกผลรายบุคคลยังเป็นงานของฝ่ายวิชาการ
 const REPORTS = [
@@ -15,8 +16,8 @@ export default function AcademicReportShell({ title, description, actions, child
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
-    const role = currentUser?.role || 'admin';
-    const visibleReports = REPORTS.filter(report => report.roles.includes(role));
+
+    const visibleReports = REPORTS.filter(report => hasAnyRole(currentUser, report.roles));
 
     return (
         <Layout title="รายงานทางวิชาการ">

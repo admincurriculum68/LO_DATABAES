@@ -1,5 +1,24 @@
 import { supabase } from './supabase';
 
+/**
+ * ครู 1 คนปฏิบัติหน้าที่ได้หลายบทบาท เช่นเป็นทั้งครูผู้สอนและฝ่ายวิชาการ
+ * teacher_roles คือแหล่งข้อมูลจริง ส่วน users_teachers.role คงไว้เป็นบทบาทหลัก
+ * เพื่อให้ session รูปแบบเดิมยังใช้งานได้ระหว่างเปลี่ยนผ่าน
+ */
+export function resolveTeacherRoles(user) {
+    const rows = Array.isArray(user?.teacher_roles) ? user.teacher_roles : [];
+    const roles = [...new Set(rows.map(row => row.role).filter(Boolean))];
+    if (user?.role && !roles.includes(user.role)) roles.push(user.role);
+    if (roles.length === 0) roles.push('teacher');
+
+    const flagged = rows.find(row => row.is_primary)?.role;
+    const primaryRole = flagged && roles.includes(flagged)
+        ? flagged
+        : (user?.role && roles.includes(user.role) ? user.role : roles[0]);
+
+    return { role: primaryRole, roles, primaryRole };
+}
+
 export async function hashPassword(dobString) {
     const msgUint8 = new TextEncoder().encode(dobString);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
@@ -14,7 +33,7 @@ export async function loginWithCitizenId(citizenId, dob) {
         // Check teachers/admins/executives table
         const { data: teacherData, error: teacherError } = await supabase
             .from('users_teachers')
-            .select('teacher_id, school_id, citizen_id, password_hash, prefix, first_name, last_name, role, homeroom, is_active, schools(school_name)')
+            .select('teacher_id, school_id, citizen_id, password_hash, prefix, first_name, last_name, role, homeroom, is_active, schools(school_name), teacher_roles(role, is_primary)')
             .eq('citizen_id', citizenId);
 
         if (teacherError) throw teacherError;
@@ -32,7 +51,7 @@ export async function loginWithCitizenId(citizenId, dob) {
                             school_id: user.school_id,
                             school_name: user.schools?.school_name || null,
                             full_name: `${user.prefix || ''}${user.first_name} ${user.last_name}`,
-                            role: user.role, // teacher, admin, executive
+                            ...resolveTeacherRoles(user),
                             homeroom: user.homeroom
                         }
                     };
@@ -66,7 +85,9 @@ export async function loginWithCitizenId(citizenId, dob) {
                             school_id: user.school_id,
                             school_name: user.schools?.school_name || null,
                             full_name: `${user.prefix || ''}${user.first_name} ${user.last_name}`,
-                            role: 'student'
+                            role: 'student',
+                            roles: ['student'],
+                            primaryRole: 'student'
                         }
                     };
                 } else {

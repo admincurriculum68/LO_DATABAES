@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { defaultRouteFor, hasAnyRole } from './lib/roles';
 
 export default function ProtectedRoute({ children, allowedRoles }) {
     const { currentUser } = useAuth();
@@ -8,18 +9,9 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         return <Navigate to="/login" />;
     }
 
-    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-        // redirect to their default dashboard depending on role
-        switch (currentUser.role) {
-            case 'admin':
-                return <Navigate to="/admin" />;
-            case 'student':
-                return <Navigate to="/student" />;
-            case 'executive':
-                return <Navigate to="/executive" />;
-            default:
-                return <Navigate to="/" />;
-        }
+    // ครู 1 คนมีได้หลายบทบาท จึงต้องตรวจว่ามีบทบาทใดบทบาทหนึ่งที่เข้าถึงได้
+    if (!hasAnyRole(currentUser, allowedRoles)) {
+        return <Navigate to={defaultRouteFor(currentUser)} />;
     }
 
     return children;

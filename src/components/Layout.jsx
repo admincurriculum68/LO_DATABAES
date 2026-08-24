@@ -3,6 +3,7 @@ import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ROLE_TONES, defaultRouteFor, hasRole, roleLabelsFor, rolesOf } from '../lib/roles';
 
 export default function Layout({ children, title, onActionClick, actionText, actionIcon: ActionIcon }) {
     const { currentUser, logoutUser } = useAuth();
@@ -18,39 +19,61 @@ export default function Layout({ children, title, onActionClick, actionText, act
         }
     };
 
-    // Role badge
-    const roleMeta = {
-        admin:     { label: 'ฝ่ายวิชาการ', color: 'bg-violet-100 text-violet-700 border-violet-200' },
-        teacher:   { label: 'ครูผู้สอน',  color: 'bg-blue-100 text-blue-700 border-blue-200' },
-        executive: { label: 'ผู้บริหาร',  color: 'bg-amber-100 text-amber-700 border-amber-200' },
-        student:   { label: 'นักเรียน',   color: 'bg-green-100 text-green-700 border-green-200' },
-    };
-    const role = roleMeta[currentUser?.role] || { label: currentUser?.role || '', color: 'bg-slate-100 text-slate-600 border-slate-200' };
+    // ครู 1 คนมีได้หลายบทบาท ป้ายจึงแสดงทุกบทบาทที่ปฏิบัติจริง
+    const userRoles = rolesOf(currentUser);
+    const roleBadges = roleLabelsFor(currentUser).map((label, index) => ({
+        label,
+        color: ROLE_TONES[userRoles[index]] || 'bg-slate-100 text-slate-600 border-slate-200',
+    }));
 
-    const navigationByRole = {
-        admin: [
-            { label: 'หน้าหลัก', path: '/admin', exact: true },
-            {
-                label: 'ตั้งค่าข้อมูล',
-                path: '/admin/setup',
-                tabs: ['data', 'import', 'mapping', 'enrollment', 'promotion'],
-                relatedPaths: ['/admin/learning-contexts', '/admin/subject-teachers', '/admin/curriculum-equivalency'],
-            },
-            { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
-            { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
-            { label: 'รับรองผล', path: '/admin/approval' },
-        ],
-        teacher: [
-            { label: 'งานของฉัน', path: '/', exact: true },
-            ...(currentUser?.homeroom ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
-        ],
-        executive: [
-            { label: 'ภาพรวม', path: '/executive', exact: true },
-            { label: 'ผลรายด้าน', path: '/admin/report-competency' },
-        ],
-        student: [{ label: 'ผลการเรียนของฉัน', path: '/student', exact: true }],
-    };
-    const navigation = navigationByRole[currentUser?.role] || [];
+    // เมนูของทุกบทบาทถูกนำมารวมกัน แล้วแยกเป็นหัวข้อ เพื่อให้ครูที่เป็นฝ่ายวิชาการด้วย
+    // ทำงานต่อเนื่องได้โดยไม่ต้องสลับโหมด
+    const navigationGroups = [
+        {
+            key: 'teacher',
+            heading: 'งานสอนของฉัน',
+            visible: hasRole(currentUser, 'teacher'),
+            items: [
+                { label: 'งานของฉัน', path: '/', exact: true },
+                ...(currentUser?.homeroom ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
+            ],
+        },
+        {
+            key: 'admin',
+            heading: 'งานวิชาการ',
+            visible: hasRole(currentUser, 'admin'),
+            items: [
+                { label: 'หน้าหลัก', path: '/admin', exact: true },
+                {
+                    label: 'ตั้งค่าข้อมูล',
+                    path: '/admin/setup',
+                    tabs: ['data', 'import', 'mapping', 'enrollment', 'promotion'],
+                    relatedPaths: ['/admin/learning-contexts', '/admin/subject-teachers', '/admin/curriculum-equivalency'],
+                },
+                { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
+                { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
+                { label: 'รับรองผล', path: '/admin/approval' },
+            ],
+        },
+        {
+            key: 'executive',
+            heading: 'ภาพรวมสถานศึกษา',
+            visible: hasRole(currentUser, 'executive'),
+            items: [
+                { label: 'ภาพรวม', path: '/executive', exact: true },
+                { label: 'ผลรายด้าน', path: '/admin/report-competency' },
+            ],
+        },
+        {
+            key: 'student',
+            heading: '',
+            visible: hasRole(currentUser, 'student'),
+            items: [{ label: 'ผลการเรียนของฉัน', path: '/student', exact: true }],
+        },
+    ].filter(group => group.visible && group.items.length > 0);
+
+    // แสดงหัวข้อคั่นเฉพาะเมื่อผู้ใช้มีมากกว่า 1 กลุ่มงาน
+    const showGroupHeadings = navigationGroups.length > 1;
     const isActive = item => {
         const activeAdminTab = location.pathname === '/admin' ? new URLSearchParams(location.search).get('tab') : null;
         if (item.tab) return location.pathname === '/admin' && new URLSearchParams(location.search).get('tab') === item.tab;
@@ -60,7 +83,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
         return location.pathname.startsWith(item.path);
     };
 
-    const isAdmin = currentUser?.role === 'admin';
+    const isAdmin = hasRole(currentUser, 'admin');
 
     const handleTermChange = (year, sem) => {
         if (isAdmin) {
@@ -86,7 +109,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                     {/* Brand + Title */}
                     <div className="flex items-center gap-3 min-w-0">
                         <button
-                            onClick={() => navigate(currentUser?.role === 'admin' ? '/admin' : currentUser?.role === 'student' ? '/student' : currentUser?.role === 'executive' ? '/executive' : '/')}
+                            onClick={() => navigate(defaultRouteFor(currentUser))}
                             aria-label="กลับหน้าหลัก CBE Track"
                             className="flex min-h-11 items-center gap-2.5 shrink-0 group"
                         >
@@ -114,7 +137,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                     {/* Right side */}
                     <div className="flex items-center gap-2">
                         {/* Academic Year / Semester Picker */}
-                        {currentUser?.role !== 'student' && academicYear && (
+                        {!hasRole(currentUser, 'student') && academicYear && (
                             <div className="relative">
                                 <button
                                     onClick={() => setShowTermPicker(!showTermPicker)}
@@ -194,7 +217,11 @@ export default function Layout({ children, title, onActionClick, actionText, act
                             <UserCircle className="w-6 h-6 text-slate-400 shrink-0" />
                             <div className="hidden sm:flex flex-col leading-none">
                                 <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">{currentUser?.full_name}</span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border w-fit mt-0.5 ${role.color}`}>{role.label}</span>
+                                <span className="mt-0.5 flex flex-wrap gap-1">
+                                    {roleBadges.map(badge => (
+                                        <span key={badge.label} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border w-fit ${badge.color}`}>{badge.label}</span>
+                                    ))}
+                                </span>
                             </div>
                         </div>
 
@@ -209,21 +236,30 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         </button>
                     </div>
                 </div>
-                {navigation.length > 0 && (
+                {navigationGroups.length > 0 && (
                     <nav className="border-t border-slate-200 bg-white" aria-label="เมนูหลัก">
-                        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 sm:px-6 lg:px-8">
-                            {navigation.map(item => (
-                                <button
-                                    key={item.path}
-                                    type="button"
-                                    onClick={() => navigate(item.path)}
-                                    aria-current={isActive(item) ? 'page' : undefined}
-                                    className={`min-h-11 shrink-0 rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
-                                        isActive(item) ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'
-                                    }`}
-                                >
-                                    {item.label}
-                                </button>
+                        <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6 lg:px-8">
+                            {navigationGroups.map((group, groupIndex) => (
+                                <div key={group.key} className="flex shrink-0 items-center gap-1">
+                                    {showGroupHeadings && group.heading && (
+                                        <span className={`shrink-0 whitespace-nowrap px-2 text-[11px] font-bold text-slate-500 ${groupIndex > 0 ? 'ml-2 border-l border-slate-200 pl-4' : ''}`}>
+                                            {group.heading}
+                                        </span>
+                                    )}
+                                    {group.items.map(item => (
+                                        <button
+                                            key={item.path}
+                                            type="button"
+                                            onClick={() => navigate(item.path)}
+                                            aria-current={isActive(item) ? 'page' : undefined}
+                                            className={`min-h-11 shrink-0 rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+                                                isActive(item) ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    ))}
+                                </div>
                             ))}
                         </div>
                     </nav>
