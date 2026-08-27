@@ -1002,7 +1002,7 @@ export default function AdminDashboard() {
                         }
                     }
                     else if (importType === 'behaviors') {
-                        toast.error('คลังคำบรรยายกลางเป็นข้อมูลอ่านอย่างเดียว กรุณาใช้คำอธิบายรายโรงเรียนหรือรายชั้นปีแทน', { id: 'csv', duration: 8000 });
+                        toast.error('คำบรรยายระดับความสามารถเป็นคลังกลางที่ทุกโรงเรียนใช้ร่วมกัน จึงนำเข้าหรือแก้ไขไม่ได้ หากต้องการคำบรรยายของโรงเรียนเอง ให้ใช้การ์ด "คำบรรยายรายชั้นปี (ปพ.๖)" แทน', { id: 'csv', duration: 12000 });
                         return;
                     }
                     else if (importType === 'yearly_competencies') {
@@ -1444,7 +1444,7 @@ export default function AdminDashboard() {
                                         { id: 'activities', title: 'ข้อมูลกิจกรรม', desc: 'กิจกรรมทั่วไปหรือกิจกรรมพัฒนาผู้เรียน 3 หมวดตามหลักสูตร 2551', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,activity_category,description\n2569,1,รู้จักตนเอง,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมแนะแนว,กิจกรรมสำรวจความสนใจ\n2569,1,ลูกเสือสำรอง,ป.2,กิจกรรมพัฒนาผู้เรียน,20,1234567890123,กิจกรรมนักเรียน,ฝึกระเบียบและการทำงานเป็นทีม\n2569,1,จิตอาสาพัฒนาโรงเรียน,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมเพื่อสังคมและสาธารณประโยชน์,ร่วมดูแลพื้นที่ส่วนรวม' },
                                         { id: 'enrollments', title: 'ข้อมูลกลุ่มเรียน', desc: 'ข้อมูลการจัดนักเรียนเข้าชั้นเรียนและวิชา', template: 'student_citizen_id,subject_name,room\nเลขบัตรปชช_นร_13หลัก,ความสามารถพื้นฐานด้านการเรียนรู้,ป.1/1' },
                                         { id: 'learning_outcomes', title: 'ผลลัพธ์การเรียนรู้ (LO)', desc: 'ผลลัพธ์การเรียนรู้ตามหลักสูตรสถานศึกษาที่ใช้เชื่อมโยงกับรูปแบบการจัดการเรียนรู้', template: 'grade_level,lo_code,ability_no,level_group,competency_area,is_custom_competency,lo_description\nป.1,SCH-P1-LO-03,3,ป.ต้น,ความสามารถด้านการคิดคำนวณ,false,ใช้จำนวนนับ การบวก และการลบเพื่อแก้ปัญหาใกล้ตัว พร้อมอธิบายวิธีคิดได้' },
-                                        { id: 'behaviors', title: 'คำบรรยายระดับความสามารถ', desc: 'คำบรรยายพฤติกรรมสำหรับแต่ละระดับความสามารถ', template: 'competency_area,competency_level,behavior_text\nความสามารถด้านการคิดคำนวณ,พัฒนา,ปฏิบัติได้ในสถานการณ์ที่คุ้นเคยเมื่อได้รับคำชี้แนะบางส่วน และเริ่มตรวจสอบงานของตน' },
+                                        { id: 'behaviors', title: 'คำบรรยายระดับความสามารถ (คลังกลาง)', desc: 'คำบรรยายพฤติกรรมกลางที่ทุกโรงเรียนใช้ร่วมกัน เปิดดูได้ในเมนูข้อมูลหลักสูตร แต่แก้ไขหรือนำเข้าไม่ได้ หากต้องการคำบรรยายของโรงเรียนเอง ให้ใช้ "คำบรรยายรายชั้นปี (ปพ.๖)" ด้านล่างแทน', readOnly: true },
                                         { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดด้านความสามารถและระดับที่คาดหวังในแต่ละชั้น เพื่อดึงผลรับรองมาใช้ได้ตรงด้าน', template: 'grade_level,competency_no,competency_area,description,expected_level\nป.1,1,ความสามารถด้านการอ่าน,เข้าใจความหมายของคำและข้อความสั้น ๆ,พัฒนา\nป.1,2,ความสามารถด้านการเขียน,เขียนประโยคง่าย ๆ เพื่อสื่อความหมาย,พัฒนา' },
                                         { id: 'yearly_behavior_templates', title: 'คำบรรยายรายชั้นปี (ปพ.๖)', desc: 'คำบรรยายพฤติกรรมในแต่ละระดับ แยกตามข้อและชั้นปี', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
                                     ].map(card => (
@@ -1456,6 +1456,7 @@ export default function AdminDashboard() {
                                                 </div>
                                             </div>
                                             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                                                {card.readOnly ? <span className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-600"><Lock className="h-4 w-4" />คลังกลาง นำเข้าไม่ได้</span> : <>
                                                 <button
                                                     onClick={() => {
                                                         // Build XLSX with Text-formatted columns
@@ -1501,6 +1502,7 @@ export default function AdminDashboard() {
                                                     <Upload className="w-4 h-4 group-hover/btn2:-translate-y-1 transition-transform" />
                                                     <span>เปิดตัวช่วยนำเข้า</span>
                                                 </button> : <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" /><span>อัปโหลดแบบเดิม</span><input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => handleFileUpload(e, card.id)} /></label>}
+                                                </>}
                                             </div>
                                         </div>
                                     ))}
