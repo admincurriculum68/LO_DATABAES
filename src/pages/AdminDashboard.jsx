@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
+import { buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
 import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
@@ -745,6 +746,7 @@ export default function AdminDashboard() {
         toast.loading('กำลังตรวจสอบและบันทึกข้อมูล...', { id: 'csv' });
         try {
                     let payload = [];
+                    let successMessage = null;
                     if (importType === 'students') {
                         if (!data[0].citizen_id || !data[0].dob) { toast.error('คอลัมน์ไม่ถูกต้อง: ต้องมี citizen_id และ dob', { id: 'csv' }); return; }
 
@@ -857,44 +859,61 @@ export default function AdminDashboard() {
                         }
                     }
                     else if (importType === 'subjects') {
-                        // Create a map to lookup teacher_id from citizen_id
-                        const teachers = await fetchAllRows((from, to) =>
+                        const teacherRows = await fetchAllRows((from, to) =>
                             supabase.from('users_teachers')
                                 .select('teacher_id, citizen_id')
                                 .eq('school_id', currentUser.school_id)
                                 .range(from, to)
                         );
-                        const teacherMap = {};
-                        teachers.forEach(t => teacherMap[t.citizen_id] = t.teacher_id);
+                        const teacherIdByCitizenId = new Map();
+                        teacherRows.forEach(teacher => teacherIdByCitizenId.set(teacher.citizen_id, teacher.teacher_id));
 
-                        let tempPayload = data.map(s => {
-                            const tcId = s.teacher_citizen_id ? String(s.teacher_citizen_id).replace(/\D/g, '') : null;
-                            const tId = tcId ? teacherMap[tcId] : null;
-
-                            return {
-                                school_id: currentUser.school_id, 
-                                academic_year: parseInt(s.academic_year) || academicYear || (new Date().getFullYear() + 543),
-                                semester: parseInt(s.semester) || semester || 1,
-                                subject_code: null,
-                                subject_name: s.subject_name?.trim(), 
-                                grade_level: s.grade_level?.trim(),
-                                subject_group: s.subject_group?.trim() || null, 
-                                teacher_id: tId,
-                                teaching_hours: s.teaching_hours ? parseInt(s.teaching_hours) : null
-                            };
+                        // แถวที่เป็นวิชาเดียวกันยุบเหลือวิชาเดียว ส่วนคอลัมน์ห้องกลายเป็นครูผู้สอนรายห้อง
+                        const plan = planSubjectImport(data, {
+                            schoolId: currentUser.school_id,
+                            academicYear,
+                            semester,
+                            teacherIdByCitizenId,
+                            existingSubjects: subjects,
                         });
-                        
-                        // ชื่อวิชาเดียวกันเปิดได้หลายระดับชั้นในภาคเรียนเดียวกัน
-                        const existingSet = new Set(subjects.map(s => `${s.subject_name}_${s.grade_level}_${s.academic_year}_${s.semester}`));
-                        payload = tempPayload.filter(p => !existingSet.has(`${p.subject_name}_${p.grade_level}_${p.academic_year}_${p.semester}`));
 
-                        if (payload.length > 0) {
-                            const { error } = await supabase.from('subjects').insert(payload);
-                            if (error) throw error;
-                        } else {
+                        if (plan.incompleteRows.length > 0) {
+                            toast.error(`ข้ามข้อมูล ${plan.incompleteRows.length} แถว เพราะไม่มีชื่อวิชาหรือระดับชั้น (แถวที่ ${plan.incompleteRows.slice(0, 10).join(', ')}${plan.incompleteRows.length > 10 ? ' ...' : ''})`, { duration: 12000 });
+                        }
+                        if (plan.lossyTeacherIds.length > 0) {
+                            toast.error(`${plan.lossyTeacherIds.length} แถวมีเลขประจำตัวประชาชนครูที่ Excel ทำหลักหาย\n\n${LOSSY_HELP}`, { id: 'subject-lossy', duration: 30000 });
+                        }
+                        if (plan.unknownTeachers.length > 0) {
+                            const detail = plan.unknownTeachers.slice(0, 5).map(item => `แถว ${item.row}: ${item.citizenId}`).join('\n');
+                            toast.error(`ไม่พบครู ${plan.unknownTeachers.length} รายการในระบบ วิชาเหล่านี้จะยังไม่มีครูผู้สอน\n${detail}${plan.unknownTeachers.length > 5 ? '\n...' : ''}`, { duration: 25000 });
+                        }
+
+                        if (plan.newSubjects.length === 0 && plan.assignments.length === 0) {
                             toast.error('ข้อมูลวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
                             return;
                         }
+
+                        const subjectIdByKey = new Map(plan.matchedSubjects.map(item => [item.key, item.subjectId]));
+                        payload = plan.newSubjects.map(item => item.record);
+                        if (payload.length > 0) {
+                            const { data: inserted, error } = await supabase.from('subjects')
+                                .insert(payload)
+                                .select('subject_id, subject_name, grade_level, academic_year, semester');
+                            if (error) throw error;
+                            (inserted || []).forEach(subject => subjectIdByKey.set(subjectKey(subject), subject.subject_id));
+                        }
+
+                        const assignmentRows = buildTeacherAssignmentRows(plan.assignments, subjectIdByKey, currentUser.school_id);
+                        if (assignmentRows.length > 0) {
+                            const { error: assignmentError } = await supabase.from('subject_teachers')
+                                .upsert(assignmentRows, { onConflict: 'subject_id,teacher_id,room_name' });
+                            if (assignmentError) throw assignmentError;
+                        }
+
+                        const summary = [];
+                        if (payload.length > 0) summary.push(`เพิ่มรายวิชา ${payload.length} วิชา`);
+                        if (assignmentRows.length > 0) summary.push(`กำหนดครูผู้สอนรายห้อง ${assignmentRows.length} รายการ`);
+                        successMessage = summary.join(' · ');
                     }
                     else if (['learning_units', 'projects', 'activities'].includes(importType)) {
                         const contextType = { learning_units: 'learning_unit', projects: 'project', activities: 'activity' }[importType];
@@ -1051,7 +1070,7 @@ export default function AdminDashboard() {
                         }
                     }
 
-                    toast.success(`นำเข้าสำเร็จ ${payload.length} รายการ`, { id: 'csv' });
+                    toast.success(successMessage || `นำเข้าสำเร็จ ${payload.length} รายการ`, { id: 'csv' });
 
                     // อัปเดต state ตัวแปรที่ใช้ทำงานต่อไม่ต้องให้ผู้ใช้รีโหลดหน้า
                     if (importType === 'subjects') {
@@ -1438,7 +1457,7 @@ export default function AdminDashboard() {
                                     {[
                                         { id: 'students', title: 'ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
                                         { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
-                                        { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอน พร้อมจำนวนชั่วโมงเรียน', template: 'academic_year,semester,subject_name,grade_level,subject_group,teaching_hours,teacher_citizen_id\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,1234567890123\n2569,1,การคิดคำนวณ 1,ป.1,การคิดคำนวณ,40,1234567890123' },
+                                        { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอน พร้อมจำนวนชั่วโมงเรียน วิชาที่มีครูหลายคนให้เขียนซ้ำแถวละครูหนึ่งคน แล้วระบุห้องที่รับผิดชอบ', template: 'academic_year,semester,subject_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,room\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,1234567890123,ป.1/1\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,9876543210987,ป.1/2\n2569,1,การคิดคำนวณ 1,ป.1,การคิดคำนวณ,40,1234567890123,' },
                                         { id: 'learning_units', title: 'ข้อมูลหน่วยการเรียนรู้', desc: 'หน่วยการเรียนรู้ที่ออกแบบแยกจากรายวิชา', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ชุมชนของเรา,ป.1,บูรณาการหลายกลุ่มวิชา,12,1234567890123,สำรวจชุมชนและสื่อสารสิ่งที่ค้นพบ\n2569,1,อาหารดีมีประโยชน์,ป.1,สุขภาพกายและจิต,8,1234567890123,เลือกอาหารและดูแลสุขภาพ' },
                                         { id: 'projects', title: 'ข้อมูลโครงงาน', desc: 'โครงงานพร้อมชั้น กลุ่มวิชา และจำนวนชั่วโมง', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ตลาดนัดพอเพียง,ป.3,เศรษฐกิจและการเงิน,16,1234567890123,วางแผนผลิตและจำหน่ายสินค้า\n2569,1,นักสืบสายน้ำ,ป.3,วิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี,12,1234567890123,สำรวจคุณภาพน้ำในชุมชน' },
                                         { id: 'activities', title: 'ข้อมูลกิจกรรม', desc: 'กิจกรรมทั่วไปหรือกิจกรรมพัฒนาผู้เรียน 3 หมวดตามหลักสูตร 2551', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,activity_category,description\n2569,1,รู้จักตนเอง,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมแนะแนว,กิจกรรมสำรวจความสนใจ\n2569,1,ลูกเสือสำรอง,ป.2,กิจกรรมพัฒนาผู้เรียน,20,1234567890123,กิจกรรมนักเรียน,ฝึกระเบียบและการทำงานเป็นทีม\n2569,1,จิตอาสาพัฒนาโรงเรียน,ป.2,กิจกรรมพัฒนาผู้เรียน,10,1234567890123,กิจกรรมเพื่อสังคมและสาธารณประโยชน์,ร่วมดูแลพื้นที่ส่วนรวม' },
@@ -1465,7 +1484,7 @@ export default function AdminDashboard() {
                                                         const sampleRows = card.template.split('\n').slice(1).map(row => row.split(','));
                                                         XLSX.utils.sheet_add_aoa(ws, [headers, ...sampleRows], { origin: 'A1' });
                                                         // Format citizen_id and dob columns as Text to prevent Excel scientific notation
-                                                        const textCols = ['citizen_id', 'dob', 'student_code'];
+                                                        const textCols = ['citizen_id', 'dob', 'student_code', 'teacher_citizen_id', 'student_citizen_id'];
                                                         headers.forEach((h, colIdx) => {
                                                             if (textCols.includes(h.trim())) {
                                                                 const colLetter = XLSX.utils.encode_col(colIdx);
