@@ -47,6 +47,7 @@ const IMPORT_SCHEMAS = {
             FIELD('first_name', 'ชื่อ', ['ชื่อครู', 'ชื่อจริง', 'firstname'], { required: true }),
             FIELD('last_name', 'นามสกุล', ['นามสกุลครู', 'lastname'], { required: true }),
             FIELD('role', 'บทบาท', ['ตำแหน่งในระบบ', 'สิทธิ', 'role']),
+            FIELD('homeroom', 'ห้องประจำชั้น', ['ครูประจำชั้น', 'homeroom']),
         ],
     },
     subjects: {
@@ -118,14 +119,19 @@ Object.values(IMPORT_SCHEMAS).forEach(schema => {
     if (schema.context) schema.fields = CONTEXT_FIELDS;
 });
 
+// เลือกคอลัมน์ที่ยังไม่ถูกจับคู่ก่อน ไฟล์ที่มีหัวคอลัมน์ซ้ำ เช่น "เลขประจำตัว" สองคอลัมน์
+// (เลขบัตรกับรหัสนักเรียน) จึงได้คนละคอลัมน์ แทนที่จะชี้คอลัมน์แรกทั้งคู่ แต่ยังใช้คอลัมน์
+// ร่วมกันได้เมื่อไม่มีทางเลือกอื่น เช่นไฟล์ที่มีคอลัมน์ "ชั้น/ห้อง" รวมกันคอลัมน์เดียว
 const suggestMapping = (headers, fields) => {
     const normalizedHeaders = headers.map(normalizeHeader);
+    const used = new Set();
     return Object.fromEntries(fields.map(field => {
         const aliases = field.aliases.map(normalizeHeader);
-        let index = normalizedHeaders.findIndex(header => aliases.includes(header));
-        if (index < 0) {
-            index = normalizedHeaders.findIndex(header => aliases.some(alias => alias.length >= 3 && (header.includes(alias) || alias.includes(header))));
-        }
+        const exact = header => aliases.includes(header);
+        const partial = header => aliases.some(alias => alias.length >= 3 && (header.includes(alias) || alias.includes(header)));
+        const find = (matches, unusedOnly) => normalizedHeaders.findIndex((header, index) => header && (!unusedOnly || !used.has(index)) && matches(header));
+        const index = [find(exact, true), find(exact, false), find(partial, true), find(partial, false)].find(candidate => candidate >= 0) ?? -1;
+        if (index >= 0) used.add(index);
         return [field.key, index >= 0 ? String(index) : ''];
     }));
 };

@@ -23,6 +23,9 @@ export function excelSerialToThaiDob(serial) {
     return `${String(date.getUTCDate()).padStart(2, '0')}${String(date.getUTCMonth() + 1).padStart(2, '0')}${year}`;
 }
 
+const isDayMonth = (day, month) => Number(day) >= 1 && Number(day) <= 31 && Number(month) >= 1 && Number(month) <= 12;
+const isBuddhistYear = year => year >= 2400 && year <= 2700;
+
 export function normalizeThaiDob(value) {
     const text = String(value ?? '').trim();
     if (!text) return '';
@@ -35,10 +38,17 @@ export function normalizeThaiDob(value) {
     }
     const digits = String(value ?? '').trim().replace(/\.0+$/, '').replace(/\D/g, '');
     if (/^\d{8}$/.test(digits)) {
+        // ปี พ.ศ. ท้ายสตริงบอกชัดว่าเป็น DDMMYYYY จึงต้องตรวจก่อน ไม่อย่างนั้นวันที่ 19–26
+        // เช่น 23042517 จะถูกอ่านเป็นปี 2304 แบบ YYYYMMDD แล้วกลายเป็นเดือนที่ 25
+        if (isDayMonth(digits.slice(0, 2), digits.slice(2, 4)) && isBuddhistYear(Number(digits.slice(4)))) return digits;
         const leadingYear = Number(digits.slice(0, 4));
-        if (leadingYear >= 1900 && leadingYear <= 2600) {
+        if (leadingYear >= 1900 && leadingYear <= 2600 && isDayMonth(digits.slice(6, 8), digits.slice(4, 6))) {
             const year = leadingYear < 2400 ? leadingYear + 543 : leadingYear;
             return `${digits.slice(6, 8)}${digits.slice(4, 6)}${year}`;
+        }
+        const trailingYear = Number(digits.slice(4));
+        if (trailingYear >= 1900 && trailingYear < 2400 && isDayMonth(digits.slice(0, 2), digits.slice(2, 4))) {
+            return `${digits.slice(0, 4)}${trailingYear + 543}`;
         }
         return digits;
     }

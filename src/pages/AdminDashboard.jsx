@@ -4,12 +4,12 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
+import { mergeTeacherImportRows } from '../lib/people';
 import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { hashPassword } from '../lib/auth';
-import { parseRoleList } from '../lib/roles';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
 import { CBE_CAPABILITIES_2568 } from '../constants/curriculum2568';
@@ -826,6 +826,10 @@ export default function AdminDashboard() {
                             console.warn('[CSV Import] Invalid rows:', invalidRows);
                         }
 
+                        // คนเดียวอาจเขียนหลายแถว แถวละบทบาท ต้องรวมก่อน ไม่อย่างนั้นแถวหลังทับแถวแรก
+                        const mergedTeachers = mergeTeacherImportRows(validRows);
+                        // เขียนห้องประจำชั้นเฉพาะเมื่อไฟล์มีข้อมูลนี้ ไฟล์ที่ไม่มีคอลัมน์ต้องไม่ล้างค่าเดิม
+                        const includeHomeroom = [...mergedTeachers.values()].some(entry => entry.homeroom);
                         payload = await Promise.all(validRows.map(async t => ({
                             school_id: currentUser.school_id,
                             citizen_id: t.citizen_id,
@@ -833,8 +837,8 @@ export default function AdminDashboard() {
                             prefix: t.prefix?.trim() || '',
                             first_name: t.first_name?.trim(),
                             last_name: t.last_name?.trim(),
-                            // ไฟล์นำเข้าระบุได้หลายบทบาท เช่น "teacher,admin" บทบาทแรกเป็นบทบาทหลัก
-                            role: (parseRoleList(t.role)[0]) || 'teacher',
+                            role: mergedTeachers.get(t.citizen_id)?.roles[0] || 'teacher',
+                            ...(includeHomeroom ? { homeroom: mergedTeachers.get(t.citizen_id)?.homeroom || null } : {}),
                             is_active: true
                         })));
                         if (payload.length === 0) { toast.error('ไม่มีข้อมูลนำเข้า', { id: 'csv' }); return; }
@@ -843,10 +847,6 @@ export default function AdminDashboard() {
                         if (!payload.length) { toast.error('ไม่มีรายการครูที่นำเข้าได้', { id: 'csv' }); return; }
 
                         // ซิงก์บทบาททั้งหมดของแต่ละคนหลังบันทึกแถวหลักเสร็จ
-                        const rolesByCitizen = new Map(validRows.map(t => {
-                            const parsed = parseRoleList(t.role);
-                            return [String(t.citizen_id).replace(/\D/g, ''), parsed.length ? parsed : ['teacher']];
-                        }));
                         const savedTeachers = await fetchAllByIn(
                             payload.map(item => item.citizen_id),
                             (batch, from, to) => supabase.from('users_teachers')
@@ -854,8 +854,8 @@ export default function AdminDashboard() {
                                 .in('citizen_id', batch).range(from, to)
                         );
                         for (const teacher of savedTeachers) {
-                            const roles = rolesByCitizen.get(teacher.citizen_id);
-                            if (roles) await syncTeacherRoles(teacher.teacher_id, roles, roles[0]);
+                            const entry = mergedTeachers.get(teacher.citizen_id);
+                            if (entry) await syncTeacherRoles(teacher.teacher_id, entry.roles, entry.roles[0]);
                         }
                     }
                     else if (importType === 'subjects') {
@@ -886,6 +886,11 @@ export default function AdminDashboard() {
                         if (plan.unknownTeachers.length > 0) {
                             const detail = plan.unknownTeachers.slice(0, 5).map(item => `แถว ${item.row}: ${item.citizenId}`).join('\n');
                             toast.error(`ไม่พบครู ${plan.unknownTeachers.length} รายการในระบบ วิชาเหล่านี้จะยังไม่มีครูผู้สอน\n${detail}${plan.unknownTeachers.length > 5 ? '\n...' : ''}`, { duration: 25000 });
+                        }
+
+                        if (plan.hoursConflicts.length > 0) {
+                            const detail = plan.hoursConflicts.slice(0, 5).map(item => `${item.subjectName} ${item.gradeLevel}: ${item.hours.join(' / ')} ชม. → บันทึก ${item.keptHours}`).join('\n');
+                            toast(`${plan.hoursConflicts.length} วิชามีจำนวนชั่วโมงไม่เท่ากันระหว่างห้อง ระบบเก็บได้วิชาละค่าเดียว จึงใช้ค่าจากแถวแรก\n${detail}${plan.hoursConflicts.length > 5 ? '\n...' : ''}`, { icon: '⚠️', duration: 20000 });
                         }
 
                         if (plan.newSubjects.length === 0 && plan.assignments.length === 0) {
@@ -1456,7 +1461,7 @@ export default function AdminDashboard() {
                                 <div className="border-t border-slate-200">
                                     {[
                                         { id: 'students', title: 'ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
-                                        { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher' },
+                                        { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท ห้องประจำชั้น และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role,homeroom\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher,ป.1/1\n9876543210987,15082535,นาง,สมหญิง,รักเรียน,admin,\n9876543210987,15082535,นาง,สมหญิง,รักเรียน,teacher,', notes: ['ครูคนเดียวมีหลายหน้าที่ เขียนได้สองแบบ คือหลายแถวแถวละบทบาท หรือแถวเดียวคั่นด้วยจุลภาค เช่น admin,teacher บทบาทที่พบก่อนเป็นบทบาทหลัก', 'บทบาทที่ใช้ได้ teacher คือครูผู้สอน admin คือฝ่ายวิชาการ executive คือผู้บริหาร', 'homeroom คือห้องที่เป็นครูประจำชั้น เช่น ป.1/1 เว้นว่างถ้าไม่ได้เป็นครูประจำชั้น', 'วันเกิดใส่ 8 หลัก วันเดือนปี พ.ศ. เช่น 23042517 ใช้เป็นรหัสผ่านเข้าระบบครั้งแรก'] },
                                         { id: 'subjects', title: 'ข้อมูลวิชา', desc: 'วิชาที่สถานศึกษาเปิดสอน พร้อมจำนวนชั่วโมงเรียน วิชาที่มีครูหลายคนให้เขียนซ้ำแถวละครูหนึ่งคน แล้วระบุห้องที่รับผิดชอบ', template: 'academic_year,semester,subject_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,room\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,1234567890123,ป.1/1\n2569,1,ภาษาและการสื่อสาร 1,ป.1,ภาษาและการสื่อสาร,40,9876543210987,ป.1/2\n2569,1,การคิดคำนวณ 1,ป.1,การคิดคำนวณ,40,1234567890123,', notes: ['วิชาที่มีครูหลายคน ให้เขียนวิชาเดิมซ้ำ แถวละครูหนึ่งคน แล้วใส่ห้องที่ครูคนนั้นรับผิดชอบในคอลัมน์ room ระบบจะรวมให้เหลือวิชาเดียว ไม่เกิดวิชาซ้ำ','ครูคนแรกของแต่ละวิชาจะเป็นครูหลัก ซึ่งดูได้ทุกห้องของวิชานั้น ส่วนครูคนอื่นเห็นเฉพาะห้องที่ระบุไว้','ครูคนเดียวรับผิดชอบหลายห้อง ให้เขียนหลายแถว ห้องละหนึ่งแถว','แถวที่ 2 เป็นต้นไปของวิชาเดิม เว้นกลุ่มวิชาและจำนวนชั่วโมงว่างไว้ได้ ระบบใช้ค่าจากแถวแรก','วิชาที่มีครูคนเดียว เว้นคอลัมน์ room ว่างไว้ได้','ปีการศึกษาและภาคเรียนต้องตรงกับที่เปิดใช้อยู่ในระบบ วิชาที่สอนทั้งปีให้เขียนสองแถว แยกภาคเรียนที่ 1 และ 2'] },
                                         { id: 'learning_units', title: 'ข้อมูลหน่วยการเรียนรู้', desc: 'หน่วยการเรียนรู้ที่ออกแบบแยกจากรายวิชา', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ชุมชนของเรา,ป.1,บูรณาการหลายกลุ่มวิชา,12,1234567890123,สำรวจชุมชนและสื่อสารสิ่งที่ค้นพบ\n2569,1,อาหารดีมีประโยชน์,ป.1,สุขภาพกายและจิต,8,1234567890123,เลือกอาหารและดูแลสุขภาพ' },
                                         { id: 'projects', title: 'ข้อมูลโครงงาน', desc: 'โครงงานพร้อมชั้น กลุ่มวิชา และจำนวนชั่วโมง', template: 'academic_year,semester,context_name,grade_level,subject_group,teaching_hours,teacher_citizen_id,description\n2569,1,ตลาดนัดพอเพียง,ป.3,เศรษฐกิจและการเงิน,16,1234567890123,วางแผนผลิตและจำหน่ายสินค้า\n2569,1,นักสืบสายน้ำ,ป.3,วิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี,12,1234567890123,สำรวจคุณภาพน้ำในชุมชน' },

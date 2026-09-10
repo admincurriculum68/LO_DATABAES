@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft,
-} from '../src/lib/people.js';
+import { mergeTeacherImportRows, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft } from '../src/lib/people.js';
 
 const multiRole = {
     role: 'teacher',
@@ -66,4 +64,25 @@ test('ค้นหาเจอทั้งจากชื่อ รหัสน�
     assert.ok(text.includes('ภูมิพัฒน์'));
     assert.ok(text.includes('69001'));
     assert.ok(text.includes('ป.1/1'));
+});
+
+test('mergeTeacherImportRows รวมบทบาทของคนเดียวที่เขียนหลายแถว บทบาทแถวแรกเป็นบทบาทหลัก', () => {
+    const merged = mergeTeacherImportRows([
+        { citizen_id: '3309901514365', role: 'admin', homeroom: '' },
+        { citizen_id: '1309900315214', role: 'teacher', homeroom: 'ป.1/1' },
+        { citizen_id: '3309901514365', role: 'teacher', homeroom: '' },
+    ]);
+
+    assert.deepEqual(merged.get('3309901514365').roles, ['admin', 'teacher']);
+    assert.deepEqual(merged.get('1309900315214'), { roles: ['teacher'], homeroom: 'ป.1/1' });
+});
+
+test('mergeTeacherImportRows ไม่มีบทบาทให้เป็นครูผู้สอน และรับหลายบทบาทในช่องเดียว', () => {
+    const merged = mergeTeacherImportRows([
+        { citizen_id: '1111111111119', role: '' },
+        { citizen_id: '2222222222228', role: 'teacher,executive' },
+    ]);
+
+    assert.deepEqual(merged.get('1111111111119').roles, ['teacher']);
+    assert.deepEqual(merged.get('2222222222228').roles, ['teacher', 'executive']);
 });

@@ -4,7 +4,7 @@
  * ไฟล์นี้ต้องไม่เรียกฐานข้อมูล เพื่อให้ node --test นำเข้าไปทดสอบได้โดยตรง
  * ส่วนที่คุยกับ Supabase อยู่ใน peopleApi.js
  */
-import { ROLE_LABELS, rolesOf } from './roles.js';
+import { ROLE_LABELS, parseRoleList, rolesOf } from './roles.js';
 
 export const ROLE_CHOICES = [
     ['teacher', 'ครูผู้สอน'],
@@ -73,4 +73,26 @@ export function personSearchText(person) {
         person.citizen_id, person.student_code, person.current_room,
         person.current_grade_level, person.homeroom,
     ].filter(Boolean).join(' ').toLowerCase();
+}
+
+// โรงเรียนมักเขียนคนเดียวหลายแถว แถวละบทบาท เช่น admin แถวหนึ่ง teacher อีกแถว
+// ต้องรวมบทบาทจากทุกแถวของคนเดียวกัน ถ้าแถวหลังทับแถวแรก แอดมินจะหลุดสิทธิ์
+// บทบาทที่พบก่อนเป็นบทบาทหลัก และห้องประจำชั้นใช้ค่าแรกที่ไม่ว่าง
+export function mergeTeacherImportRows(rows) {
+    const byCitizen = new Map();
+    (rows || []).forEach(row => {
+        const citizenId = String(row.citizen_id ?? '').replace(/\D/g, '');
+        if (!citizenId) return;
+        const entry = byCitizen.get(citizenId) || { roles: [], homeroom: '' };
+        parseRoleList(row.role).forEach(role => {
+            if (!entry.roles.includes(role)) entry.roles.push(role);
+        });
+        const homeroom = String(row.homeroom ?? '').trim();
+        if (homeroom && !entry.homeroom) entry.homeroom = homeroom;
+        byCitizen.set(citizenId, entry);
+    });
+    byCitizen.forEach(entry => {
+        if (!entry.roles.length) entry.roles.push('teacher');
+    });
+    return byCitizen;
 }

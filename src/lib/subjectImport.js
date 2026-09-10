@@ -18,6 +18,16 @@ export function assignmentKey(subjectIdentifier, teacherId, roomName) {
     return [subjectIdentifier, teacherId, roomName].join(SEP);
 }
 
+// ไฟล์ของโรงเรียนมักใส่ห้องเป็นเลขเปล่า เช่น 1 แต่ห้องของนักเรียนถูกเก็บเป็น ป.1/1
+// (ตัวช่วยนำเข้ารวมชั้นกับห้องให้นักเรียนแบบเดียวกันนี้) ถ้าไม่แปลงให้ตรงกัน ครูร่วมสอน
+// จะเปิดหน้าประเมินแล้วไม่เห็นนักเรียนสักคน เพราะหน้าประเมินกรองนักเรียนด้วยชื่อห้อง
+export function normalizeRoomName(room, gradeLevel) {
+    const value = text(room);
+    const grade = text(gradeLevel);
+    if (/^\d+$/.test(value) && grade) return `${grade}/${value}`;
+    return value;
+}
+
 export function planSubjectImport(rows, {
     schoolId = null,
     academicYear = null,
@@ -55,8 +65,9 @@ export function planSubjectImport(rows, {
         };
 
         const key = subjectKey(record);
-        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set() });
+        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set(), hours: new Set() });
         const group = groups.get(key);
+        if (record.teaching_hours !== null) group.hours.add(record.teaching_hours);
 
         // ครูกรอกรายละเอียดวิชาไว้เฉพาะแถวแรกได้ แถวถัดไปเว้นว่างไว้ไม่ถือว่าลบของเดิม
         if (!group.record.subject_group && record.subject_group) group.record.subject_group = record.subject_group;
@@ -79,7 +90,7 @@ export function planSubjectImport(rows, {
         // ครูคนแรกที่พบของวิชานี้คือครูหลัก ซึ่งเห็นได้ทุกห้องของวิชา
         if (!group.primaryTeacherId) group.primaryTeacherId = teacherId;
 
-        const roomName = text(row.room);
+        const roomName = normalizeRoomName(row.room, record.grade_level);
         if (!roomName) return;
         const seenKey = assignmentKey(key, teacherId, roomName);
         if (group.seen.has(seenKey)) return;
@@ -97,6 +108,17 @@ export function planSubjectImport(rows, {
 
     const assignments = [...groups.values()].flatMap(group => group.assignments);
 
+    // รายวิชาเก็บจำนวนชั่วโมงได้ค่าเดียว ถ้าแต่ละห้องในไฟล์ใส่ไม่เท่ากัน ต้องบอกผู้นำเข้า
+    // ไม่ใช่เลือกค่าแรกไปเงียบ ๆ
+    const hoursConflicts = [...groups.values()]
+        .filter(group => group.hours.size > 1)
+        .map(group => ({
+            subjectName: group.record.subject_name,
+            gradeLevel: group.record.grade_level,
+            hours: [...group.hours],
+            keptHours: group.record.teaching_hours,
+        }));
+
     return {
         newSubjects,
         matchedSubjects,
@@ -104,6 +126,7 @@ export function planSubjectImport(rows, {
         unknownTeachers,
         lossyTeacherIds,
         incompleteRows,
+        hoursConflicts,
         subjectCount: groups.size,
     };
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../src/lib/subjectImport.js';
+import { buildTeacherAssignmentRows, normalizeRoomName, planSubjectImport, subjectKey } from '../src/lib/subjectImport.js';
 
 const TEACHERS = new Map([
     ['1111111111111', 'teacher-a'],
@@ -170,4 +170,32 @@ test('buildTeacherAssignmentRows ข้ามวิชาที่หา subject
     );
 
     assert.deepEqual(rows, []);
+});
+
+test('ห้องที่เป็นเลขเปล่าถูกแปลงเป็นรูปแบบเดียวกับห้องของนักเรียน', () => {
+    const plan = planSubjectImport([
+        row({ teacher_citizen_id: '1111111111111', room: 1 }),
+        row({ teacher_citizen_id: '2222222222222', room: '2' }),
+        row({ teacher_citizen_id: '3333333333333', room: 'ป.3/3' }),
+    ], base);
+
+    assert.deepEqual(plan.assignments.map(item => item.roomName), ['ป.3/1', 'ป.3/2', 'ป.3/3']);
+});
+
+test('normalizeRoomName ไม่เดาเมื่อไม่รู้ชั้น และไม่แตะรูปแบบอื่น', () => {
+    assert.equal(normalizeRoomName('1', ''), '1');
+    assert.equal(normalizeRoomName('ห้อง EP', 'ป.1'), 'ห้อง EP');
+    assert.equal(normalizeRoomName('', 'ป.1'), '');
+});
+
+test('ชั่วโมงไม่เท่ากันระหว่างห้องถูกรายงาน และใช้ค่าจากแถวแรก', () => {
+    const plan = planSubjectImport([
+        row({ teaching_hours: 80, teacher_citizen_id: '1111111111111', room: 1 }),
+        row({ teaching_hours: 100, teacher_citizen_id: '2222222222222', room: 4 }),
+        row({ subject_name: 'การคิดคำนวณ 3', teaching_hours: 200, teacher_citizen_id: '1111111111111', room: 1 }),
+    ], base);
+
+    assert.equal(plan.hoursConflicts.length, 1);
+    assert.deepEqual(plan.hoursConflicts[0], { subjectName: 'การอ่านการเขียนภาษาไทย 3', gradeLevel: 'ป.3', hours: [80, 100], keptHours: 80 });
+    assert.equal(plan.newSubjects[0].record.teaching_hours, 80);
 });
