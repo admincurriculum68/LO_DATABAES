@@ -3,13 +3,8 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSpreadshee
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { normalizeThaiDob, sanitizeCitizenId } from '../lib/importSanitizers';
-
-const normalizeHeader = value => String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s._/\\()\-[\]]+/g, '')
-    .replace(/ปีการศึกษา/g, 'ปี')
-    .replace(/หมายเลข/g, 'เลข');
+import { detectHeaderRow, suggestMapping } from '../lib/columnMapping';
+import { IMPORT_SCHEMAS } from '../lib/importSchemas';
 
 const normalizeGrade = value => {
     const text = String(value ?? '').trim();
@@ -19,135 +14,6 @@ const normalizeGrade = value => {
 };
 
 const normalizeBoolean = value => ['true', '1', 'yes', 'ใช่', 'เพิ่มเติม', 'มากกว่าหลักสูตร'].includes(String(value ?? '').trim().toLowerCase());
-
-const FIELD = (key, label, aliases, options = {}) => ({ key, label, aliases: [label, key, ...aliases], ...options });
-
-const IMPORT_SCHEMAS = {
-    students: {
-        title: 'ข้อมูลนักเรียน',
-        description: 'ระบบจะพยายามรู้จักชื่อคอลัมน์จาก DMC และ Excel ของโรงเรียน',
-        fields: [
-            FIELD('citizen_id', 'เลขประจำตัวประชาชน', ['เลขบัตรประชาชน', 'เลข13หลัก', 'เลขบัตร', 'เลขประชาชน'], { required: true, kind: 'citizen' }),
-            FIELD('dob', 'วันเดือนปีเกิด', ['วันเกิด', 'ว/ด/ปเกิด', 'birthdate', 'dateofbirth'], { required: true, kind: 'dob' }),
-            FIELD('student_code', 'รหัสนักเรียน', ['รหัสประจำตัวนักเรียน', 'เลขประจำตัวนักเรียน', 'studentid']),
-            FIELD('prefix', 'คำนำหน้า', ['คำนำหน้าชื่อ', 'title']),
-            FIELD('first_name', 'ชื่อ', ['ชื่อนักเรียน', 'ชื่อจริง', 'firstname'], { required: true }),
-            FIELD('last_name', 'นามสกุล', ['นามสกุลนักเรียน', 'lastname'], { required: true }),
-            FIELD('current_grade_level', 'ระดับชั้น', ['ชั้น', 'ระดับ', 'ชั้นปี', 'grade'], { required: true, kind: 'grade' }),
-            FIELD('current_room', 'ห้องประจำชั้น', ['ห้อง', 'ห้องเรียน', 'ชั้นห้อง', 'room'], { required: true, kind: 'room' }),
-        ],
-    },
-    teachers: {
-        title: 'ข้อมูลครูและบุคลากร',
-        description: 'รองรับครูผู้สอน ฝ่ายวิชาการ และผู้บริหาร',
-        fields: [
-            FIELD('citizen_id', 'เลขประจำตัวประชาชน', ['เลขบัตรประชาชน', 'เลข13หลัก'], { required: true, kind: 'citizen' }),
-            FIELD('dob', 'วันเดือนปีเกิด', ['วันเกิด', 'ว/ด/ปเกิด', 'birthdate'], { required: true, kind: 'dob' }),
-            FIELD('prefix', 'คำนำหน้า', ['คำนำหน้าชื่อ', 'title']),
-            FIELD('first_name', 'ชื่อ', ['ชื่อครู', 'ชื่อจริง', 'firstname'], { required: true }),
-            FIELD('last_name', 'นามสกุล', ['นามสกุลครู', 'lastname'], { required: true }),
-            FIELD('role', 'บทบาท', ['ตำแหน่งในระบบ', 'สิทธิ', 'role']),
-            FIELD('homeroom', 'ห้องประจำชั้น', ['ครูประจำชั้น', 'homeroom']),
-        ],
-    },
-    subjects: {
-        title: 'ข้อมูลวิชา',
-        description: 'ชื่อวิชา ระดับชั้น เวลาเรียน และครูหลัก',
-        fields: [
-            FIELD('academic_year', 'ปีการศึกษา', ['ปี', 'ปีการเรียน']),
-            FIELD('semester', 'ภาคเรียน', ['เทอม', 'ภาค']),
-            FIELD('subject_name', 'ชื่อวิชา', ['รายวิชา', 'วิชา', 'subject'], { required: true }),
-            FIELD('grade_level', 'ระดับชั้น', ['ชั้น', 'ชั้นปี', 'grade'], { required: true, kind: 'grade' }),
-            FIELD('subject_group', 'กลุ่มวิชา', ['กลุ่มสาระ', 'ด้านความสามารถ']),
-            FIELD('teaching_hours', 'จำนวนชั่วโมงเรียน', ['ชั่วโมง', 'เวลาเรียน', 'ชม'], { kind: 'number' }),
-            FIELD('teacher_citizen_id', 'เลขประจำตัวประชาชนครู', ['เลขบัตรครู', 'เลข13หลักครู', 'ครูผู้สอน']),
-            FIELD('room', 'ห้องที่ครูคนนี้รับผิดชอบ', ['ห้อง', 'ห้องเรียน', 'กลุ่มเรียน', 'room']),
-        ],
-    },
-    learning_units: {
-        title: 'ข้อมูลหน่วยการเรียนรู้',
-        description: 'หน่วยการเรียนรู้ที่โรงเรียนออกแบบ',
-        context: true,
-    },
-    projects: {
-        title: 'ข้อมูลโครงงาน',
-        description: 'โครงงานรายชั้นหรือโครงงานแบบรวมกลุ่ม',
-        context: true,
-    },
-    activities: {
-        title: 'ข้อมูลกิจกรรม',
-        description: 'กิจกรรมทั่วไปและกิจกรรมพัฒนาผู้เรียน',
-        context: true,
-    },
-    enrollments: {
-        title: 'ข้อมูลกลุ่มเรียนรายวิชา',
-        description: 'จับคู่นักเรียนกับวิชาและห้อง/กลุ่มที่เข้าเรียน',
-        fields: [
-            FIELD('student_citizen_id', 'เลขประจำตัวประชาชนนักเรียน', ['เลขบัตรนักเรียน', 'เลข13หลัก', 'studentid'], { required: true, kind: 'citizen' }),
-            FIELD('subject_name', 'ชื่อวิชา', ['รายวิชา', 'วิชา', 'subject'], { required: true }),
-            FIELD('room', 'ชื่อห้องหรือกลุ่มเรียน', ['ห้อง', 'กลุ่มเรียน', 'กลุ่ม', 'room'], { required: true }),
-        ],
-    },
-    learning_outcomes: {
-        title: 'ผลลัพธ์การเรียนรู้ (LO)',
-        description: 'LO แยกระดับชั้นและด้านความสามารถ',
-        fields: [
-            FIELD('grade_level', 'ระดับชั้น', ['ชั้น', 'ชั้นปี', 'grade'], { required: true, kind: 'grade' }),
-            FIELD('lo_code', 'รหัส LO', ['รหัสผลลัพธ์', 'รหัส']),
-            FIELD('ability_no', 'ข้อที่', ['ลำดับ', 'ข้อ', 'หมายเลข'], { kind: 'number' }),
-            FIELD('level_group', 'ช่วงชั้น', ['ช่วง', 'phase']),
-            FIELD('competency_area', 'ด้านความสามารถ', ['สมรรถนะ', 'ความสามารถ', 'competency'], { required: true }),
-            FIELD('is_custom_competency', 'เพิ่มเติมจากหลักสูตร', ['มากกว่าหลักสูตร', 'กำหนดเอง'], { kind: 'boolean' }),
-            FIELD('lo_description', 'รายละเอียด LO', ['ผลลัพธ์การเรียนรู้', 'คำอธิบาย', 'รายละเอียด'], { required: true }),
-        ],
-    },
-};
-
-const CONTEXT_FIELDS = [
-    FIELD('academic_year', 'ปีการศึกษา', ['ปี', 'ปีการเรียน']),
-    FIELD('semester', 'ภาคเรียน', ['เทอม', 'ภาค']),
-    FIELD('context_name', 'ชื่อรายการ', ['ชื่อหน่วย', 'ชื่อโครงงาน', 'ชื่อกิจกรรม', 'ชื่อ'], { required: true }),
-    FIELD('grade_level', 'ระดับชั้น', ['ชั้น', 'ชั้นปี', 'grade'], { required: true, kind: 'grade' }),
-    FIELD('subject_group', 'กลุ่มวิชา', ['กลุ่มสาระ', 'ด้านความสามารถ']),
-    FIELD('teaching_hours', 'จำนวนชั่วโมงเรียน', ['ชั่วโมง', 'เวลาเรียน', 'ชม'], { kind: 'number' }),
-    FIELD('teacher_citizen_id', 'เลขประจำตัวประชาชนครู', ['เลขบัตรครู', 'เลข13หลักครู']),
-    FIELD('activity_category', 'หมวดกิจกรรม', ['ประเภทกิจกรรม', 'หมวด']),
-    FIELD('description', 'คำอธิบาย', ['รายละเอียด', 'วัตถุประสงค์']),
-];
-
-Object.values(IMPORT_SCHEMAS).forEach(schema => {
-    if (schema.context) schema.fields = CONTEXT_FIELDS;
-});
-
-// เลือกคอลัมน์ที่ยังไม่ถูกจับคู่ก่อน ไฟล์ที่มีหัวคอลัมน์ซ้ำ เช่น "เลขประจำตัว" สองคอลัมน์
-// (เลขบัตรกับรหัสนักเรียน) จึงได้คนละคอลัมน์ แทนที่จะชี้คอลัมน์แรกทั้งคู่ แต่ยังใช้คอลัมน์
-// ร่วมกันได้เมื่อไม่มีทางเลือกอื่น เช่นไฟล์ที่มีคอลัมน์ "ชั้น/ห้อง" รวมกันคอลัมน์เดียว
-const suggestMapping = (headers, fields) => {
-    const normalizedHeaders = headers.map(normalizeHeader);
-    const used = new Set();
-    return Object.fromEntries(fields.map(field => {
-        const aliases = field.aliases.map(normalizeHeader);
-        const exact = header => aliases.includes(header);
-        const partial = header => aliases.some(alias => alias.length >= 3 && (header.includes(alias) || alias.includes(header)));
-        const find = (matches, unusedOnly) => normalizedHeaders.findIndex((header, index) => header && (!unusedOnly || !used.has(index)) && matches(header));
-        const index = [find(exact, true), find(exact, false), find(partial, true), find(partial, false)].find(candidate => candidate >= 0) ?? -1;
-        if (index >= 0) used.add(index);
-        return [field.key, index >= 0 ? String(index) : ''];
-    }));
-};
-
-const detectHeaderRow = (rows, fields) => {
-    let best = { index: 0, score: -1 };
-    rows.slice(0, 20).forEach((row, index) => {
-        const mapping = suggestMapping(row || [], fields);
-        const matched = Object.values(mapping).filter(value => value !== '').length;
-        const requiredMatched = fields.filter(field => field.required && mapping[field.key] !== '').length;
-        const nonEmpty = (row || []).filter(value => String(value ?? '').trim()).length;
-        const score = requiredMatched * 20 + matched * 5 + Math.min(nonEmpty, 10);
-        if (score > best.score) best = { index, score };
-    });
-    return best.index;
-};
 
 const readFile = file => new Promise((resolve, reject) => {
     const extension = file.name.split('.').pop().toLowerCase();
