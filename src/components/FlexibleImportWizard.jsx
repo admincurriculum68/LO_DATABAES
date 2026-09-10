@@ -83,6 +83,7 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
     const fileInputRef = useRef(null);
     const [step, setStep] = useState(1);
     const [importType, setImportType] = useState(initialType);
+    const [autoEnroll, setAutoEnroll] = useState(true);
     const [fileName, setFileName] = useState('');
     const [sheets, setSheets] = useState([]);
     const [sheetIndex, setSheetIndex] = useState(0);
@@ -171,12 +172,15 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
         setPreviewPage(1);
     };
 
+    // ไฟล์วิชาที่มีคอลัมน์ห้อง บอกได้ว่าวิชาไหนเรียนห้องไหน จึงจัดนักเรียนทั้งห้องเข้าวิชาให้ได้
+    const canAutoEnroll = importType === 'subjects' && mapping.room !== undefined && mapping.room !== '';
+
     const confirm = async () => {
         if (!readyRows.length) return;
         setLoading(true);
         setErrorMessage('');
         try {
-            await onConfirm(readyRows.map(item => item.record), importType);
+            await onConfirm(readyRows.map(item => item.record), importType, { autoEnroll: canAutoEnroll && autoEnroll });
         } catch (error) {
             setErrorMessage(`นำเข้าไม่สำเร็จ: ${error.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'}`);
         } finally {
@@ -219,6 +223,7 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-extrabold text-slate-950">ตรวจสอบและแก้ไขข้อมูลทุกแถว</h3><p className="mt-1 text-xs text-slate-600">แสดงครั้งละ 50 แถว เลื่อนไปหน้าอื่นเพื่อแก้รายการที่เหลือได้ ระบบจะนำเข้าเฉพาะรายการที่ไม่มีข้อผิดพลาด</p></div>{errorCount > 0 && <button onClick={() => { setShowOnlyErrors(value => !value); setPreviewPage(1); }} className={`min-h-11 rounded-xl border px-3 text-sm font-bold ${showOnlyErrors ? 'action-danger border-rose-700' : 'border-rose-300 bg-white text-rose-800'}`}>{showOnlyErrors ? 'แสดงทุกรายการ' : `แสดงเฉพาะ ${errorCount} รายการที่ผิด`}</button>}</div>
                 <div className="max-h-[520px] overflow-auto rounded-xl border border-slate-200"><table className="min-w-max w-full text-sm"><thead className="sticky top-0 z-10 bg-slate-100 text-slate-700"><tr><th className="px-3 py-3 text-center">แถว</th><th className="px-3 py-3 text-left">สถานะ</th>{schema.fields.map(field => <th key={field.key} className="min-w-[160px] px-3 py-3 text-left">{field.label}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 bg-white">{visiblePreview.map(item => <tr key={item.sourceRow} className={item.errors.length ? 'surface-danger' : ''}><td className="px-3 py-2 text-center font-mono text-xs text-slate-600">{item.sourceRow}</td><td className="max-w-[220px] px-3 py-2">{item.errors.length ? <span className="text-xs font-bold leading-5 text-rose-700">{item.errors.join(' · ')}</span> : <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />พร้อม</span>}</td>{schema.fields.map(field => { const editKey = `${item.sourceRow}:${field.key}`; return <td key={field.key} className="px-2 py-2"><input value={item.record[field.key] ?? ''} onChange={event => setEdits(previous => ({ ...previous, [editKey]: event.target.value }))} onBlur={event => setEdits(previous => ({ ...previous, [editKey]: transformValue(event.target.value, field) }))} className={`min-h-11 w-full rounded-lg border px-2 text-xs ${item.errors.length && (!item.record[field.key] || (field.kind === 'citizen' && item.record[field.key].length !== 13)) ? 'border-rose-400 bg-white' : 'border-slate-200 bg-white'}`} /></td>; })}</tr>)}</tbody></table></div>
                 {previewPageCount > 1 && <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-sm font-bold text-slate-600">หน้า {previewPage} จาก {previewPageCount} · {previewRows.length.toLocaleString()} รายการ</span><div className="flex gap-2"><button type="button" onClick={() => setPreviewPage(value => Math.max(1, value - 1))} disabled={previewPage === 1} className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button type="button" onClick={() => setPreviewPage(value => Math.min(previewPageCount, value + 1))} disabled={previewPage === previewPageCount} className="action-primary min-h-11 rounded-lg px-4 text-sm font-bold disabled:opacity-40">ถัดไป</button></div></div>}
+                {canAutoEnroll && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"><input type="checkbox" checked={autoEnroll} onChange={event => setAutoEnroll(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-700" /><span><span className="block text-sm font-extrabold text-slate-900">จัดนักเรียนทั้งห้องเข้าวิชาให้อัตโนมัติ</span><span className="mt-0.5 block text-xs leading-5 text-slate-600">นักเรียนทุกคนในห้องที่ระบุในไฟล์จะถูกเพิ่มเข้าวิชานั้น ไม่ต้องกดเพิ่มทีละห้อง ต้องนำเข้านักเรียนก่อน ถ้าบางวิชามีนักเรียนเรียนไม่ครบทั้งห้อง ให้ปิดตัวเลือกนี้ หรือนำนักเรียนออกภายหลังในเมนูจัดนักเรียนเข้ารายวิชา</span></span></label>}
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button onClick={() => setStep(2)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700"><ArrowLeft className="h-4 w-4" />กลับไปจับคู่คอลัมน์</button><button onClick={confirm} disabled={!readyRows.length || loading} className="action-success inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-extrabold disabled:opacity-40"><Upload className="h-4 w-4" />{loading ? 'กำลังนำเข้า...' : `ยืนยันนำเข้า ${readyRows.length.toLocaleString()} รายการ`}</button></div>
             </div>}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={selectFile} />

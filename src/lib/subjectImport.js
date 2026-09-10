@@ -65,13 +65,18 @@ export function planSubjectImport(rows, {
         };
 
         const key = subjectKey(record);
-        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set(), hours: new Set() });
+        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set(), hours: new Set(), rooms: new Set() });
         const group = groups.get(key);
         if (record.teaching_hours !== null) group.hours.add(record.teaching_hours);
 
         // ครูกรอกรายละเอียดวิชาไว้เฉพาะแถวแรกได้ แถวถัดไปเว้นว่างไว้ไม่ถือว่าลบของเดิม
         if (!group.record.subject_group && record.subject_group) group.record.subject_group = record.subject_group;
         if (group.record.teaching_hours === null && record.teaching_hours !== null) group.record.teaching_hours = record.teaching_hours;
+
+        // ห้องที่ใช้จัดนักเรียนเข้าวิชามาจากทุกแถวที่ระบุห้อง ไม่ขึ้นกับว่าหาครูเจอหรือไม่
+        // วิชาที่ครูยังไม่มีบัญชีจึงยังได้นักเรียนครบ แล้วค่อยเพิ่มครูภายหลัง
+        const enrollmentRoom = normalizeRoomName(row.room, record.grade_level);
+        if (enrollmentRoom) group.rooms.add(enrollmentRoom);
 
         const rawTeacher = text(row.teacher_citizen_id);
         if (!rawTeacher) return;
@@ -107,6 +112,7 @@ export function planSubjectImport(rows, {
     });
 
     const assignments = [...groups.values()].flatMap(group => group.assignments);
+    const enrollmentRooms = [...groups.values()].flatMap(group => [...group.rooms].map(roomName => ({ subjectKey: group.key, roomName })));
 
     // รายวิชาเก็บจำนวนชั่วโมงได้ค่าเดียว ถ้าแต่ละห้องในไฟล์ใส่ไม่เท่ากัน ต้องบอกผู้นำเข้า
     // ไม่ใช่เลือกค่าแรกไปเงียบ ๆ
@@ -127,6 +133,7 @@ export function planSubjectImport(rows, {
         lossyTeacherIds,
         incompleteRows,
         hoursConflicts,
+        enrollmentRooms,
         subjectCount: groups.size,
     };
 }
@@ -142,6 +149,32 @@ export function buildTeacherAssignmentRows(assignments, subjectIdByKey, schoolId
         if (seen.has(key)) return;
         seen.add(key);
         rows.push({ school_id: schoolId, subject_id: subjectId, teacher_id: item.teacherId, room_name: item.roomName });
+    });
+    return rows;
+}
+
+// ไฟล์วิชาระบุอยู่แล้วว่าวิชาไหนเรียนห้องไหน จึงจัดนักเรียนทุกคนในห้องนั้นเข้าวิชาได้เลย
+// แทนการกดเพิ่มทีละห้อง ข้ามคนที่มีรายชื่อในวิชานั้นอยู่แล้วทุกสถานะ นำเข้าซ้ำจึงไม่เกิด
+// รายชื่อซ้ำ และไม่ดึงนักเรียนที่ถูกถอนออกจากวิชากลับเข้ามา
+export function buildRoomEnrollmentRows(enrollmentRooms, subjectIdByKey, students, existingEnrollments = []) {
+    const existing = new Set((existingEnrollments || []).map(row => assignmentKey(row.subject_id, row.student_id, '')));
+    const studentsByRoom = new Map();
+    (students || []).forEach(student => {
+        const room = text(student.current_room);
+        if (!room) return;
+        if (!studentsByRoom.has(room)) studentsByRoom.set(room, []);
+        studentsByRoom.get(room).push(student.student_id);
+    });
+    const rows = [];
+    (enrollmentRooms || []).forEach(item => {
+        const subjectId = subjectIdByKey.get(item.subjectKey);
+        if (!subjectId) return;
+        (studentsByRoom.get(item.roomName) || []).forEach(studentId => {
+            const key = assignmentKey(subjectId, studentId, '');
+            if (existing.has(key)) return;
+            existing.add(key);
+            rows.push({ student_id: studentId, subject_id: subjectId, room: item.roomName, enrollment_status: 'active' });
+        });
     });
     return rows;
 }

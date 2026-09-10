@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
-import { buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
+import { buildRoomEnrollmentRows, buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
 import { mergeTeacherImportRows } from '../lib/people';
 import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -741,7 +741,7 @@ export default function AdminDashboard() {
 
     // Flexible Import Wizard ส่งข้อมูลที่จับคู่ชื่อคอลัมน์แล้วเข้าฟังก์ชันเดียวกัน
     // เพื่อให้การนำเข้าจาก Template เดิมและไฟล์ของโรงเรียนใช้ validation ชุดเดียวกัน
-    const processImportData = async (data, importType) => {
+    const processImportData = async (data, importType, options = {}) => {
         if (!data || data.length === 0) { toast.error('ไม่พบข้อมูลสำหรับนำเข้า', { id: 'csv' }); return; }
         toast.loading('กำลังตรวจสอบและบันทึกข้อมูล...', { id: 'csv' });
         try {
@@ -893,7 +893,8 @@ export default function AdminDashboard() {
                             toast(`${plan.hoursConflicts.length} วิชามีจำนวนชั่วโมงไม่เท่ากันระหว่างห้อง ระบบเก็บได้วิชาละค่าเดียว จึงใช้ค่าจากแถวแรก\n${detail}${plan.hoursConflicts.length > 5 ? '\n...' : ''}`, { icon: '⚠️', duration: 20000 });
                         }
 
-                        if (plan.newSubjects.length === 0 && plan.assignments.length === 0) {
+                        const wantsEnrollment = Boolean(options.autoEnroll) && plan.enrollmentRooms.length > 0;
+                        if (plan.newSubjects.length === 0 && plan.assignments.length === 0 && !wantsEnrollment) {
                             toast.error('ข้อมูลวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
                             return;
                         }
@@ -915,10 +916,33 @@ export default function AdminDashboard() {
                             if (assignmentError) throw assignmentError;
                         }
 
+                        // ไฟล์ระบุห้องของแต่ละวิชาไว้แล้ว จึงจัดนักเรียนทั้งห้องเข้าวิชาให้เลย แทนการกดเพิ่มทีละห้อง
+                        // ดึงรายชื่อนักเรียนใหม่จากฐานข้อมูล เผื่อเพิ่งนำเข้านักเรียนในรอบเดียวกัน
+                        let enrolledCount = 0;
+                        if (wantsEnrollment) {
+                            const activeStudents = await fetchAllRows((from, to) => supabase.from('users_students')
+                                .select('student_id, current_room').eq('school_id', currentUser.school_id)
+                                .eq('student_status', 'active').range(from, to));
+                            if (!activeStudents.length) {
+                                toast.error('ยังไม่มีรายชื่อนักเรียนในระบบ จึงยังจัดนักเรียนเข้าวิชาไม่ได้ ให้นำเข้านักเรียนก่อน แล้วนำเข้าไฟล์วิชานี้ซ้ำอีกครั้ง ระบบจะไม่สร้างวิชาซ้ำ', { duration: 15000 });
+                            } else {
+                                const enrolledSubjectIds = [...new Set(plan.enrollmentRooms.map(item => subjectIdByKey.get(item.subjectKey)).filter(Boolean))];
+                                const existingEnrollments = await fetchAllByIn(enrolledSubjectIds, (batch, from, to) => supabase.from('student_enrollments')
+                                    .select('student_id, subject_id').in('subject_id', batch).range(from, to));
+                                const enrollmentRows = buildRoomEnrollmentRows(plan.enrollmentRooms, subjectIdByKey, activeStudents, existingEnrollments);
+                                for (let start = 0; start < enrollmentRows.length; start += 500) {
+                                    const { error: enrollmentError } = await supabase.from('student_enrollments').insert(enrollmentRows.slice(start, start + 500));
+                                    if (enrollmentError) throw enrollmentError;
+                                    enrolledCount += Math.min(500, enrollmentRows.length - start);
+                                }
+                            }
+                        }
+
                         const summary = [];
                         if (payload.length > 0) summary.push(`เพิ่มรายวิชา ${payload.length} วิชา`);
                         if (assignmentRows.length > 0) summary.push(`กำหนดครูผู้สอนรายห้อง ${assignmentRows.length} รายการ`);
-                        successMessage = summary.join(' · ');
+                        if (enrolledCount > 0) summary.push(`จัดนักเรียนเข้าวิชา ${enrolledCount.toLocaleString()} รายการ`);
+                        successMessage = summary.join(' · ') || 'ข้อมูลในไฟล์มีอยู่ในระบบครบแล้ว ไม่มีรายการใหม่';
                     }
                     else if (['learning_units', 'projects', 'activities'].includes(importType)) {
                         const contextType = { learning_units: 'learning_unit', projects: 'project', activities: 'activity' }[importType];
@@ -1422,8 +1446,8 @@ export default function AdminDashboard() {
                                     <FlexibleImportWizard
                                         initialType={importWizardType}
                                         onCancel={() => setImportWizardType(null)}
-                                        onConfirm={async (records, type) => {
-                                            const result = await processImportData(records, type);
+                                        onConfirm={async (records, type, options) => {
+                                            const result = await processImportData(records, type, options);
                                             if (result) setImportWizardType(null);
                                         }}
                                     />

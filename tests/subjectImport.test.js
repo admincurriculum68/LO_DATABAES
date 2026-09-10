@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTeacherAssignmentRows, normalizeRoomName, planSubjectImport, subjectKey } from '../src/lib/subjectImport.js';
+import { buildRoomEnrollmentRows, buildTeacherAssignmentRows, normalizeRoomName, planSubjectImport, subjectKey } from '../src/lib/subjectImport.js';
 
 const TEACHERS = new Map([
     ['1111111111111', 'teacher-a'],
@@ -198,4 +198,38 @@ test('ชั่วโมงไม่เท่ากันระหว่าง�
     assert.equal(plan.hoursConflicts.length, 1);
     assert.deepEqual(plan.hoursConflicts[0], { subjectName: 'การอ่านการเขียนภาษาไทย 3', gradeLevel: 'ป.3', hours: [80, 100], keptHours: 80 });
     assert.equal(plan.newSubjects[0].record.teaching_hours, 80);
+});
+
+test('ห้องสำหรับจัดนักเรียนมาจากทุกแถวที่ระบุห้อง แม้หาครูไม่เจอ', () => {
+    const plan = planSubjectImport([
+        row({ teacher_citizen_id: '1111111111111', room: 1 }),
+        row({ teacher_citizen_id: '9999999999999', room: 2 }),
+        row({ teacher_citizen_id: '', room: 3 }),
+        row({ teacher_citizen_id: '2222222222222', room: 1 }),
+    ], base);
+
+    assert.deepEqual(plan.enrollmentRooms.map(item => item.roomName), ['ป.3/1', 'ป.3/2', 'ป.3/3']);
+    assert.equal(plan.assignments.length, 2);
+});
+
+test('buildRoomEnrollmentRows จัดนักเรียนทั้งห้องเข้าวิชา ข้ามคนที่อยู่แล้ว และไม่แตะห้องอื่น', () => {
+    const key = subjectKey({ subject_name: 'การอ่านการเขียนภาษาไทย 3', grade_level: 'ป.3', academic_year: 2568, semester: 1 });
+    const students = [
+        { student_id: 's1', current_room: 'ป.3/1' },
+        { student_id: 's2', current_room: 'ป.3/1' },
+        { student_id: 's3', current_room: 'ป.3/2' },
+        { student_id: 's4', current_room: 'ป.3/9' },
+        { student_id: 's5', current_room: '' },
+    ];
+    const rows = buildRoomEnrollmentRows(
+        [{ subjectKey: key, roomName: 'ป.3/1' }, { subjectKey: key, roomName: 'ป.3/2' }, { subjectKey: 'ไม่มีจริง', roomName: 'ป.3/1' }],
+        new Map([[key, 'subject-9']]),
+        students,
+        [{ subject_id: 'subject-9', student_id: 's2' }],
+    );
+
+    assert.deepEqual(rows, [
+        { student_id: 's1', subject_id: 'subject-9', room: 'ป.3/1', enrollment_status: 'active' },
+        { student_id: 's3', subject_id: 'subject-9', room: 'ป.3/2', enrollment_status: 'active' },
+    ]);
 });
