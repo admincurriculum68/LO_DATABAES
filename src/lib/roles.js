@@ -17,7 +17,7 @@ export const ROLE_TONES = {
     admin: 'bg-violet-100 text-violet-700 border-violet-200',
     teacher: 'bg-blue-100 text-blue-700 border-blue-200',
     executive: 'bg-amber-100 text-amber-700 border-amber-200',
-    student: 'bg-green-100 text-green-700 border-green-200',
+    student: 'bg-green-100 text-green-800 border-green-200',
 };
 
 const HOME_BY_ROLE = {

@@ -229,7 +229,7 @@ export default function TeacherDashboard() {
                                 <AlertTriangle className="h-6 w-6" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-extrabold text-amber-950">มี {pendingSubjects} วิชาที่ยังประเมินผลไม่ครบถ้วน</h3>
+                                <h2 className="text-sm font-extrabold text-amber-950">มี {pendingSubjects} วิชาที่ยังประเมินผลไม่ครบถ้วน</h2>
                                 <p className="mt-0.5 text-xs text-amber-900/80">กรุณาเลือกรายวิชาเพื่อบันทึกข้อความพฤติกรรมที่ยังไม่ครบ</p>
                             </div>
                         </div>
@@ -252,7 +252,7 @@ export default function TeacherDashboard() {
                         <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100 mb-4">
                             <BookMarked className="h-8 w-8" />
                         </div>
-                        <h3 className="text-base font-extrabold text-slate-900">ยังไม่มีรายวิชาที่ได้รับมอบหมาย</h3>
+                        <h2 className="text-base font-extrabold text-slate-900">ยังไม่มีรายวิชาที่ได้รับมอบหมาย</h2>
                         <p className="mt-1 max-w-md text-xs text-slate-500 leading-relaxed">
                             กรุณาติดต่อฝ่ายวิชาการเพื่อจัดสรรวิชาและกลุ่มเรียนในภาคเรียนที่ {semester}/{academicYear}
                         </p>
@@ -265,9 +265,9 @@ export default function TeacherDashboard() {
                             <div className="border-b border-slate-100 p-6">
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
-                                        <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                                             <BookOpen className="h-5 w-5 text-indigo-600" /> วิชาที่รับผิดชอบ
-                                        </h3>
+                                        </h2>
                                         <p className="mt-0.5 text-xs text-slate-500">เลือกวิชาเพื่อบันทึกผลการประเมินราย LO</p>
                                     </div>
 
@@ -281,14 +281,14 @@ export default function TeacherDashboard() {
                                                 onChange={e => setSubjectQuery(e.target.value)}
                                                 placeholder="ค้นหาชื่อวิชา/ชั้น..."
                                                 aria-label="ค้นหารายวิชาและระดับชั้น"
-                                                className="min-h-11 w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-600 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20 sm:w-48"
+                                                className="min-h-11 w-full rounded-xl border border-field bg-slate-50 pl-9 pr-3 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-600 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20 sm:w-48"
                                             />
                                         </div>
                                         <select
                                             value={statusFilter}
                                             onChange={e => setStatusFilter(e.target.value)}
                                             aria-label="กรองรายวิชาตามสถานะ"
-                                            className="min-h-11 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
+                                            className="min-h-11 rounded-xl border border-field bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
                                         >
                                             <option value="all">ทุกสถานะ</option>
                                             <option value="pending">ยังไม่ครบ</option>

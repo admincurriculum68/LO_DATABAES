@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, FileBarChart2, FileSpreadsheet, GraduationCap } from 'lucide-react';
 import Layout from './Layout';
+import useDocumentTitle from '../lib/useDocumentTitle';
 import { useAuth } from '../AuthContext';
 import { hasAnyRole } from '../lib/roles';
 
@@ -13,6 +14,7 @@ const REPORTS = [
 ];
 
 export default function AcademicReportShell({ title, description, actions, children, wide = false }) {
+    useDocumentTitle(title);
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();

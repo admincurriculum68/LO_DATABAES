@@ -16,8 +16,15 @@
 @theme {
   --font-sans: "Sarabun", sans-serif;
   --font-sarabun-new: "THSarabunNew", serif;
+  /* ขอบช่องกรอก: 3.5:1 บนพื้นขาว 3.35:1 บน slate-50 ผ่านเกณฑ์ 3:1 ของ WCAG 1.4.11 */
+  --color-field: #7b8aa1;
 }
 @layer base {
+  /* หัวเว็บติดด้านบนสูงราว 122px เว้นระยะไว้ ช่องที่ได้โฟกัสจะไม่ถูกหัวเว็บบัง (WCAG 2.4.11) */
+  html {
+    scroll-padding-top: 8rem;
+  }
+
   body {
     @apply font-sans bg-slate-50 text-slate-900 antialiased;
   }

@@ -205,7 +205,7 @@ export default function PhaseReportAdmin() {
                 {/* ─── Control Panel ─────────────────────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
                     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <h3 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h3>
+                        <h2 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
 
                         {/* Phase Selector */}
                         <div className="flex gap-3 mb-6">
@@ -215,7 +215,7 @@ export default function PhaseReportAdmin() {
                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg'
                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
                                     ช่วงชั้น{p}
-                                    <span className={`block text-xs font-medium mt-0.5 ${selectedPhase === p ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                    <span className={`block text-xs font-medium mt-0.5 ${selectedPhase === p ? 'text-indigo-100' : 'text-slate-500'}`}>
                                         {p === 'ตอนต้น' ? 'ป.1 – ป.3' : 'ป.4 – ป.6'}
                                     </span>
                                 </button>
@@ -225,23 +225,23 @@ export default function PhaseReportAdmin() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {/* Student Search */}
                             <div className="md:col-span-1 relative">
-                                <label className="block text-sm font-bold text-slate-600 mb-2">ค้นหานักเรียน</label>
+                                <label htmlFor="phase-student-search" className="block text-sm font-bold text-slate-600 mb-2">ค้นหานักเรียน</label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                    <input id="phase-student-search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                                         placeholder="พิมพ์ชื่อหรือรหัสนักเรียน"
-                                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                                        className="w-full pl-10 pr-4 py-3 border border-field rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                                 </div>
                                 {searchTerm && (
                                     <div className="absolute top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-20">
                                         {filteredStudents.length === 0
-                                            ? <div className="px-4 py-3 text-sm text-slate-400">ไม่พบนักเรียน</div>
+                                            ? <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                             : filteredStudents.map(s => (
                                                 <button key={s.student_id}
                                                     onClick={() => { setSelectedStudent(s); setSearchTerm(''); }}
                                                     className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-slate-100 last:border-0">
                                                     {s.prefix}{s.first_name} {s.last_name}
-                                                    <span className="ml-2 text-slate-400 text-xs">{s.student_code}</span>
+                                                    <span className="ml-2 text-slate-500 text-xs">{s.student_code}</span>
                                                 </button>
                                             ))
                                         }
@@ -250,31 +250,31 @@ export default function PhaseReportAdmin() {
                                 {selectedStudent && (
                                     <div className="mt-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
                                         <span className="text-sm font-bold text-indigo-800">{studentFullName}</span>
-                                        <button onClick={() => setSelectedStudent(null)} className="text-indigo-400 hover:text-red-500"><XCircle className="w-4 h-4" /></button>
+                                        <button onClick={() => setSelectedStudent(null)} aria-label="ยกเลิกการเลือกนักเรียน" className="text-indigo-600 hover:text-red-600"><XCircle className="w-4 h-4" /></button>
                                     </div>
                                 )}
                             </div>
 
                             {/* Academic Year */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">ปีการศึกษา</label>
-                                <input type="number" value={academicYear} onChange={e => setAcademicYear(parseInt(e.target.value))}
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                                <label htmlFor="phase-year" className="block text-sm font-bold text-slate-600 mb-2">ปีการศึกษา</label>
+                                <input id="phase-year" type="number" value={academicYear} onChange={e => setAcademicYear(parseInt(e.target.value))}
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                             </div>
                         </div>
 
                         {/* ─── Ability Level Inputs ─── */}
                         <div className="mb-5">
-                            <h3 className="font-extrabold text-slate-700 mb-3 text-sm">ระดับความสามารถที่นักเรียนได้รับ</h3>
+                            <h2 className="font-extrabold text-slate-700 mb-3 text-sm">ระดับความสามารถที่นักเรียนได้รับ</h2>
                             <div className="space-y-2">
                                 {allAbilities.map(ab => (
                                     <div key={ab.key} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
                                         <p className="text-sm text-slate-700 flex-1 font-medium">{ab.name}</p>
-                                        <span className="text-xs text-slate-400 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{ab.expected}</span></span>
+                                        <span className="text-xs text-slate-500 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{ab.expected}</span></span>
                                         <select
-                                            value={achievedLevels[ab.key] || ''}
+ aria-label={`ระดับที่ได้รับ: ${ab.name}`}                                            value={achievedLevels[ab.key] || ''}
                                             onChange={e => setAchievedLevels(prev => ({ ...prev, [ab.key]: e.target.value }))}
-                                            className="border border-slate-300 rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                            className="border border-field rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                             <option value="">เลือกระดับ</option>
                                             {LEVELS.map(l => <option key={l}>{l}</option>)}
                                         </select>
@@ -291,8 +291,8 @@ export default function PhaseReportAdmin() {
                             ].map(({ label, val, set }) => (
                                 <div key={label}>
                                     <label className="block text-sm font-bold text-slate-600 mb-2">{label}</label>
-                                    <select value={val} onChange={e => set(e.target.value)}
-                                        className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                    <select aria-label={label} value={val} onChange={e => set(e.target.value)}
+                                        className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                         <option>ผ่าน</option><option>ไม่ผ่าน</option>
                                     </select>
                                 </div>
@@ -325,7 +325,7 @@ export default function PhaseReportAdmin() {
                 {/* ─── Print Document ──────────────────────────────────── */}
                 <div className="report-document print-doc rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                     {!selectedStudent ? (
-                        <div className="no-print text-center py-24 text-slate-400 font-medium">
+                        <div className="no-print text-center py-24 text-slate-500 font-medium">
                             เลือกนักเรียนเพื่อแสดงตัวอย่างเอกสาร
                         </div>
                     ) : (
@@ -427,7 +427,7 @@ export default function PhaseReportAdmin() {
                                                         <td className="border border-black p-3 leading-relaxed">
                                                             {behavior
                                                                 ? <span><strong>{studentFullName}</strong> {behavior}</span>
-                                                                : <span className="text-slate-400 text-xs">{achieved ? '(ยังไม่มีข้อมูลพฤติกรรมสำหรับระดับนี้)' : '—'}</span>
+                                                                : <span className="text-slate-500 text-xs">{achieved ? '(ยังไม่มีข้อมูลพฤติกรรมสำหรับระดับนี้)' : '—'}</span>
                                                             }
                                                         </td>
                                                     </tr>

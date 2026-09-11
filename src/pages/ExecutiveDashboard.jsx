@@ -48,7 +48,7 @@ function SectionCard({ title, description, icon: Icon, action, children }) {
                 <div className="flex items-start gap-3">
                     <span className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700"><Icon className="h-5 w-5" /></span>
                     <div>
-                        <h3 className="font-extrabold text-slate-950">{title}</h3>
+                        <h2 className="font-extrabold text-slate-950">{title}</h2>
                         <p className="mt-0.5 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
                     </div>
                 </div>
@@ -313,7 +313,7 @@ export default function ExecutiveDashboard() {
                 <div className="flex items-center gap-4">
                     <span className="hidden rounded-2xl bg-slate-900 p-3.5 text-amber-400 sm:block"><BarChart3 className="h-8 w-8" /></span>
                     <div>
-                        <h2 className="text-3xl font-black tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h2>
+                        <h1 className="text-3xl font-black tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h1>
                         <p className="mt-1.5 text-slate-600">
                             <span className="font-bold text-slate-800">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
                         </p>
@@ -363,7 +363,7 @@ export default function ExecutiveDashboard() {
                         </div>
                         {view.certification.total > 0 && (
                             <div className="px-5 py-4 lg:px-6">
-                                <div className="flex h-3 overflow-hidden rounded-full bg-slate-200">
+                                <div aria-hidden="true" className="flex h-3 overflow-hidden rounded-full bg-slate-200">
                                     <div className="bg-emerald-500" style={{ width: `${(view.certification.approved / view.certification.total) * 100}%` }} />
                                     <div className="bg-rose-500" style={{ width: `${(view.certification.returned / view.certification.total) * 100}%` }} />
                                 </div>
@@ -415,7 +415,7 @@ export default function ExecutiveDashboard() {
                                                             </span>
                                                         ) : (
                                                             <div className="flex items-center gap-3">
-                                                                <div className="h-2.5 w-24 overflow-hidden rounded-full bg-slate-200">
+                                                                <div aria-hidden="true" className="h-2.5 w-24 overflow-hidden rounded-full bg-slate-200">
                                                                     <div className={`h-full rounded-full ${row.percent === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${row.percent}%` }} />
                                                                 </div>
                                                                 <span className="text-sm font-extrabold text-slate-800">{row.percent}%</span>
@@ -462,7 +462,7 @@ export default function ExecutiveDashboard() {
                                                 <span className="ml-1 text-slate-500">({area.passed}/{area.total} ผลการรับรอง)</span>
                                             </p>
                                         </div>
-                                        <div className="mt-2.5 flex h-3 overflow-hidden rounded-full bg-slate-100">
+                                        <div aria-hidden="true" className="mt-2.5 flex h-3 overflow-hidden rounded-full bg-slate-100">
                                             {LEVELS.map(level => {
                                                 const width = area.total > 0 ? (area.counts[level] / area.total) * 100 : 0;
                                                 if (!width) return null;
@@ -510,7 +510,7 @@ export default function ExecutiveDashboard() {
                                                     <td className="px-4 py-3 text-center font-extrabold text-slate-800">{room.progressPercent}%</td>
                                                     <td className="px-4 py-3 text-center">
                                                         {room.passPercent === null ? (
-                                                            <span className="text-xs font-semibold text-slate-400">ยังไม่รับรอง</span>
+                                                            <span className="text-xs font-semibold text-slate-500">ยังไม่รับรอง</span>
                                                         ) : (
                                                             <span className={`font-extrabold ${room.passPercent >= 80 ? 'text-emerald-700' : room.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
                                                                 {room.passPercent}%
@@ -552,7 +552,7 @@ export default function ExecutiveDashboard() {
                                                     <span className={`font-extrabold ${levelTone[level].text}`}>{formalLevelLabel(level)}</span>
                                                     <span className="text-sm font-bold text-slate-700">{count.toLocaleString()} <span className="text-slate-500">({percent}%)</span></span>
                                                 </div>
-                                                <div className="h-4 overflow-hidden rounded-full bg-slate-100">
+                                                <div aria-hidden="true" className="h-4 overflow-hidden rounded-full bg-slate-100">
                                                     <div className={`h-full rounded-full ${levelTone[level].bar}`} style={{ width: `${percent}%` }} />
                                                 </div>
                                             </div>
@@ -561,7 +561,7 @@ export default function ExecutiveDashboard() {
                                 )}
                                 {view.draftTotal > 0 && (
                                     <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-600">
-                                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                                         มีอีก {view.draftTotal.toLocaleString()} รายการที่ครูยังบันทึกเป็นฉบับร่าง ยังไม่นับรวมในสัดส่วนด้านบน
                                     </p>
                                 )}

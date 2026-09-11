@@ -123,7 +123,7 @@ export default function StudentDashboard() {
                         <GraduationCap className="w-10 h-10 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-4xl font-black text-emerald-800 tracking-tight">ผลการเรียนรู้ของฉัน</h2>
+                        <h1 className="text-4xl font-black text-emerald-800 tracking-tight">ผลการเรียนรู้ของฉัน</h1>
                         <p className="text-slate-500 font-medium text-lg mt-2">
                             <span className="font-bold text-slate-700">{currentUser?.full_name}</span> · ข้อมูลผลการประเมินและผลลัพธ์การเรียนรู้ (LO)
                         </p>
@@ -132,7 +132,7 @@ export default function StudentDashboard() {
 
                 <div className="bg-white/80 backdrop-blur-xl px-6 py-4 rounded-3xl shadow-sm border border-slate-200 flex items-center gap-4 min-w-[280px]">
                     <div className="bg-emerald-100 p-3 rounded-2xl">
-                        <UserCircle2 className="w-8 h-8 text-emerald-600" />
+                        <UserCircle2 className="w-8 h-8 text-emerald-700" />
                     </div>
                     <div>
                         <div className="mb-0.5 text-xs font-bold text-emerald-700">รหัสนักเรียน</div>
@@ -145,12 +145,12 @@ export default function StudentDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
                 <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-5 relative overflow-hidden group">
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full group-hover:scale-150 transition-transform duration-500 ease-out z-0"></div>
-                    <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center z-10">
+                    <div className="w-14 h-14 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center z-10">
                         <BookOpen className="w-7 h-7" />
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">รายวิชาที่ลงทะเบียน</p>
-                        <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-medium text-slate-500 ml-1">วิชา</span></h4>
+                        <p className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-medium text-slate-500 ml-1">วิชา</span></p>
                     </div>
                 </div>
 
@@ -161,7 +161,7 @@ export default function StudentDashboard() {
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">ผลลัพธ์การเรียนรู้ที่ประเมินแล้ว</p>
-                        <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></h4>
+                        <p className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : totalEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></p>
                     </div>
                 </div>
 
@@ -172,7 +172,7 @@ export default function StudentDashboard() {
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">ด้านความสามารถที่สรุป Formative</p>
-                        <h4 className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ด้าน</span></h4>
+                        <p className="text-3xl font-black text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ด้าน</span></p>
                     </div>
                 </div>
             </div>
@@ -182,7 +182,7 @@ export default function StudentDashboard() {
                     <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="rounded-2xl bg-emerald-600 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
-                            <div><h3 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรอง</h3><p className="text-sm text-emerald-800">ผลที่ผ่านการพิจารณา Formative และข้อความพฤติกรรมราย LO แล้ว</p></div>
+                            <div><h2 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรอง</h2><p className="text-sm text-emerald-800">ผลที่ผ่านการพิจารณา Formative และข้อความพฤติกรรมราย LO แล้ว</p></div>
                         </div>
                         <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
                     </div>
@@ -209,7 +209,7 @@ export default function StudentDashboard() {
                     <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 border border-slate-100">
                         <BookMarked className="w-12 h-12 text-slate-300" />
                     </div>
-                    <h3 className="text-2xl font-extrabold text-slate-700 mb-2">ยังไม่มีข้อมูลการลงทะเบียนเรียน</h3>
+                    <h2 className="text-2xl font-extrabold text-slate-700 mb-2">ยังไม่มีข้อมูลการลงทะเบียนเรียน</h2>
                     <p className="text-slate-500 text-lg max-w-md mx-auto">
                         กรุณาติดต่อครูผู้สอนหรือฝ่ายวิชาการเพื่อตรวจสอบการลงทะเบียนรายวิชา
                     </p>
@@ -231,7 +231,7 @@ export default function StudentDashboard() {
                                                 ห้อง {sub.room}
                                             </span>
                                         </div>
-                                        <h3 className="text-2xl font-bold text-white leading-tight line-clamp-1">{sub.subject_name}</h3>
+                                        <h2 className="text-2xl font-bold text-white leading-tight line-clamp-1">{sub.subject_name}</h2>
                                     </div>
                                 </div>
                             </div>
@@ -241,7 +241,7 @@ export default function StudentDashboard() {
                                 <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-left">
-                                            <thead className="bg-slate-100 text-slate-500 border-b border-slate-200 uppercase text-xs tracking-wider font-extrabold">
+                                            <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 uppercase text-xs tracking-wider font-extrabold">
                                                 <tr>
                                                     <th className="py-4 px-5 w-20 text-center">ข้อที่</th>
                                                     <th className="py-4 px-5">ผลลัพธ์การเรียนรู้ (LO)</th>
@@ -251,7 +251,7 @@ export default function StudentDashboard() {
                                             <tbody className="divide-y divide-slate-100">
                                                 {sub.evaluations.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="3" className="py-12 text-center text-slate-400 font-medium">
+                                                        <td colSpan="3" className="py-12 text-center text-slate-500 font-medium">
                                                             รายวิชานี้ยังไม่ได้กำหนดผลลัพธ์การเรียนรู้สำหรับการประเมิน
                                                         </td>
                                                     </tr>
@@ -260,8 +260,8 @@ export default function StudentDashboard() {
                                                         return (
                                                             <tr key={ev.ability_no} className="hover:bg-slate-50 transition-colors group">
                                                                 <td className="py-5 px-5 text-center align-top border-r border-slate-50">
-                                                                    <div className="font-black text-slate-400 text-xl group-hover:text-emerald-500 transition-colors">{ev.ability_no}</div>
-                                                                    {ev.lo_code && <div className="text-[10px] text-slate-400 font-bold mt-1 bg-slate-100 rounded px-1 py-0.5 inline-block">{ev.lo_code}</div>}
+                                                                    <div className="font-black text-slate-500 text-xl group-hover:text-emerald-500 transition-colors">{ev.ability_no}</div>
+                                                                    {ev.lo_code && <div className="text-[10px] text-slate-600 font-bold mt-1 bg-slate-100 rounded px-1 py-0.5 inline-block">{ev.lo_code}</div>}
                                                                 </td>
                                                                 <td className="py-4 px-5 text-slate-700 font-medium leading-relaxed align-top">
                                                                     {ev.description}

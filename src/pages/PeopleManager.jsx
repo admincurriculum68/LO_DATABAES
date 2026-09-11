@@ -27,7 +27,7 @@ function Field({ label, hint, children }) {
     );
 }
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200';
+const inputClass = 'min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200';
 
 export default function PeopleManager() {
     const { currentUser } = useAuth();
@@ -171,7 +171,7 @@ export default function PeopleManager() {
         <Layout title="ครูและนักเรียน">
             <div className="mx-auto w-full max-w-7xl space-y-5">
                 <header>
-                    <h2 className="text-2xl font-extrabold text-slate-950">ครูและนักเรียน</h2>
+                    <h1 className="text-2xl font-extrabold text-slate-950">ครูและนักเรียน</h1>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
                         ค้นหาและแก้ไขข้อมูลรายบุคคล การเปลี่ยนบทบาทมีผลกับเมนูที่ครูท่านนั้นเห็นทันทีที่เข้าสู่ระบบครั้งถัดไป
                     </p>
@@ -199,7 +199,7 @@ export default function PeopleManager() {
                             value={query}
                             onChange={event => setQuery(event.target.value)}
                             placeholder="ค้นหาชื่อ เลขประจำตัว หรือห้องเรียน"
-                            className="min-h-11 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            className="min-h-11 w-full rounded-xl border border-field pl-9 pr-3 text-sm placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                         />
                     </label>
 
@@ -207,7 +207,7 @@ export default function PeopleManager() {
                         aria-label={kind === 'teachers' ? 'กรองตามบทบาท' : 'กรองตามห้องเรียน'}
                         value={groupFilter}
                         onChange={event => setGroupFilter(event.target.value)}
-                        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800"
+                        className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-800"
                     >
                         <option value="all">{kind === 'teachers' ? 'ทุกบทบาท' : 'ทุกห้องเรียน'}</option>
                         {groupOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -217,7 +217,7 @@ export default function PeopleManager() {
                         aria-label="กรองตามสถานะ"
                         value={statusFilter}
                         onChange={event => setStatusFilter(event.target.value)}
-                        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800"
+                        className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-800"
                     >
                         <option value="all">ทุกสถานะ</option>
                         <option value="active">ใช้งานอยู่</option>
@@ -234,9 +234,9 @@ export default function PeopleManager() {
                 <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
                     <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <div className="border-b border-slate-200 px-4 py-3">
-                            <h3 className="font-extrabold text-slate-900">
+                            <h2 className="font-extrabold text-slate-900">
                                 {kind === 'teachers' ? 'ครูและบุคลากร' : 'นักเรียน'} {visiblePeople.length} คน
-                            </h3>
+                            </h2>
                             {visiblePeople.length !== people.length && (
                                 <p className="mt-0.5 text-xs text-slate-600">จากทั้งหมด {people.length} คน</p>
                             )}
@@ -283,7 +283,7 @@ export default function PeopleManager() {
                         </div>
                     </aside>
 
-                    <main className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         {!selected || !draft ? (
                             <div className="p-16 text-center text-slate-600">
                                 <UserRound className="mx-auto mb-3 h-10 w-10 text-slate-300" />
@@ -292,7 +292,7 @@ export default function PeopleManager() {
                         ) : (
                             <>
                                 <header className="border-b border-slate-200 p-5">
-                                    <h3 className="text-lg font-extrabold text-slate-950">{fullName(selected)}</h3>
+                                    <h2 className="text-lg font-extrabold text-slate-950">{fullName(selected)}</h2>
                                     <p className="mt-1 text-sm text-slate-600">
                                         {kind === 'teachers'
                                             ? teacherRoleSummary(selected)
@@ -302,7 +302,7 @@ export default function PeopleManager() {
 
                                 <div className="space-y-6 p-5">
                                     <section className="space-y-4">
-                                        <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลส่วนตัว</h4>
+                                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลส่วนตัว</h3>
                                         <div className="grid gap-4 sm:grid-cols-3">
                                             <Field label="คำนำหน้า">
                                                 <input value={draft.prefix} onChange={e => setDraft({ ...draft, prefix: e.target.value })} className={inputClass} />
@@ -326,7 +326,7 @@ export default function PeopleManager() {
 
                                     {kind === 'teachers' ? (
                                         <section className="space-y-4">
-                                            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">บทบาทและหน้าที่</h4>
+                                            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">บทบาทและหน้าที่</h3>
                                             <div>
                                                 <p className="text-sm font-extrabold text-slate-800">บทบาทในระบบ</p>
                                                 <p className="mt-0.5 text-xs text-slate-600">ครู 1 ท่านทำหน้าที่พร้อมกันได้หลายบทบาท บทบาทหลักใช้กำหนดหน้าแรกหลังเข้าสู่ระบบ</p>
@@ -363,7 +363,7 @@ export default function PeopleManager() {
                                         </section>
                                     ) : (
                                         <section className="space-y-4">
-                                            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลการเรียน</h4>
+                                            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลการเรียน</h3>
                                             <div className="grid gap-4 sm:grid-cols-3">
                                                 <Field label="รหัสนักเรียน">
                                                     <input value={draft.student_code} onChange={e => setDraft({ ...draft, student_code: e.target.value })} className={inputClass} />
@@ -379,7 +379,7 @@ export default function PeopleManager() {
                                     )}
 
                                     <section className="space-y-4">
-                                        <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">สถานะบัญชี</h4>
+                                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">สถานะบัญชี</h3>
                                         <Field label="สถานะการใช้งาน" hint="บัญชีที่ระงับจะเข้าสู่ระบบไม่ได้ แต่ผลงานที่บันทึกไว้ยังอยู่ครบ">
                                             <select
                                                 value={kind === 'teachers' ? String(draft.is_active) : draft.student_status}
@@ -417,7 +417,7 @@ export default function PeopleManager() {
                                 </footer>
                             </>
                         )}
-                    </main>
+                    </section>
                 </div>
             </div>
         </Layout>

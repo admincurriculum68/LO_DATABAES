@@ -52,7 +52,7 @@ export default function SchoolBrandingSettings() {
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
                 <div className="flex min-w-0 flex-1 items-start gap-4">
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-300 bg-slate-50">
-                        {profile.logo_data_url ? <img src={profile.logo_data_url} alt="ตัวอย่างตราโรงเรียน" className="h-full w-full object-contain p-2" /> : <School className="h-9 w-9 text-slate-400" />}
+                        {profile.logo_data_url ? <img src={profile.logo_data_url} alt="ตัวอย่างตราโรงเรียน" className="h-full w-full object-contain p-2" /> : <School className="h-9 w-9 text-slate-500" />}
                     </div>
                     <div className="min-w-0 flex-1">
                         <h2 id="school-report-settings-title" className="font-extrabold text-slate-950">ชื่อและตราโรงเรียนบนแบบรายงาน</h2>
@@ -61,9 +61,9 @@ export default function SchoolBrandingSettings() {
                     </div>
                 </div>
                 <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_auto]">
-                    <label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-700">ชื่อโรงเรียนที่แสดงบนรายงาน</span><input value={profile.school_name} onChange={event => setProfile(previous => ({ ...previous, school_name: event.target.value }))} disabled={loading} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-bold text-slate-900 disabled:bg-slate-100" /></label>
+                    <label className="sm:col-span-2"><span className="mb-1 block text-xs font-bold text-slate-700">ชื่อโรงเรียนที่แสดงบนรายงาน</span><input value={profile.school_name} onChange={event => setProfile(previous => ({ ...previous, school_name: event.target.value }))} disabled={loading} className="min-h-11 w-full rounded-xl border border-field px-3 text-sm font-bold text-slate-900 disabled:bg-slate-100" /></label>
                     <div className="flex flex-wrap gap-2">
-                        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseLogo} className="sr-only" />
+                        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseLogo} className="hidden" />
                         <button type="button" onClick={() => fileRef.current?.click()} disabled={loading || !profile.logoReady} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ImagePlus className="h-4 w-4" />เลือกตราโรงเรียน</button>
                         {profile.logo_data_url && <button type="button" onClick={() => setProfile(previous => ({ ...previous, logo_data_url: '' }))} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" />นำออก</button>}
                     </div>

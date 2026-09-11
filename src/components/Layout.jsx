@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ROLE_TONES, defaultRouteFor, hasRole, roleLabelsFor, rolesOf } from '../lib/roles';
+import useDocumentTitle from '../lib/useDocumentTitle';
 
 export default function Layout({ children, title, onActionClick, actionText, actionIcon: ActionIcon }) {
     const { currentUser, logoutUser } = useAuth();
@@ -11,6 +12,20 @@ export default function Layout({ children, title, onActionClick, actionText, act
     const navigate = useNavigate();
     const location = useLocation();
     const [showTermPicker, setShowTermPicker] = useState(false);
+    const termToggleRef = useRef(null);
+    useDocumentTitle(title);
+
+    // กด Esc แล้วปิดตัวเลือกภาคเรียน และคืนโฟกัสให้ปุ่มที่เปิด ผู้ใช้คีย์บอร์ดจะได้ไม่หลงตำแหน่ง
+    useEffect(() => {
+        if (!showTermPicker) return undefined;
+        const closeOnEscape = event => {
+            if (event.key !== 'Escape') return;
+            setShowTermPicker(false);
+            termToggleRef.current?.focus();
+        };
+        document.addEventListener('keydown', closeOnEscape);
+        return () => document.removeEventListener('keydown', closeOnEscape);
+    }, [showTermPicker]);
 
     const handleLogout = () => {
         if (window.confirm('ยืนยันการออกจากระบบ CBE Track')) {
@@ -87,6 +102,9 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
     const handleTermChange = (year, sem) => {
         if (isAdmin) {
+            // ฝ่ายวิชาการเปลี่ยนแล้วมีผลกับผู้ใช้ทุกคนในโรงเรียนทันที เลือกพลาดครั้งเดียว
+            // ครูทั้งโรงเรียนจะบันทึกผลผิดภาค จึงต้องถามก่อน ไม่เปลี่ยนทันทีที่เลือก (WCAG 3.2.2)
+            if (!window.confirm(`เปลี่ยนเป็นภาคเรียนที่ ${sem}/${year} ให้ผู้ใช้ทุกคนในโรงเรียนใช่หรือไม่`)) return;
             updateAcademicSettings(year, sem);
         } else {
             setAcademicYear(year);
@@ -104,6 +122,14 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+            {/* ลิงก์แบบ #anchor ใช้ไม่ได้เพราะแอปใช้ HashRouter จึงย้ายโฟกัสด้วยปุ่มแทน */}
+            <button
+                type="button"
+                onClick={() => document.getElementById('main-content')?.focus()}
+                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-indigo-700 focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-white focus:shadow-lg print:hidden"
+            >
+                ข้ามไปยังเนื้อหาหลัก
+            </button>
             <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-40 backdrop-blur-xl bg-white/90 print:hidden">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
                     {/* Brand + Title */}
@@ -120,7 +146,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 <span className="font-extrabold text-sm text-slate-800 tracking-tight">
                                     CBE <span className="text-blue-600">Track</span>
                                 </span>
-                                <span className="text-[10px] text-slate-600 font-medium truncate max-w-[160px]">
+                                <span className="text-[10px] text-slate-600 font-medium truncate max-w-[160px]" title={currentUser?.school_name || undefined}>
                                     {currentUser?.school_name || 'ระบบติดตามผลลัพธ์การเรียนรู้'}
                                 </span>
                             </div>
@@ -140,6 +166,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                         {!hasRole(currentUser, 'student') && academicYear && (
                             <div className="relative">
                                 <button
+                                    ref={termToggleRef}
                                     onClick={() => setShowTermPicker(!showTermPicker)}
                                     className="flex min-h-11 items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold text-indigo-800 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
                                     aria-expanded={showTermPicker}
@@ -160,11 +187,12 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                             </p>
                                             <div className="space-y-3">
                                                 <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">ปีการศึกษา</label>
+                                                    <label htmlFor="term-year" className="text-xs font-bold text-slate-600 mb-1 block">ปีการศึกษา</label>
                                                     <select
+                                                        id="term-year"
                                                         value={academicYear}
                                                         onChange={(e) => handleTermChange(parseInt(e.target.value), semester)}
-                                                        className="w-full border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                        className="w-full border border-field rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                                     >
                                                         {yearOptions.map(y => (
                                                             <option key={y} value={y}>{y}</option>
@@ -172,12 +200,13 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">ภาคเรียน</label>
-                                                    <div className="flex gap-2">
+                                                    <p id="term-semester-label" className="text-xs font-bold text-slate-600 mb-1 block">ภาคเรียน</p>
+                                                    <div className="flex gap-2" role="group" aria-labelledby="term-semester-label">
                                                         {[1, 2].map(s => (
                                                             <button
                                                                 key={s}
                                                                 onClick={() => handleTermChange(academicYear, s)}
+                                                                aria-pressed={semester === s}
                                                                 className={`min-h-11 flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all ${
                                                                     semester === s
                                                                         ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
@@ -214,7 +243,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
                         {/* User Pill */}
                         <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-                            <UserCircle className="w-6 h-6 text-slate-400 shrink-0" />
+                            <UserCircle className="w-6 h-6 text-slate-500 shrink-0" />
                             <div className="hidden sm:flex flex-col leading-none">
                                 <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">{currentUser?.full_name}</span>
                                 <span className="mt-0.5 flex flex-wrap gap-1">
@@ -279,7 +308,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                 </div>
             )}
 
-            <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:p-0">
+            <main id="main-content" tabIndex={-1} className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none print:max-w-none print:p-0">
                 {children}
             </main>
         </div>

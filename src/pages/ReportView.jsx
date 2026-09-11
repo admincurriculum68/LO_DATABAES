@@ -4,8 +4,10 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import useDocumentTitle from '../lib/useDocumentTitle';
 
 export default function ReportView() {
+    useDocumentTitle('รายงานผลการเรียนรายบุคคล');
     const { studentId, academicYear, semester } = useParams();
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -132,7 +134,7 @@ export default function ReportView() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-200 py-8 print:py-0 print:bg-white font-sans text-slate-900">
+        <main className="min-h-screen bg-slate-200 py-8 print:py-0 print:bg-white font-sans text-slate-900">
 
             <div className="max-w-[210mm] mx-auto mb-6 flex justify-between items-center print:hidden px-4">
                 <button
@@ -283,6 +285,6 @@ export default function ReportView() {
                     </table>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

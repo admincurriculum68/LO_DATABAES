@@ -10,7 +10,7 @@ import SchoolReportHeader from '../components/SchoolReportHeader';
 import { loadSchoolProfile } from '../lib/schoolProfile';
 
 const EvidenceCell = ({ value }) => {
-    if (!value) return <span className="text-xs text-slate-400">ยังไม่มีข้อความ</span>;
+    if (!value) return <span className="text-xs text-slate-500">ยังไม่มีข้อความ</span>;
     return <p className="min-w-[240px] whitespace-normal text-left text-xs leading-5 text-slate-700">{value}</p>;
 };
 
@@ -162,15 +162,15 @@ export default function AdminReportLO() {
         >
             <style>{`@media print { @page { size: A4 portrait; margin: 12mm; } thead { display: table-header-group; } tr { break-inside: avoid; } }`}</style>
 
-            <main className="w-full print:p-4">
+            <section className="w-full print:p-4">
                 {/* LO Selector */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
-                    <p className="text-sm font-bold text-slate-700 mb-2">เลือก LO สำหรับจัดทำรายงาน</p>
+                    <label htmlFor="report-lo" className="block text-sm font-bold text-slate-700 mb-2">เลือก LO สำหรับจัดทำรายงาน</label>
                     <div className="relative max-w-xl">
                         <select
-                            value={selectedLO}
+ id="report-lo"                            value={selectedLO}
                             onChange={(e) => handleLOChange(e.target.value)}
-                            className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-4 pr-10 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none"
+                            className="w-full appearance-none bg-slate-50 border border-field text-slate-800 py-3 pl-4 pr-10 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none"
                         >
                             <option value="">เลือกผลลัพธ์การเรียนรู้ (LO)</option>
                             {allLOs.map(lo => (
@@ -179,7 +179,7 @@ export default function AdminReportLO() {
                                 </option>
                             ))}
                         </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                     </div>
                 </div>
 
@@ -255,9 +255,9 @@ export default function AdminReportLO() {
                                                 return (
                                                 <tr key={st.student_id} className="hover:bg-slate-50 transition-colors group">
                                                     <td className="px-5 py-3 font-bold text-slate-800 border-r border-slate-100 print:border-black sticky left-0 bg-white group-hover:bg-slate-50">
-                                                        <span className="text-slate-400 font-normal text-xs mr-2">{globalIdx}.</span>
+                                                        <span className="text-slate-500 font-normal text-xs mr-2">{globalIdx}.</span>
                                                         {st.prefix || ''}{st.first_name} {st.last_name}
-                                                        <span className="block text-xs text-slate-400 font-mono">{st.student_code}</span>
+                                                        <span className="block text-xs text-slate-500 font-mono">{st.student_code}</span>
                                                     </td>
                                                     {subjects.map(sub => {
                                                         const key = `${st.student_id}_${sub.subject_id}`;
@@ -304,7 +304,7 @@ export default function AdminReportLO() {
                         )}
                     </>
                 )}
-            </main>
+            </section>
         </AcademicReportShell>
     );
 }

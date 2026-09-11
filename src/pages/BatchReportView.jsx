@@ -4,6 +4,7 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import useDocumentTitle from '../lib/useDocumentTitle';
 
 // Reusable single-student report component (same layout as ReportView)
 function SingleStudentReport({ student, enrollments, evaluations, activities, isLast }) {
@@ -129,6 +130,7 @@ function SingleStudentReport({ student, enrollments, evaluations, activities, is
 }
 
 export default function BatchReportView() {
+    useDocumentTitle('รายงานผลการเรียนทั้งห้อง');
     const { room, academicYear, semester } = useParams();
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -232,7 +234,7 @@ export default function BatchReportView() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-200 py-8 print:py-0 print:bg-white font-sans text-slate-900">
+        <main className="min-h-screen bg-slate-200 py-8 print:py-0 print:bg-white font-sans text-slate-900">
             {/* Toolbar */}
             <div className="max-w-[210mm] mx-auto mb-6 flex justify-between items-center print:hidden px-4">
                 <button
@@ -255,7 +257,7 @@ export default function BatchReportView() {
             </div>
 
             {reports.length === 0 ? (
-                <div className="max-w-[210mm] mx-auto bg-white rounded-2xl p-20 text-center text-slate-400 font-bold shadow-lg">
+                <div className="max-w-[210mm] mx-auto bg-white rounded-2xl p-20 text-center text-slate-500 font-bold shadow-lg">
                     ไม่พบข้อมูลในห้องนี้
                 </div>
             ) : (
@@ -270,6 +272,6 @@ export default function BatchReportView() {
                     />
                 ))
             )}
-        </div>
+        </main>
     );
 }

@@ -234,24 +234,24 @@ export default function YearlyReportAdmin() {
                 {/* ─── Control Panel (no-print) ─────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
                     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <h3 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h3>
+                        <h2 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {/* Student Search */}
                             <div className="md:col-span-1">
-                                <label className="block text-sm font-bold text-slate-600 mb-2">ค้นหานักเรียน</label>
+                                <label htmlFor="yearly-student-search" className="block text-sm font-bold text-slate-600 mb-2">ค้นหานักเรียน</label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                                     <input
-                                        value={searchTerm}
+ id="yearly-student-search"                                        value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                         placeholder="พิมพ์ชื่อหรือรหัสนักเรียน"
-                                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                        className="w-full pl-10 pr-4 py-3 border border-field rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                     />
                                 </div>
                                 {searchTerm && (
                                     <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto z-10 relative">
                                         {filteredStudents.length === 0 ? (
-                                            <div className="px-4 py-3 text-sm text-slate-400">ไม่พบนักเรียน</div>
+                                            <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                         ) : filteredStudents.map(s => (
                                             <button
                                                 key={s.student_id}
@@ -259,7 +259,7 @@ export default function YearlyReportAdmin() {
                                                 className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-slate-100 last:border-0"
                                             >
                                                 {s.prefix}{s.first_name} {s.last_name}
-                                                <span className="ml-2 text-slate-400 text-xs">{s.student_code}</span>
+                                                <span className="ml-2 text-slate-500 text-xs">{s.student_code}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -267,48 +267,48 @@ export default function YearlyReportAdmin() {
                                 {selectedStudent && (
                                     <div className="mt-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
                                         <span className="text-sm font-bold text-indigo-800">{studentName}</span>
-                                        <button onClick={() => setSelectedStudent(null)} className="text-indigo-400 hover:text-red-500 transition-colors"><XCircle className="w-4 h-4" /></button>
+                                        <button onClick={() => setSelectedStudent(null)} aria-label="ยกเลิกการเลือกนักเรียน" className="text-indigo-600 hover:text-red-600 transition-colors"><XCircle className="w-4 h-4" /></button>
                                     </div>
                                 )}
                             </div>
 
                             {/* Grade */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">ชั้นปี</label>
-                                <select value={selectedGrade} onChange={e => setSelectedGrade(e.target.value)}
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                <label htmlFor="yearly-grade" className="block text-sm font-bold text-slate-600 mb-2">ชั้นปี</label>
+                                <select id="yearly-grade" value={selectedGrade} onChange={e => setSelectedGrade(e.target.value)}
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                     {GRADE_LEVELS.map(g => <option key={g}>{g}</option>)}
                                 </select>
                             </div>
 
                             {/* Academic Year */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">ปีการศึกษา</label>
-                                <input type="number" value={academicYear} onChange={e => setAcademicYear(parseInt(e.target.value))}
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                                <label htmlFor="yearly-year" className="block text-sm font-bold text-slate-600 mb-2">ปีการศึกษา</label>
+                                <input id="yearly-year" type="number" value={academicYear} onChange={e => setAcademicYear(parseInt(e.target.value))}
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                             </div>
                         </div>
 
                         {/* Attendance & Activities */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">การเข้าชั้นเรียน (%)</label>
-                                <input type="number" min="0" max="100" value={attendancePercent}
+                                <label htmlFor="yearly-attendance" className="block text-sm font-bold text-slate-600 mb-2">การเข้าชั้นเรียน (%)</label>
+                                <input id="yearly-attendance" type="number" min="0" max="100" value={attendancePercent}
                                     onChange={e => setAttendancePercent(e.target.value)}
                                     placeholder="เช่น 100"
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                             </div>
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">กิจกรรมพัฒนาผู้เรียน</label>
-                                <select value={learnerActivities} onChange={e => setLearnerActivities(e.target.value)}
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                <label htmlFor="yearly-activities" className="block text-sm font-bold text-slate-600 mb-2">กิจกรรมพัฒนาผู้เรียน</label>
+                                <select id="yearly-activities" value={learnerActivities} onChange={e => setLearnerActivities(e.target.value)}
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                     <option>ผ่าน</option><option>ไม่ผ่าน</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-bold text-slate-600 mb-2">คุณลักษณะอันพึงประสงค์</label>
-                                <select value={desirableChars} onChange={e => setDesirableChars(e.target.value)}
-                                    className="w-full border border-slate-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                <label htmlFor="yearly-characteristics" className="block text-sm font-bold text-slate-600 mb-2">คุณลักษณะอันพึงประสงค์</label>
+                                <select id="yearly-characteristics" value={desirableChars} onChange={e => setDesirableChars(e.target.value)}
+                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                     <option>ผ่าน</option><option>ไม่ผ่าน</option>
                                 </select>
                             </div>
@@ -316,24 +316,24 @@ export default function YearlyReportAdmin() {
 
                         {/* Competency Level Inputs */}
                         {loading ? (
-                            <div className="flex justify-center py-8"><Loader className="w-6 h-6 animate-spin text-indigo-500" /></div>
+                            <div className="flex justify-center py-8"><Loader className="w-6 h-6 animate-spin text-indigo-600" /></div>
                         ) : competencies.length === 0 ? (
                             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-700 font-medium">
                                 ยังไม่มีข้อมูลความสามารถสำหรับ <strong>{selectedGrade}</strong> กรุณากลับ Dashboard แล้วเลือก “นำเข้าข้อมูล” → “ความคาดหวังรายชั้นปี (ปพ.๖)”
                             </div>
                         ) : (
                             <div>
-                                <h3 className="font-extrabold text-slate-700 mb-3 text-sm">กำหนดระดับความสามารถที่นักเรียนได้รับ</h3>
+                                <h2 className="font-extrabold text-slate-700 mb-3 text-sm">กำหนดระดับความสามารถที่นักเรียนได้รับ</h2>
                                 <div className="space-y-2">
                                     {competencies.map((comp, i) => (
                                         <div key={comp.competency_id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
                                             <span className="text-xs font-extrabold text-slate-500 w-6 shrink-0">{i + 1}.</span>
                                             <p className="text-sm text-slate-700 flex-1 leading-snug">{comp.description}</p>
-                                            <span className="text-xs text-slate-400 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{comp.expected_level}</span></span>
+                                            <span className="text-xs text-slate-500 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{comp.expected_level}</span></span>
                                             <select
-                                                value={achievedLevels[comp.competency_id] || ''}
+ aria-label={`ระดับที่ได้รับ: ข้อ ${i + 1} ${comp.description}`}                                                value={achievedLevels[comp.competency_id] || ''}
                                                 onChange={e => setAchievedLevels(prev => ({ ...prev, [comp.competency_id]: e.target.value }))}
-                                                className="border border-slate-300 rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                className="border border-field rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                             >
                                                 <option value="">เลือกระดับ</option>
                                                 {LEVELS.map(l => <option key={l}>{l}</option>)}
@@ -362,8 +362,8 @@ export default function YearlyReportAdmin() {
                 {/* ─── Print Area (ปพ.6 Document) ──────────────────────── */}
                 <div ref={printRef} className="report-document print-area rounded-2xl border border-slate-200 bg-white p-6 shadow-sm font-['Sarabun',sans-serif] sm:p-8">
                     {!selectedStudent ? (
-                        <div className="no-print text-center py-24 text-slate-400 font-medium">
-                            กรุณาเลือกนักเรียนจากแผงด้านบนเพื่อแสดงตัวอย่าง ปพ.๖
+                        <div className="no-print text-center py-24 text-slate-500 font-medium">
+                            พิมพ์ชื่อหรือรหัสในช่อง “ค้นหานักเรียน” แล้วเลือกนักเรียนจากรายการ เพื่อแสดงตัวอย่าง ปพ.๖
                         </div>
                     ) : (
                         <>
@@ -392,7 +392,7 @@ export default function YearlyReportAdmin() {
                                     {competencies.map((comp, i) => {
                                         const achieved = achievedLevels[comp.competency_id] || '';
                                         const development = achieved ? compareLevels(achieved, comp.expected_level) : '—';
-                                        const devColor = development === 'สูงกว่าเกณฑ์' ? 'text-emerald-700' : development === 'ตามเกณฑ์' ? 'text-blue-700' : development === 'เข้าใกล้เกณฑ์' ? 'text-amber-700' : 'text-slate-400';
+                                        const devColor = development === 'สูงกว่าเกณฑ์' ? 'text-emerald-700' : development === 'ตามเกณฑ์' ? 'text-blue-700' : development === 'เข้าใกล้เกณฑ์' ? 'text-amber-700' : 'text-slate-500';
                                         return (
                                             <tr key={comp.competency_id} className={i % 2 === 0 ? '' : 'bg-slate-50'}>
                                                 <td className="border border-black p-3 leading-relaxed">
