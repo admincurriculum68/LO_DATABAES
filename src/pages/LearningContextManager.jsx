@@ -23,9 +23,10 @@ import {
     ShieldCheck,
     User,
     Users,
-    X,
-} from 'lucide-react';
+    X, ArrowLeft} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useDialog } from '../lib/dialogContext';
+import { scrollBehavior } from '../lib/motion';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
@@ -37,7 +38,7 @@ const TYPE_META = {
     subject: {
         icon: BookOpen,
         className: 'border-indigo-200 bg-indigo-50 text-indigo-700',
-        activeBadge: 'bg-indigo-600 text-white',
+        activeBadge: 'bg-indigo-700 text-white',
         colorTone: 'indigo',
     },
     learning_unit: {
@@ -49,13 +50,13 @@ const TYPE_META = {
     project: {
         icon: FolderKanban,
         className: 'border-sky-200 bg-sky-50 text-sky-800',
-        activeBadge: 'bg-sky-600 text-white',
+        activeBadge: 'bg-sky-700 text-white',
         colorTone: 'sky',
     },
     activity: {
         icon: Users,
         className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-        activeBadge: 'bg-emerald-600 text-white',
+        activeBadge: 'bg-emerald-700 text-white',
         colorTone: 'emerald',
     },
     integrated_unit: {
@@ -92,11 +93,11 @@ function LoadingRows() {
     return (
         <div className="space-y-3 p-2" aria-label="กำลังโหลดรายการรูปแบบการจัดการเรียนรู้">
             {[1, 2, 3, 4, 5].map(item => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-2xs">
+                <div key={item} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                     <div className="h-10 w-10 shrink-0 rounded-xl bg-slate-200/80 animate-pulse" />
                     <div className="flex-1 space-y-2">
-                        <div className="h-4 w-32 rounded bg-slate-200/80 animate-pulse" />
-                        <div className="h-3 w-20 rounded bg-slate-200/60 animate-pulse" />
+                        <div className="h-4 w-32 rounded-lg bg-slate-200/80 animate-pulse" />
+                        <div className="h-3 w-20 rounded-lg bg-slate-200/60 animate-pulse" />
                     </div>
                 </div>
             ))}
@@ -106,6 +107,7 @@ function LoadingRows() {
 
 export default function LearningContextManager() {
     const { currentUser } = useAuth();
+    const dialog = useDialog();
     const { academicYear, semester } = useAcademic();
     const detailRef = useRef(null);
     const [learningFormats, setLearningFormats] = useState([]);
@@ -116,6 +118,10 @@ export default function LearningContextManager() {
     const [selectedLOs, setSelectedLOs] = useState([]);
     const [form, setForm] = useState(EMPTY_FORM);
     const [viewMode, setViewMode] = useState('manage');
+    // จอเล็กแสดงทีละขั้น: รายการ → รายละเอียด หน้านี้เลือกรายการแรกให้เองตอนโหลด
+    // จึงต้องแยก state นี้ไว้ ไม่งั้นรายการจะหายตั้งแต่เปิดหน้า
+    const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+    const [formErrors, setFormErrors] = useState({});
     
     // Multi-level Filters for Real School Scale (500-2,000 students / 100+ contexts)
     const [formatFilter, setFormatFilter] = useState('all');
@@ -313,20 +319,32 @@ export default function LearningContextManager() {
     }, [areaFilter, loQuery, los, selectedItem?.grade_level, selectedLOs, showSelectedOnly]);
 
     const updateForm = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
-    const confirmDiscardMapping = () => !mappingDirty || window.confirm('ยังไม่ได้บันทึกการเชื่อมโยง LO ต้องการออกจากรายการนี้หรือไม่');
+    const confirmDiscardMapping = async () => !mappingDirty || dialog.confirm({
+        title: 'ออกจากรายการนี้โดยไม่บันทึก?',
+        message: 'LO ที่เลือกไว้แต่ยังไม่ได้กดบันทึกจะหายไป',
+        confirmLabel: 'ออกโดยไม่บันทึก',
+        tone: 'danger',
+    });
+    const showDetail = () => window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }));
 
-    const selectLearningFormat = key => {
-        if (key === selectedItemKey || !confirmDiscardMapping()) return;
+    const selectLearningFormat = async key => {
+        if (key === selectedItemKey) {
+            setMobileDetailOpen(true);
+            showDetail();
+            return;
+        }
+        if (!(await confirmDiscardMapping())) return;
         setSelectedItemKey(key);
         setViewMode('manage');
+        setMobileDetailOpen(true);
         setLoQuery('');
         setAreaFilter('all');
         setShowSelectedOnly(false);
-        window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        showDetail();
     };
 
-    const applyFormatFilter = type => {
-        if (!confirmDiscardMapping()) return;
+    const applyFormatFilter = async type => {
+        if (!(await confirmDiscardMapping())) return;
         const nextFilter = formatFilter === type ? 'all' : type;
         setFormatFilter(nextFilter);
         setViewMode('manage');
@@ -336,8 +354,10 @@ export default function LearningContextManager() {
         }
     };
 
-    const openCreate = type => {
-        if (!confirmDiscardMapping()) return;
+    const openCreate = async type => {
+        if (!(await confirmDiscardMapping())) return;
+        setFormErrors({});
+        setMobileDetailOpen(true);
         setForm({
             ...EMPTY_FORM,
             context_type: type || 'subject',
@@ -346,18 +366,18 @@ export default function LearningContextManager() {
         setCustomGroupInput(false);
         setFormPhaseTab('auto');
         setViewMode('create');
-        window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        showDetail();
     };
 
     const createLearningFormat = async event => {
         event.preventDefault();
         const formatLabel = learningFormatLabel(form.context_type);
-        if (!form.context_name.trim()) {
-            toast.error(`กรุณาระบุชื่อ${formatLabel}`);
-            return;
-        }
-        if (!GRADE_LEVELS.includes(form.grade_level)) {
-            toast.error('กรุณาเลือกระดับชั้น ป.1–ป.6');
+        const errors = {};
+        if (!form.context_name.trim()) errors.context_name = `กรุณาระบุชื่อ${formatLabel}`;
+        if (!GRADE_LEVELS.includes(form.grade_level)) errors.grade_level = 'กรุณาเลือกระดับชั้น ป.1–ป.6';
+        setFormErrors(errors);
+        if (Object.keys(errors).length) {
+            document.getElementById(errors.context_name ? 'lcm-context-name' : 'lcm-grade-level')?.focus();
             return;
         }
         setSaving(true);
@@ -499,7 +519,7 @@ export default function LearningContextManager() {
                 </header>
 
                 {errorMessage ? (
-                    <section className="rounded-3xl border border-rose-200 bg-rose-50/80 p-8 text-slate-900 shadow-sm" role="alert">
+                    <section className="rounded-2xl border border-rose-200 bg-rose-50/80 p-8 text-slate-900 shadow-sm" role="alert">
                         <div className="flex items-start gap-4">
                             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-700">
                                 <AlertCircle className="h-6 w-6" />
@@ -519,7 +539,7 @@ export default function LearningContextManager() {
                 ) : (
                     <>
                         {/* 4 Core Learning Formats Summary Tabs */}
-                        <section className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm" aria-label="สรุปรูปแบบการจัดการเรียนรู้">
+                        <section className={`overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm ${mobileDetailOpen ? 'hidden xl:block' : ''}`} aria-label="สรุปรูปแบบการจัดการเรียนรู้">
                             <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
                                 {LEARNING_FORMAT_ORDER.map(type => {
                                     const meta = TYPE_META[type];
@@ -538,13 +558,13 @@ export default function LearningContextManager() {
                                                     : 'bg-white hover:bg-slate-50 text-slate-900'
                                             }`}
                                         >
-                                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-2xs transition-transform ${
+                                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-transform ${
                                                 active ? 'border-white/20 bg-white/10 text-white scale-105' : meta.className
                                             }`}>
                                                 <Icon className="h-5 w-5" />
                                             </span>
                                             <div>
-                                                <strong className="block text-sm font-black">{learningFormatLabel(type)}</strong>
+                                                <strong className="block text-sm font-extrabold">{learningFormatLabel(type)}</strong>
                                                 <span className={`mt-0.5 block text-xs font-bold ${active ? 'text-indigo-200' : 'text-slate-500'}`}>
                                                     {loading ? '—' : `${count} รายการ`}
                                                 </span>
@@ -559,7 +579,7 @@ export default function LearningContextManager() {
                         <div className="grid items-start gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
                             
                             {/* Left Sidebar: Context Items List & Multi-level Filters */}
-                            <aside className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm xl:sticky xl:top-6" aria-label="รายการรูปแบบการจัดการเรียนรู้">
+                            <aside className={`overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm xl:sticky xl:top-6 ${mobileDetailOpen ? 'hidden xl:block' : ''}`} aria-label="รายการรูปแบบการจัดการเรียนรู้">
                                 <div className="space-y-3 border-b border-slate-100 p-5">
                                     
                                     {/* Sidebar Header */}
@@ -574,7 +594,7 @@ export default function LearningContextManager() {
                                         <button
                                             type="button"
                                             onClick={() => setShowFiltersPanel(v => !v)}
-                                            className={`relative inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-extrabold transition ${
+                                            className={`relative inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-xs font-extrabold transition ${
                                                 showFiltersPanel || activeFiltersCount > 0
                                                     ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                                                     : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
@@ -582,7 +602,7 @@ export default function LearningContextManager() {
                                         >
                                             <Filter className="h-3.5 w-3.5" /> ตัวกรอง
                                             {activeFiltersCount > 0 && (
-                                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-black text-white">
+                                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-700 px-1 text-xs font-extrabold text-white">
                                                     {activeFiltersCount}
                                                 </span>
                                             )}
@@ -591,19 +611,19 @@ export default function LearningContextManager() {
 
                                     {/* Search Input Bar */}
                                     <div className="relative">
-                                        <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                                        <Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" aria-hidden="true" />
                                         <input
  aria-label="ค้นหารายการในภาคเรียนนี้"                                            type="text"
                                             value={itemQuery}
                                             onChange={e => setItemQuery(e.target.value)}
                                             placeholder="ค้นหาชื่อวิชา, กลุ่มวิชา, ชั้นเรียน, ครู..."
-                                            className="w-full rounded-2xl border border-field bg-slate-50 pl-10 pr-8 py-2 text-xs font-medium text-slate-900 placeholder-slate-500 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="min-h-11 w-full rounded-2xl border border-field bg-slate-50 pl-10 pr-11 text-xs font-medium text-slate-900 placeholder-slate-500 transition focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
                                         {itemQuery && (
                                             <button
                                                 onClick={() => setItemQuery('')}
                                                 aria-label="ล้างคำค้นหา"
-                                                className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-700"
+                                                className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-2xl text-slate-600 hover:text-slate-800"
                                             >
                                                 <X className="h-4 w-4" />
                                             </button>
@@ -620,7 +640,7 @@ export default function LearningContextManager() {
                                                 {activeFiltersCount > 0 && (
                                                     <button
                                                         onClick={resetFilters}
-                                                        className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1"
+                                                        className="inline-flex min-h-11 items-center gap-1 px-2 text-xs font-bold text-rose-700 hover:underline"
                                                     >
                                                         <RotateCcw className="h-3 w-3" /> ล้างตัวกรอง
                                                     </button>
@@ -630,11 +650,11 @@ export default function LearningContextManager() {
                                             <div className="grid gap-2 sm:grid-cols-2">
                                                 {/* Grade Level Filter */}
                                                 <div className="space-y-1">
-                                                    <label htmlFor="lcm-grade-filter" className="text-[11px] font-bold text-slate-700">ระดับชั้น / ช่วงชั้น</label>
+                                                    <label htmlFor="lcm-grade-filter" className="text-xs font-bold text-slate-700">ระดับชั้น / ช่วงชั้น</label>
                                                     <select
  id="lcm-grade-filter"                                                        value={gradeFilter}
                                                         onChange={e => setGradeFilter(e.target.value)}
-                                                        className="w-full rounded-xl border border-field bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+                                                        className="min-h-11 w-full rounded-xl border border-field bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
                                                     >
                                                         <option value="all">ทุกระดับชั้น</option>
                                                         <option value="ป.ต้น">ป.ต้น (ป.1 - ป.3)</option>
@@ -660,11 +680,11 @@ export default function LearningContextManager() {
 
                                                 {/* LO Mapping Status Filter */}
                                                 <div className="space-y-1">
-                                                    <label htmlFor="lcm-lo-status" className="text-[11px] font-bold text-slate-700">สถานะการผูก LO</label>
+                                                    <label htmlFor="lcm-lo-status" className="text-xs font-bold text-slate-700">สถานะการผูก LO</label>
                                                     <select
  id="lcm-lo-status"                                                        value={loStatusFilter}
                                                         onChange={e => setLoStatusFilter(e.target.value)}
-                                                        className="w-full rounded-xl border border-field bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+                                                        className="min-h-11 w-full rounded-xl border border-field bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
                                                     >
                                                         <option value="all">ทั้งหมด</option>
                                                         <option value="mapped">ผูก LO แล้ว</option>
@@ -674,11 +694,11 @@ export default function LearningContextManager() {
 
                                                 {/* Subject Group Filter */}
                                                 <div className="sm:col-span-2 space-y-1">
-                                                    <label htmlFor="lcm-group-filter" className="text-[11px] font-bold text-slate-700">กลุ่มวิชา</label>
+                                                    <label htmlFor="lcm-group-filter" className="text-xs font-bold text-slate-700">กลุ่มวิชา</label>
                                                     <select
  id="lcm-group-filter"                                                        value={groupFilter}
                                                         onChange={e => setGroupFilter(e.target.value)}
-                                                        className="w-full rounded-xl border border-field bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+                                                        className="min-h-11 w-full rounded-xl border border-field bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
                                                     >
                                                         <option value="all">ทุกกลุ่มวิชา</option>
                                                         {availableGroupsInSystem.map(g => (
@@ -725,7 +745,7 @@ export default function LearningContextManager() {
                                                     className={`group relative w-full rounded-2xl p-4 text-left transition-all duration-200 border ${
                                                         isActiveItem
                                                             ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/20 border-indigo-600'
-                                                            : 'bg-white hover:bg-slate-50 text-slate-900 border-slate-200/80 shadow-2xs'
+                                                            : 'bg-white hover:bg-slate-50 text-slate-900 border-slate-200/80 shadow-sm'
                                                     } ${!item.is_active ? 'opacity-60' : ''}`}
                                                 >
                                                     <div className="flex items-start gap-3">
@@ -752,7 +772,7 @@ export default function LearningContextManager() {
                                                                 {item.subject_group && (
                                                                     <>
                                                                         <span aria-hidden="true" className={isActiveItem ? 'text-indigo-200' : 'text-slate-300'}>·</span>
-                                                                        <span className={`rounded-md px-1.5 py-0.2 text-[11px] font-extrabold ${
+                                                                        <span className={`rounded-lg px-1.5 py-0.2 text-xs font-extrabold ${
                                                                             isActiveItem ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
                                                                         }`}>
                                                                             {item.subject_group}
@@ -763,7 +783,7 @@ export default function LearningContextManager() {
                                                                 <span className={isActiveItem ? 'text-indigo-100' : 'text-slate-500'}>
                                                                     {item.grade_level || 'ทุกชั้น'} {phaseTag ? `(${phaseTag})` : ''}
                                                                 </span>
-                                                                <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-black border shadow-2xs ${
+                                                                <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-extrabold border shadow-sm ${
                                                                     isActiveItem
                                                                         ? 'bg-white/20 text-white border-white/20'
                                                                         : loCount > 0
@@ -775,7 +795,7 @@ export default function LearningContextManager() {
                                                             </div>
 
                                                             {item.responsible_teacher_id && (
-                                                                <p className={`text-[11px] truncate ${isActiveItem ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                                                <p className={`text-xs truncate ${isActiveItem ? 'text-indigo-200' : 'text-slate-500'}`}>
                                                                     ผู้รับผิดชอบ: {teacherById[item.responsible_teacher_id] || '-'}
                                                                 </p>
                                                             )}
@@ -789,9 +809,14 @@ export default function LearningContextManager() {
                             </aside>
 
                             {/* Right Main Workspace (LO Mapping Form / Create Form) */}
-                            <section ref={detailRef} className="scroll-mt-6 overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm min-h-[680px]">
+                            <section ref={detailRef} className={`scroll-mt-6 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm xl:min-h-[680px] ${mobileDetailOpen ? '' : 'hidden xl:block'}`}>
+                                <div className="border-b border-slate-100 p-3 xl:hidden">
+                                    <button type="button" onClick={() => { setMobileDetailOpen(false); window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: scrollBehavior() })); }} className="btn-ghost">
+                                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายการ
+                                    </button>
+                                </div>
                                 {viewMode === 'create' ? (
-                                    <form onSubmit={createLearningFormat} className="space-y-6">
+                                    <form onSubmit={createLearningFormat} noValidate className="space-y-6">
                                         <div className="flex items-center justify-between border-b border-slate-100 p-6">
                                             <div>
                                                 <h2 className="text-lg font-extrabold text-slate-900">เพิ่มรูปแบบการจัดการเรียนรู้ใหม่</h2>
@@ -801,7 +826,7 @@ export default function LearningContextManager() {
                                                 type="button"
                                                 onClick={() => setViewMode('manage')}
                                                 aria-label="ปิดฟอร์ม"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                                className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                                             >
                                                 <X className="h-5 w-5" />
                                             </button>
@@ -821,7 +846,7 @@ export default function LearningContextManager() {
                                                                 key={type}
                                                                 type="button"
                                                                 onClick={() => updateForm('context_type', type)}
-                                                                className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-xs font-black transition-all ${
+                                                                className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-xs font-extrabold transition-all ${
                                                                     active
                                                                         ? 'bg-indigo-700 text-white shadow-md border-indigo-700'
                                                                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -844,10 +869,13 @@ export default function LearningContextManager() {
  id="lcm-context-name"                                                        required
                                                         autoFocus
                                                         value={form.context_name}
-                                                        onChange={e => updateForm('context_name', e.target.value)}
+                                                        onChange={e => { updateForm('context_name', e.target.value); setFormErrors(previous => ({ ...previous, context_name: undefined })); }}
+                                                        aria-invalid={formErrors.context_name ? true : undefined}
+                                                        aria-describedby={formErrors.context_name ? 'lcm-context-name-error' : undefined}
                                                         placeholder={isSubjectForm ? 'เช่น ภาษาและการสื่อสาร 1' : 'เช่น ตลาดนัดเรียนรู้พอเพียง'}
                                                         className="w-full rounded-2xl border border-field bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
+                                                    {formErrors.context_name && <p id="lcm-context-name-error" className="text-xs font-bold text-rose-700">{formErrors.context_name}</p>}
                                                 </div>
 
                                                 <div className="space-y-1">
@@ -855,12 +883,15 @@ export default function LearningContextManager() {
                                                     <select
  id="lcm-grade-level"                                                        required
                                                         value={form.grade_level}
-                                                        onChange={e => updateForm('grade_level', e.target.value)}
+                                                        onChange={e => { updateForm('grade_level', e.target.value); setFormErrors(previous => ({ ...previous, grade_level: undefined })); }}
+                                                        aria-invalid={formErrors.grade_level ? true : undefined}
+                                                        aria-describedby={formErrors.grade_level ? 'lcm-grade-level-error' : undefined}
                                                         className="w-full rounded-2xl border border-field bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     >
                                                         <option value="">-- กรุณาเลือกระดับชั้น --</option>
                                                         {GRADE_LEVELS.map(g => <option key={g} value={g}>{g}</option>)}
                                                     </select>
+                                                    {formErrors.grade_level && <p id="lcm-grade-level-error" className="text-xs font-bold text-rose-700">{formErrors.grade_level}</p>}
                                                 </div>
 
                                                 <div className="space-y-1">
@@ -890,7 +921,7 @@ export default function LearningContextManager() {
                                                         <button
                                                             type="button"
                                                             onClick={() => setCustomGroupInput(v => !v)}
-                                                            className="text-[11px] font-bold text-indigo-700 hover:underline"
+                                                            className="text-xs font-bold text-indigo-700 hover:underline"
                                                         >
                                                             {customGroupInput ? 'เลือกจากรายการมาตรฐาน' : '+ พิมพ์กลุ่มวิชาเอง'}
                                                         </button>
@@ -932,16 +963,16 @@ export default function LearningContextManager() {
                                                     {/* Phase Filter Tabs for Quick Chips */}
                                                     <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-2.5">
                                                         <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                                                            <span className="text-[11px] font-extrabold text-slate-700">คลิกเลือกกลุ่มวิชาด่วน:</span>
+                                                            <span className="text-xs font-extrabold text-slate-700">คลิกเลือกกลุ่มวิชาด่วน:</span>
                                                             <div className="flex gap-1 rounded-xl bg-white p-0.5 border border-slate-200">
                                                                 {['ป.ต้น', 'ป.ปลาย'].map(phase => (
                                                                     <button
                                                                         key={phase}
                                                                         type="button"
                                                                         onClick={() => setFormPhaseTab(phase)}
-                                                                        className={`rounded-lg px-2.5 py-0.5 text-[10px] font-black transition ${
+                                                                        className={`rounded-lg px-2.5 py-0.5 text-xs font-extrabold transition ${
                                                                             effectivePhase === phase
-                                                                                ? 'bg-indigo-700 text-white shadow-2xs'
+                                                                                ? 'bg-indigo-700 text-white shadow-sm'
                                                                                 : 'text-slate-600 hover:bg-slate-100'
                                                                         }`}
                                                                     >
@@ -955,16 +986,16 @@ export default function LearningContextManager() {
                                                         <div className="space-y-2">
                                                             {CBE_SUBJECT_GROUPS_BY_PHASE_2568[effectivePhase]?.map(group => (
                                                                 <div key={group.groupName} className="space-y-1">
-                                                                    <span className="text-[10px] font-bold text-indigo-900 block">{group.groupName}:</span>
+                                                                    <span className="text-xs font-bold text-indigo-900 block">{group.groupName}:</span>
                                                                     <div className="flex flex-wrap gap-1.5">
                                                                         {group.items.map(item => (
                                                                             <button
                                                                                 key={item}
                                                                                 type="button"
                                                                                 onClick={() => updateForm('subject_group', item)}
-                                                                                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                                                                                className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                                                                                     form.subject_group === item
-                                                                                        ? 'bg-indigo-700 text-white shadow-xs'
+                                                                                        ? 'bg-indigo-700 text-white shadow-sm'
                                                                                         : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-700'
                                                                                 }`}
                                                                             >
@@ -1003,8 +1034,8 @@ export default function LearningContextManager() {
                                             </button>
                                             <button
                                                 type="submit"
-                                                disabled={saving || !form.context_name.trim() || !GRADE_LEVELS.includes(form.grade_level)}
-                                                className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-6 py-2.5 text-xs font-black text-white shadow-md hover:bg-indigo-800 disabled:opacity-50"
+                                                disabled={saving}
+                                                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-6 text-xs font-extrabold text-white shadow-md hover:bg-indigo-800 disabled:opacity-50"
                                             >
                                                 {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-4 w-4" />}
                                                 บันทึกและกำหนด LO ต่อ
@@ -1013,7 +1044,7 @@ export default function LearningContextManager() {
                                     </form>
                                 ) : !selectedItem ? (
                                     <div className="flex flex-col items-center justify-center p-16 text-center space-y-4">
-                                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100">
                                             <Link2 className="h-8 w-8" />
                                         </div>
                                         <h2 className="text-base font-extrabold text-slate-900">เลือกรายการที่ต้องการจัดการ</h2>
@@ -1029,7 +1060,7 @@ export default function LearningContextManager() {
                                             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                                 <div className="space-y-2.5">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <span className={`rounded-xl border px-3 py-1 text-xs font-black ${(TYPE_META[selectedItem.context_type] || TYPE_META.project).className}`}>
+                                                        <span className={`rounded-xl border px-3 py-1 text-xs font-extrabold ${(TYPE_META[selectedItem.context_type] || TYPE_META.project).className}`}>
                                                             {learningFormatLabel(selectedItem.context_type)}
                                                         </span>
                                                         {selectedItem.subject_group && (
@@ -1042,7 +1073,7 @@ export default function LearningContextManager() {
                                                         </span>
                                                     </div>
 
-                                                    <h2 className="text-xl font-black text-slate-950 sm:text-2xl">
+                                                    <h2 className="text-xl font-extrabold text-slate-950 sm:text-2xl">
                                                         {selectedItem.context_name}
                                                     </h2>
 
@@ -1057,7 +1088,7 @@ export default function LearningContextManager() {
                                                 {selectedItem.source === 'context' && (
                                                     <button
                                                         onClick={() => toggleContextActive(selectedItem)}
-                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
                                                     >
                                                         {selectedItem.is_active ? <PauseCircle className="h-4 w-4 text-amber-700" /> : <PlayCircle className="h-4 w-4 text-emerald-700" />}
                                                         {selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}
@@ -1070,20 +1101,20 @@ export default function LearningContextManager() {
                                         <div className="border-b border-slate-100 bg-slate-50/70 p-5 space-y-3">
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div className="relative flex-1">
-                                                    <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-500" />
+                                                    <Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" aria-hidden="true" />
                                                     <input
  aria-label="ค้นหา LO"                                                        type="text"
                                                         value={loQuery}
                                                         onChange={e => setLoQuery(e.target.value)}
                                                         placeholder="ค้นหารหัส LO, ด้านความสามารถ, หรือรายละเอียด..."
-                                                        className="w-full rounded-2xl border border-field bg-white pl-10 pr-4 py-2 text-xs font-medium text-slate-900 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                        className="min-h-11 w-full rounded-2xl border border-field bg-white pl-10 pr-4 text-xs font-medium text-slate-900 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                     />
                                                 </div>
 
                                                 <select
  aria-label="กรองตามด้านความสามารถ"                                                    value={areaFilter}
                                                     onChange={e => setAreaFilter(e.target.value)}
-                                                    className="rounded-2xl border border-field bg-white px-3 py-2 text-xs font-bold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                                    className="min-h-11 rounded-2xl border border-field bg-white px-3 text-xs font-bold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                                                 >
                                                     <option value="all">ทุกด้านความสามารถ</option>
                                                     {competencyAreas.map(area => (
@@ -1094,7 +1125,7 @@ export default function LearningContextManager() {
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowSelectedOnly(v => !v)}
-                                                    className={`rounded-2xl border px-3.5 py-2 text-xs font-extrabold transition-all ${
+                                                    className={`min-h-11 rounded-2xl border px-3.5 text-xs font-extrabold transition-all ${
                                                         showSelectedOnly
                                                             ? 'bg-indigo-700 text-white border-indigo-700 shadow-sm'
                                                             : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -1113,16 +1144,16 @@ export default function LearningContextManager() {
                                                         type="button"
                                                         onClick={selectAllVisible}
                                                         disabled={!filteredLOs.length}
-                                                        className="font-bold text-indigo-700 hover:underline disabled:opacity-40"
+                                                        className="inline-flex min-h-11 items-center px-2 font-bold text-indigo-700 hover:underline disabled:opacity-40"
                                                     >
                                                         เลือกทั้งหมดที่แสดง
                                                     </button>
-                                                    <span>·</span>
+                                                    <span aria-hidden="true">·</span>
                                                     <button
                                                         type="button"
                                                         onClick={() => setSelectedLOs([])}
                                                         disabled={!selectedLOs.length}
-                                                        className="font-bold text-slate-500 hover:underline disabled:opacity-40"
+                                                        className="inline-flex min-h-11 items-center px-2 font-bold text-slate-600 hover:underline disabled:opacity-40"
                                                     >
                                                         ล้างที่เลือก
                                                     </button>
@@ -1153,22 +1184,22 @@ export default function LearningContextManager() {
                                                                 onChange={() => toggleLO(lo.lo_id)}
                                                                 className="sr-only"
                                                             />
-                                                            <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
-                                                                checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white'
+                                                            <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border-2 transition ${
+                                                                checked ? 'border-indigo-600 bg-indigo-700 text-white' : 'border-slate-300 bg-white'
                                                             }`}>
                                                                 {checked && <Check className="h-3.5 w-3.5" />}
                                                             </div>
 
                                                             <div className="space-y-1 min-w-0">
                                                                 <div className="flex flex-wrap items-center gap-2">
-                                                                    <span className="rounded-md bg-indigo-700 px-2.5 py-0.5 text-xs font-black text-white shadow-2xs">
+                                                                    <span className="rounded-lg bg-indigo-700 px-2.5 py-0.5 text-xs font-extrabold text-white shadow-sm">
                                                                         {lo.lo_code || `LO ${lo.ability_no}`}
                                                                     </span>
-                                                                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                                                    <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">
                                                                         {lo.competency_area || 'ไม่ระบุด้าน'}
                                                                     </span>
-                                                                    {lo.grade_level && <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">{lo.grade_level}</span>}
-                                                                    {lo.is_custom_competency && <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
+                                                                    {lo.grade_level && <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">{lo.grade_level}</span>}
+                                                                    {lo.is_custom_competency && <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
                                                                 </div>
                                                                 <p className="text-xs leading-relaxed text-slate-700 max-w-[80ch]">
                                                                     {lo.lo_description}
@@ -1199,7 +1230,7 @@ export default function LearningContextManager() {
                                             <button
                                                 onClick={saveMapping}
                                                 disabled={mappingSaving || !mappingDirty}
-                                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-700 px-6 py-2.5 text-xs font-black text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-800 transition disabled:opacity-40"
+                                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-indigo-700 px-6 text-xs font-extrabold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-800 transition disabled:opacity-40"
                                             >
                                                 {mappingSaving ? (
                                                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />

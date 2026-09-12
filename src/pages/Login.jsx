@@ -67,22 +67,22 @@ export default function Login() {
             <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl" />
             <div className="pointer-events-none absolute -right-20 -bottom-20 h-96 w-96 rounded-full bg-sky-600/15 blur-3xl" />
 
-            <main className="relative z-10 w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl shadow-indigo-950/50 lg:grid lg:grid-cols-[1.1fr_1fr]">
+            <main className="relative z-10 w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl shadow-indigo-950/50 lg:grid lg:grid-cols-[1.1fr_1fr]">
                 
                 {/* ═══ Left Side: Brand Hero & Quick Demo Accounts ═══ */}
                 <aside className="relative flex flex-col justify-between border-b border-white/10 bg-gradient-to-b from-indigo-900/40 to-slate-950/60 p-8 sm:p-10 lg:border-b-0 lg:border-r lg:p-12">
                     <div className="space-y-6">
                         {/* Brand Logo */}
                         <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-md shadow-indigo-500/30 ring-1 ring-white/20">
                                 <BookOpen className="h-6 w-6" />
                             </div>
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-2xl font-black tracking-tight text-white">
+                                    <span className="text-2xl font-extrabold tracking-tight text-white">
                                         CBE <span className="text-indigo-400">Track</span>
                                     </span>
-                                    <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-300 border border-indigo-400/30">
+                                    <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-xs font-bold text-indigo-300 border border-indigo-400/30">
                                         v2026
                                     </span>
                                 </div>
@@ -92,7 +92,7 @@ export default function Login() {
 
                         {/* Tagline */}
                         <div className="space-y-3 pt-2">
-                            <p className="text-xl font-black text-white sm:text-2xl leading-snug">
+                            <p className="text-xl font-extrabold text-white sm:text-2xl leading-snug">
                                 ประเมินอย่างมีความหมาย <br />
                                 <span className="text-indigo-200">
                                     ตัดสินผลด้วยหลักฐานเชิงประจักษ์
@@ -125,7 +125,7 @@ export default function Login() {
                             <div className="font-extrabold text-white flex items-center gap-1.5">
                                 <ShieldCheck className="h-4 w-4 text-emerald-400" /> มาตรฐานความปลอดภัยข้อมูลสถานศึกษา
                             </div>
-                            <p className="text-[11px] leading-relaxed text-slate-400">
+                            <p className="text-xs leading-relaxed text-slate-400">
                                 ใช้ข้อมูลเข้าสู่ระบบเฉพาะของตนเอง และออกจากระบบทุกครั้งเมื่อใช้อุปกรณ์ร่วมกัน การรับรองผลจะถูกบันทึกประวัติเพื่อตรวจสอบย้อนหลัง
                             </p>
                         </div>
@@ -140,7 +140,7 @@ export default function Login() {
                             <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-extrabold text-indigo-700 border border-indigo-100 mb-2">
                                 <Lock className="h-3.5 w-3.5" /> เข้าสู่ระบบสถานศึกษา
                             </div>
-                            <h1 className="text-2xl font-black text-slate-950 sm:text-3xl">เข้าสู่ระบบ</h1>
+                            <h1 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">เข้าสู่ระบบ</h1>
                             <p className="mt-1 text-xs font-medium text-slate-500">
                                 กรอกเลขประจำตัวประชาชน 13 หลัก และรหัสผ่านเพื่อเริ่มใช้งาน
                             </p>
@@ -215,7 +215,7 @@ export default function Login() {
                                     </button>
                                 </div>
 
-                                <p className="text-[11px] leading-relaxed text-slate-500 flex items-center gap-1 pt-1">
+                                <p className="text-xs leading-relaxed text-slate-500 flex items-center gap-1 pt-1">
                                     <HelpCircle className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
                                     รหัสผ่านเริ่มต้นใช้วันเดือนปีเกิด พ.ศ. 8 หลัก เช่น 5 ม.ค. 2540 กรอก <strong className="text-slate-800 font-mono">05012540</strong>
                                 </p>
@@ -225,7 +225,7 @@ export default function Login() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-600/30 transition hover:from-indigo-700 hover:to-indigo-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 py-3.5 text-sm font-extrabold text-white shadow-md shadow-indigo-600/30 transition hover:from-indigo-700 hover:to-indigo-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 disabled:opacity-50"
                             >
                                 {loading ? (
                                     <>

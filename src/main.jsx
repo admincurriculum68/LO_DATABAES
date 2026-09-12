@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { AuthProvider } from './AuthContext.jsx';
 import { AcademicProvider } from './AcademicContext.jsx';
+import DialogProvider from './components/DialogProvider.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <HashRouter>
       <AuthProvider>
         <AcademicProvider>
-          <App />
+          <DialogProvider>
+            <App />
+          </DialogProvider>
         </AcademicProvider>
       </AuthProvider>
     </HashRouter>

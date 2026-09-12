@@ -249,7 +249,7 @@ export default function YearlyReportAdmin() {
                                     />
                                 </div>
                                 {searchTerm && (
-                                    <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-52 overflow-y-auto z-10 relative">
+                                    <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-md max-h-52 overflow-y-auto z-10 relative">
                                         {filteredStudents.length === 0 ? (
                                             <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                         ) : filteredStudents.map(s => (
@@ -333,7 +333,7 @@ export default function YearlyReportAdmin() {
                                             <select
  aria-label={`ระดับที่ได้รับ: ข้อ ${i + 1} ${comp.description}`}                                                value={achievedLevels[comp.competency_id] || ''}
                                                 onChange={e => setAchievedLevels(prev => ({ ...prev, [comp.competency_id]: e.target.value }))}
-                                                className="border border-field rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                className="min-h-11 border border-field rounded-lg px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                             >
                                                 <option value="">เลือกระดับ</option>
                                                 {LEVELS.map(l => <option key={l}>{l}</option>)}
@@ -347,12 +347,12 @@ export default function YearlyReportAdmin() {
                         {/* Action buttons */}
                         <div className="hidden">
                             <button onClick={handleSave} disabled={saving || !selectedStudent}
-                                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
+                                className="flex items-center gap-2 bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
                                 {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                 {saving ? 'กำลังบันทึก...' : 'บันทึกผลการเรียน'}
                             </button>
                             <button onClick={handlePrint} disabled={!selectedStudent || competencies.length === 0}
-                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
+                                className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
                                 <Printer className="w-4 h-4" /> พิมพ์ ปพ.๖
                             </button>
                         </div>

@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ROLE_TONES, defaultRouteFor, hasRole, roleLabelsFor, rolesOf } from '../lib/roles';
 import useDocumentTitle from '../lib/useDocumentTitle';
+import { useDialog } from '../lib/dialogContext';
 
 export default function Layout({ children, title, onActionClick, actionText, actionIcon: ActionIcon }) {
     const { currentUser, logoutUser } = useAuth();
+    const dialog = useDialog();
     const { academicYear, semester, setAcademicYear, setSemester, updateAcademicSettings } = useAcademic();
     const navigate = useNavigate();
     const location = useLocation();
@@ -27,11 +29,38 @@ export default function Layout({ children, title, onActionClick, actionText, act
         return () => document.removeEventListener('keydown', closeOnEscape);
     }, [showTermPicker]);
 
-    const handleLogout = () => {
-        if (window.confirm('ยืนยันการออกจากระบบ CBE Track')) {
-            logoutUser();
-            navigate('/login');
-        }
+    // เมนูเลื่อนแนวนอนได้บนจอเล็ก ขอบจางบอกว่ายังมีเมนูต่อ และเมนูของหน้าปัจจุบันต้องอยู่ในจอเสมอ
+    // (เดิมที่ 375px เมนู "รับรองผล" ตกขอบจอ และ "ติดตามการรายงานผล" ถูกตัดครึ่งคำ)
+    const navScrollRef = useRef(null);
+    const [navFade, setNavFade] = useState({ left: false, right: false });
+    const updateNavFade = useCallback(() => {
+        const element = navScrollRef.current;
+        if (!element) return;
+        const left = element.scrollLeft > 4;
+        const right = element.scrollLeft + element.clientWidth < element.scrollWidth - 4;
+        setNavFade(previous => (previous.left === left && previous.right === right ? previous : { left, right }));
+    }, []);
+    useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            navScrollRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            updateNavFade();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [location.pathname, location.search, updateNavFade]);
+    useEffect(() => {
+        window.addEventListener('resize', updateNavFade);
+        return () => window.removeEventListener('resize', updateNavFade);
+    }, [updateNavFade]);
+
+    const handleLogout = async () => {
+        const confirmed = await dialog.confirm({
+            title: 'ออกจากระบบ CBE Track?',
+            message: 'ข้อความที่ยังไม่ได้บันทึกในหน้านี้จะหายไป',
+            confirmLabel: 'ออกจากระบบ',
+        });
+        if (!confirmed) return;
+        logoutUser();
+        navigate('/login');
     };
 
     // ครู 1 คนมีได้หลายบทบาท ป้ายจึงแสดงทุกบทบาทที่ปฏิบัติจริง
@@ -100,11 +129,15 @@ export default function Layout({ children, title, onActionClick, actionText, act
 
     const isAdmin = hasRole(currentUser, 'admin');
 
-    const handleTermChange = (year, sem) => {
+    const handleTermChange = async (year, sem) => {
         if (isAdmin) {
             // ฝ่ายวิชาการเปลี่ยนแล้วมีผลกับผู้ใช้ทุกคนในโรงเรียนทันที เลือกพลาดครั้งเดียว
             // ครูทั้งโรงเรียนจะบันทึกผลผิดภาค จึงต้องถามก่อน ไม่เปลี่ยนทันทีที่เลือก (WCAG 3.2.2)
-            if (!window.confirm(`เปลี่ยนเป็นภาคเรียนที่ ${sem}/${year} ให้ผู้ใช้ทุกคนในโรงเรียนใช่หรือไม่`)) return;
+            if (!(await dialog.confirm({
+                title: `เปลี่ยนเป็นภาคเรียนที่ ${sem}/${year}?`,
+                message: 'ครู นักเรียน และผู้บริหารทุกคนในโรงเรียนจะเห็นและบันทึกผลในภาคเรียนนี้ทันที',
+                confirmLabel: 'เปลี่ยนภาคเรียน',
+            }))) return;
             updateAcademicSettings(year, sem);
         } else {
             setAcademicYear(year);
@@ -146,7 +179,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 <span className="font-extrabold text-sm text-slate-800 tracking-tight">
                                     CBE <span className="text-blue-600">Track</span>
                                 </span>
-                                <span className="text-[10px] text-slate-600 font-medium truncate max-w-[160px]" title={currentUser?.school_name || undefined}>
+                                <span className="text-xs text-slate-600 font-medium truncate max-w-[160px]" title={currentUser?.school_name || undefined}>
                                     {currentUser?.school_name || 'ระบบติดตามผลลัพธ์การเรียนรู้'}
                                 </span>
                             </div>
@@ -209,7 +242,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                                                 aria-pressed={semester === s}
                                                                 className={`min-h-11 flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all ${
                                                                     semester === s
-                                                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
+                                                                        ? 'bg-indigo-700 border-indigo-600 text-white shadow-md'
                                                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
                                                                 }`}
                                                             >
@@ -248,7 +281,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">{currentUser?.full_name}</span>
                                 <span className="mt-0.5 flex flex-wrap gap-1">
                                     {roleBadges.map(badge => (
-                                        <span key={badge.label} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border w-fit ${badge.color}`}>{badge.label}</span>
+                                        <span key={badge.label} className={`text-xs font-bold px-1.5 py-0.5 rounded-full border w-fit ${badge.color}`}>{badge.label}</span>
                                     ))}
                                 </span>
                             </div>
@@ -266,12 +299,12 @@ export default function Layout({ children, title, onActionClick, actionText, act
                     </div>
                 </div>
                 {navigationGroups.length > 0 && (
-                    <nav className="border-t border-slate-200 bg-white" aria-label="เมนูหลัก">
-                        <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 py-1.5 sm:px-6 lg:px-8">
+                    <nav className="relative border-t border-slate-200 bg-white" aria-label="เมนูหลัก">
+                        <div ref={navScrollRef} onScroll={updateNavFade} className="mx-auto flex max-w-7xl snap-x items-center gap-1 overflow-x-auto scroll-px-4 px-4 py-1.5 sm:px-6 lg:px-8">
                             {navigationGroups.map((group, groupIndex) => (
                                 <div key={group.key} className="flex shrink-0 items-center gap-1">
                                     {showGroupHeadings && group.heading && (
-                                        <span className={`shrink-0 whitespace-nowrap px-2 text-[11px] font-bold text-slate-500 ${groupIndex > 0 ? 'ml-2 border-l border-slate-200 pl-4' : ''}`}>
+                                        <span className={`shrink-0 whitespace-nowrap px-2 text-xs font-bold text-slate-500 ${groupIndex > 0 ? 'ml-2 border-l border-slate-200 pl-4' : ''}`}>
                                             {group.heading}
                                         </span>
                                     )}
@@ -281,7 +314,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                             type="button"
                                             onClick={() => navigate(item.path)}
                                             aria-current={isActive(item) ? 'page' : undefined}
-                                            className={`min-h-11 shrink-0 rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+                                            className={`min-h-11 shrink-0 snap-start rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
                                                 isActive(item) ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'
                                             }`}
                                         >
@@ -291,6 +324,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                 </div>
                             ))}
                         </div>
+                        {navFade.left && <span className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-white to-transparent" aria-hidden="true" />}
+                        {navFade.right && <span className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-white to-transparent" aria-hidden="true" />}
                     </nav>
                 )}
             </header>

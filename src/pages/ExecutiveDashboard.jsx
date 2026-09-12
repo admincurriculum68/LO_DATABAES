@@ -300,7 +300,7 @@ export default function ExecutiveDashboard() {
                 <span className={`rounded-xl p-2.5 ${tone}`}><Icon className="h-5 w-5" /></span>
                 <span className="text-sm font-bold text-slate-600">{title}</span>
             </div>
-            <p className="mt-3 text-4xl font-black tracking-tight text-slate-900">
+            <p className="mt-3 text-4xl font-extrabold tracking-tight text-slate-900">
                 {loading || !view ? '–' : value}
                 {unit && <span className="ml-1.5 text-base font-bold text-slate-500">{unit}</span>}
             </p>
@@ -313,7 +313,7 @@ export default function ExecutiveDashboard() {
                 <div className="flex items-center gap-4">
                     <span className="hidden rounded-2xl bg-slate-900 p-3.5 text-amber-400 sm:block"><BarChart3 className="h-8 w-8" /></span>
                     <div>
-                        <h1 className="text-3xl font-black tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h1>
                         <p className="mt-1.5 text-slate-600">
                             <span className="font-bold text-slate-800">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
                         </p>
@@ -335,7 +335,7 @@ export default function ExecutiveDashboard() {
                 </div>
             ) : !view ? null : (
                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
                         <StatCard title="ครูและบุคลากร" value={view.teacherCount} unit="คน" icon={Users} tone="bg-blue-50 text-blue-700" />
                         <StatCard title="จำนวนนักเรียน" value={view.studentCount} unit="คน" icon={GraduationCap} tone="bg-emerald-50 text-emerald-700" />
                         <StatCard title="รูปแบบการจัดการเรียนรู้" value={view.formatCount} unit="รายการ" icon={BookOpenCheck} tone="bg-violet-50 text-violet-700" />
@@ -356,7 +356,7 @@ export default function ExecutiveDashboard() {
                                 { label: 'ทั้งหมด', value: view.certification.total, tone: 'text-slate-900' },
                             ].map(item => (
                                 <div key={item.label} className="px-5 py-4">
-                                    <p className={`text-3xl font-black ${item.tone}`}>{item.value.toLocaleString()}</p>
+                                    <p className={`text-3xl font-extrabold ${item.tone}`}>{item.value.toLocaleString()}</p>
                                     <p className="mt-1 text-sm font-bold text-slate-600">{item.label}</p>
                                 </div>
                             ))}
@@ -409,7 +409,7 @@ export default function ExecutiveDashboard() {
                                                     <td className="px-4 py-3.5 text-center font-bold text-slate-800">{row.loCount}</td>
                                                     <td className="px-4 py-3.5">
                                                         {row.blocked ? (
-                                                            <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">
+                                                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">
                                                                 <AlertTriangle className="h-3.5 w-3.5" />
                                                                 {row.studentCount === 0 ? 'ยังไม่ได้จัดนักเรียนเข้ากลุ่มเรียน' : 'ยังไม่ได้กำหนด LO'}
                                                             </span>
@@ -424,7 +424,7 @@ export default function ExecutiveDashboard() {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3.5">
-                                                        <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-bold ${meta.className}`}>{meta.label}</span>
+                                                        <span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-bold ${meta.className}`}>{meta.label}</span>
                                                     </td>
                                                 </tr>
                                             );
@@ -443,7 +443,7 @@ export default function ExecutiveDashboard() {
                         action={
                             <button
                                 onClick={() => navigate('/admin/report-competency')}
-                                className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
                                 เปิดรายงานฉบับเต็ม <ArrowRight className="h-4 w-4" />
                             </button>
@@ -471,7 +471,7 @@ export default function ExecutiveDashboard() {
                                         </div>
                                         <div className="mt-2 flex flex-wrap gap-1.5">
                                             {LEVELS.map(level => (
-                                                <span key={level} className={`rounded-md border px-1.5 py-0.5 text-xs font-bold ${levelTone[level].chip}`}>
+                                                <span key={level} className={`rounded-lg border px-1.5 py-0.5 text-xs font-bold ${levelTone[level].chip}`}>
                                                     {formalLevelLabel(level)} {area.counts[level]}
                                                 </span>
                                             ))}
@@ -533,7 +533,7 @@ export default function ExecutiveDashboard() {
                             action={
                                 <button
                                     onClick={() => navigate('/admin/report-lo')}
-                                    className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 >
                                     ผลราย LO <ArrowRight className="h-4 w-4" />
                                 </button>

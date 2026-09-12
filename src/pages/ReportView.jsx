@@ -145,9 +145,9 @@ export default function ReportView() {
                 </button>
                 <button
                     onClick={() => window.print()}
-                    className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 hover:bg-indigo-700 transition flex items-center"
+                    className="btn-primary px-6 shadow-md"
                 >
-                    <Printer className="w-5 h-5 mr-2" /> พิมพ์แบบรายงาน
+                    <Printer className="h-5 w-5" aria-hidden="true" /> พิมพ์แบบรายงาน
                 </button>
             </div>
 

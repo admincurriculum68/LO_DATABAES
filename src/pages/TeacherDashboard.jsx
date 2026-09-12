@@ -170,14 +170,14 @@ export default function TeacherDashboard() {
             <div className="mx-auto w-full max-w-[1680px] space-y-6 pb-12">
                 
                 {/* Top Teacher Dashboard Hero Banner */}
-                <header className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl ring-1 ring-white/10">
+                <header className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-2xl ring-1 ring-white/10">
                     <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
                     <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl" />
 
                     <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                         <div className="space-y-2 max-w-2xl">
                             <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-3.5 py-1 text-xs font-semibold text-indigo-100">งานของครูผู้สอน</div>
-                            <h1 className="text-2xl font-black tracking-tight sm:text-3xl text-white">
+                            <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-white">
                                 สวัสดีครับ/ค่ะ, {currentUser?.full_name || 'คุณครู'}
                             </h1>
                             <p className="text-xs sm:text-sm leading-relaxed text-indigo-100">
@@ -194,38 +194,11 @@ export default function TeacherDashboard() {
                     </div>
                 </header>
 
-                {/* Metrics Overview Cards */}
-                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="ข้อมูลภาพรวมงานครู">
-                    {[
-                        { label: 'วิชาที่รับผิดชอบ', value: totalSubjects, unit: 'วิชา', icon: BookOpen, color: 'from-indigo-500/10 via-indigo-500/5 to-transparent text-indigo-700 border-indigo-200/80 icon-bg:bg-indigo-600' },
-                        { label: 'นักเรียนในกลุ่มเรียน', value: totalStudents, unit: 'คน', icon: UsersRound, color: 'from-blue-500/10 via-blue-500/5 to-transparent text-blue-700 border-blue-200/80 icon-bg:bg-blue-600' },
-                        { label: 'รายการที่ประเมินแล้ว', value: completedAssessmentItems, unit: `จาก ${totalAssessmentItems}`, icon: ClipboardCheck, color: 'from-violet-500/10 via-violet-500/5 to-transparent text-violet-700 border-violet-200/80 icon-bg:bg-violet-600' },
-                        { label: 'ความก้าวหน้ารวม', value: overallPercent, unit: '%', icon: CheckCircle2, color: 'from-emerald-500/10 via-emerald-500/5 to-transparent text-emerald-700 border-emerald-200/80 icon-bg:bg-emerald-600' },
-                    ].map((metric) => {
-                        const Icon = metric.icon;
-                        return (
-                            <div key={metric.label} className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition hover:shadow-md ${metric.color}`}>
-                                <div className="flex items-center justify-between">
-                                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md shadow-indigo-500/30">
-                                        <Icon className="h-6 w-6" />
-                                    </span>
-                                </div>
-                                <div className="mt-4 space-y-1">
-                                    <p className="text-xs font-bold text-slate-500">{metric.label}</p>
-                                    <p className="text-3xl font-black tabular-nums tracking-tight text-slate-900">
-                                        {loading ? '-' : metric.value.toLocaleString()} <span className="text-xs font-bold text-slate-500">{metric.unit}</span>
-                                    </p>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </section>
-
                 {/* Warning Notification Banner for Pending Subjects */}
                 {!loading && pendingSubjects > 0 && subjects.length > 0 && (
-                    <section className="flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-5 sm:flex-row sm:items-center sm:justify-between shadow-2xs">
+                    <section className="flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-5 sm:flex-row sm:items-center sm:justify-between shadow-sm">
                         <div className="flex items-start gap-3.5">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 shadow-xs">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 shadow-sm">
                                 <AlertTriangle className="h-6 w-6" />
                             </div>
                             <div>
@@ -235,21 +208,48 @@ export default function TeacherDashboard() {
                         </div>
                         <button
                             onClick={() => setStatusFilter('pending')}
-                            className="min-h-11 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-extrabold text-amber-900 shadow-2xs hover:bg-amber-100 transition shrink-0"
+                            className="min-h-11 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-extrabold text-amber-900 shadow-sm hover:bg-amber-100 transition shrink-0"
                         >
                             แสดงเฉพาะวิชาที่ยังไม่ครบ
                         </button>
                     </section>
                 )}
 
+                {/* Metrics Overview Cards */}
+                <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4" aria-label="ข้อมูลภาพรวมงานครู">
+                    {[
+                        { label: 'วิชาที่รับผิดชอบ', value: totalSubjects, unit: 'วิชา', icon: BookOpen, color: 'from-indigo-500/10 via-indigo-500/5 to-transparent text-indigo-700 border-indigo-200/80 icon-bg:bg-indigo-600' },
+                        { label: 'นักเรียนในกลุ่มเรียน', value: totalStudents, unit: 'คน', icon: UsersRound, color: 'from-blue-500/10 via-blue-500/5 to-transparent text-blue-700 border-blue-200/80 icon-bg:bg-blue-600' },
+                        { label: 'รายการที่ประเมินแล้ว', value: completedAssessmentItems, unit: `จาก ${totalAssessmentItems}`, icon: ClipboardCheck, color: 'from-violet-500/10 via-violet-500/5 to-transparent text-violet-700 border-violet-200/80 icon-bg:bg-violet-600' },
+                        { label: 'ความก้าวหน้ารวม', value: overallPercent, unit: '%', icon: CheckCircle2, color: 'from-emerald-500/10 via-emerald-500/5 to-transparent text-emerald-700 border-emerald-200/80 icon-bg:bg-emerald-600' },
+                    ].map((metric) => {
+                        const Icon = metric.icon;
+                        return (
+                            <div key={metric.label} className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-sm transition hover:shadow-md sm:p-5 ${metric.color}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-700 text-white shadow-md shadow-indigo-500/30 sm:h-12 sm:w-12" aria-hidden="true">
+                                        <Icon className="h-6 w-6" />
+                                    </span>
+                                </div>
+                                <div className="mt-4 space-y-1">
+                                    <p className="text-xs font-bold text-slate-500">{metric.label}</p>
+                                    <p className="text-2xl font-extrabold tabular-nums tracking-tight text-slate-900 sm:text-3xl">
+                                        {loading ? '-' : metric.value.toLocaleString()} <span className="text-xs font-bold text-slate-500">{metric.unit}</span>
+                                    </p>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </section>
+
                 {loading ? (
                     <div>
-                        <div className="h-96 animate-pulse rounded-3xl bg-slate-200" />
-                        <div className="h-64 animate-pulse rounded-3xl bg-slate-200" />
+                        <div className="h-96 animate-pulse rounded-2xl bg-slate-200" />
+                        <div className="h-64 animate-pulse rounded-2xl bg-slate-200" />
                     </div>
                 ) : subjects.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100 mb-4">
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100 mb-4">
                             <BookMarked className="h-8 w-8" />
                         </div>
                         <h2 className="text-base font-extrabold text-slate-900">ยังไม่มีรายวิชาที่ได้รับมอบหมาย</h2>
@@ -261,7 +261,7 @@ export default function TeacherDashboard() {
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
                         
                         {/* Main Table: Subjects List */}
-                        <section className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm">
+                        <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
                             <div className="border-b border-slate-100 p-6">
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
@@ -313,7 +313,7 @@ export default function TeacherDashboard() {
                                             <div className="space-y-1 flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-extrabold text-sm text-slate-950">{sub.subject_name}</span>
-                                                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
+                                                    <span className="rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-bold text-indigo-700 border border-indigo-100">
                                                         ชั้น {sub.grade_level || 'ไม่ระบุ'} {sub.room ? `ห้อง ${sub.room}` : ''}
                                                     </span>
                                                 </div>
@@ -330,14 +330,14 @@ export default function TeacherDashboard() {
                                                     <span className={`font-bold ${isComplete ? 'text-emerald-800' : hasStudents ? 'text-amber-800' : 'text-slate-600'}`}>
                                                         {isComplete ? 'ครบ 100%' : hasStudents ? `ความก้าวหน้า ${progress.percent}%` : 'ไม่มีนักเรียน'}
                                                     </span>
-                                                    <span className="font-mono text-slate-600 text-[11px]">
+                                                    <span className="font-mono text-slate-600 text-xs">
                                                         {progress.filledCells || 0}/{progress.totalCells || 0}
                                                     </span>
                                                 </div>
                                                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                                                     <div
                                                         className={`h-full rounded-full transition-all duration-300 ${
-                                                            isComplete ? 'bg-emerald-500' : 'bg-indigo-600'
+                                                            isComplete ? 'bg-emerald-500' : 'bg-indigo-700'
                                                         }`}
                                                         style={{ width: `${progress.percent}%` }}
                                                     />

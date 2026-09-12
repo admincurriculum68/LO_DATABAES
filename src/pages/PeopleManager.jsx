@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Check, Save, Search, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Save, Search, UserRound, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAuth } from '../AuthContext';
 import { fetchAllRows, supabase } from '../lib/supabase';
 import { ROLE_LABELS } from '../lib/roles';
 import {
-    ROLE_CHOICES, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft,
+    ROLE_CHOICES, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, personFieldErrors,
 } from '../lib/people';
 import { syncTeacherRoles } from '../lib/peopleApi';
 
@@ -17,17 +17,22 @@ const STUDENT_SELECT = 'student_id, citizen_id, student_code, prefix, first_name
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim() || 'ไม่ระบุชื่อ';
 const isActivePerson = (person, kind) => (kind === 'teachers' ? person.is_active === true : person.student_status === 'active');
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, error, errorId, children }) {
     return (
         <label className="block">
             <span className="text-sm font-extrabold text-slate-800">{label}</span>
             {hint && <span className="mt-0.5 block text-xs text-slate-600">{hint}</span>}
             <div className="mt-2">{children}</div>
+            {error && (
+                <span id={errorId} className="mt-1.5 flex items-start gap-1.5 text-sm font-bold text-rose-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{error}
+                </span>
+            )}
         </label>
     );
 }
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200';
+const inputClass = 'min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-600 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200 aria-invalid:border-rose-600 aria-invalid:ring-2 aria-invalid:ring-rose-200';
 
 export default function PeopleManager() {
     const { currentUser } = useAuth();
@@ -43,6 +48,7 @@ export default function PeopleManager() {
     const [groupFilter, setGroupFilter] = useState('all');
     const [selectedId, setSelectedId] = useState('');
     const [draft, setDraft] = useState(null);
+    const [fieldErrors, setFieldErrors] = useState({});
     const [saving, setSaving] = useState(false);
 
     const idKey = kind === 'teachers' ? 'teacher_id' : 'student_id';
@@ -135,9 +141,24 @@ export default function PeopleManager() {
         });
     };
 
+    const updateDraft = (key, value) => {
+        setDraft(current => ({ ...current, [key]: value }));
+        setFieldErrors(current => ({ ...current, [key]: undefined }));
+    };
+    const invalidProps = key => ({
+        id: `person-${key}`,
+        'aria-invalid': fieldErrors[key] ? true : undefined,
+        'aria-describedby': fieldErrors[key] ? `person-${key}-error` : undefined,
+    });
+
     const save = async () => {
-        const problems = validatePersonDraft(kind, draft);
-        if (problems.length) { toast.error(problems[0], { duration: 6000 }); return; }
+        const errors = personFieldErrors(kind, draft);
+        setFieldErrors(errors);
+        const firstInvalid = Object.keys(errors)[0];
+        if (firstInvalid) {
+            document.getElementById(`person-${firstInvalid}`)?.focus();
+            return;
+        }
         setSaving(true);
         try {
             const citizenId = String(draft.citizen_id).replace(/\D/g, '');
@@ -232,7 +253,7 @@ export default function PeopleManager() {
                 )}
 
                 <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-                    <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <aside className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${selectedId ? 'hidden lg:block' : ''}`}>
                         <div className="border-b border-slate-200 px-4 py-3">
                             <h2 className="font-extrabold text-slate-900">
                                 {kind === 'teachers' ? 'ครูและบุคลากร' : 'นักเรียน'} {visiblePeople.length} คน
@@ -250,7 +271,7 @@ export default function PeopleManager() {
                                     <button
                                         key={person[idKey]}
                                         type="button"
-                                        onClick={() => setSelectedId(person[idKey])}
+                                        onClick={() => { setSelectedId(person[idKey]); setFieldErrors({}); }}
                                         aria-current={selectedId === person[idKey] ? 'true' : undefined}
                                         className={`flex w-full items-center gap-3 p-4 text-left ${selectedId === person[idKey] ? 'surface-selected' : 'hover:bg-slate-50'}`}
                                     >
@@ -266,7 +287,7 @@ export default function PeopleManager() {
                                             </span>
                                         </span>
                                         {!active && (
-                                            <span className="shrink-0 rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                                            <span className="shrink-0 rounded-lg border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
                                                 ระงับ
                                             </span>
                                         )}
@@ -283,7 +304,7 @@ export default function PeopleManager() {
                         </div>
                     </aside>
 
-                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${selectedId ? '' : 'hidden lg:block'}`}>
                         {!selected || !draft ? (
                             <div className="p-16 text-center text-slate-600">
                                 <UserRound className="mx-auto mb-3 h-10 w-10 text-slate-300" />
@@ -292,6 +313,9 @@ export default function PeopleManager() {
                         ) : (
                             <>
                                 <header className="border-b border-slate-200 p-5">
+                                    <button type="button" onClick={() => setSelectedId('')} className="btn-ghost -ml-2 mb-2 lg:hidden">
+                                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายชื่อ
+                                    </button>
                                     <h2 className="text-lg font-extrabold text-slate-950">{fullName(selected)}</h2>
                                     <p className="mt-1 text-sm text-slate-600">
                                         {kind === 'teachers'
@@ -305,19 +329,20 @@ export default function PeopleManager() {
                                         <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลส่วนตัว</h3>
                                         <div className="grid gap-4 sm:grid-cols-3">
                                             <Field label="คำนำหน้า">
-                                                <input value={draft.prefix} onChange={e => setDraft({ ...draft, prefix: e.target.value })} className={inputClass} />
+                                                <input value={draft.prefix} onChange={e => updateDraft('prefix', e.target.value)} className={inputClass} />
                                             </Field>
-                                            <Field label="ชื่อ">
-                                                <input value={draft.first_name} onChange={e => setDraft({ ...draft, first_name: e.target.value })} className={inputClass} />
+                                            <Field label="ชื่อ" error={fieldErrors.first_name} errorId="person-first_name-error">
+                                                <input {...invalidProps('first_name')} value={draft.first_name} onChange={e => updateDraft('first_name', e.target.value)} className={inputClass} />
                                             </Field>
-                                            <Field label="นามสกุล">
-                                                <input value={draft.last_name} onChange={e => setDraft({ ...draft, last_name: e.target.value })} className={inputClass} />
+                                            <Field label="นามสกุล" error={fieldErrors.last_name} errorId="person-last_name-error">
+                                                <input {...invalidProps('last_name')} value={draft.last_name} onChange={e => updateDraft('last_name', e.target.value)} className={inputClass} />
                                             </Field>
                                         </div>
-                                        <Field label="เลขประจำตัวประชาชน" hint="ใช้เข้าสู่ระบบ หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้">
+                                        <Field label="เลขประจำตัวประชาชน" hint="ใช้เข้าสู่ระบบ หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้" error={fieldErrors.citizen_id} errorId="person-citizen_id-error">
                                             <input
+                                                {...invalidProps('citizen_id')}
                                                 value={draft.citizen_id}
-                                                onChange={e => setDraft({ ...draft, citizen_id: e.target.value.replace(/\D/g, '') })}
+                                                onChange={e => updateDraft('citizen_id', e.target.value.replace(/\D/g, ''))}
                                                 inputMode="numeric" maxLength={13}
                                                 className={`${inputClass} font-mono tracking-wide`}
                                             />
@@ -337,7 +362,7 @@ export default function PeopleManager() {
                                                         return (
                                                             <div key={value} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${owned ? 'border-indigo-300 surface-selected' : 'border-slate-200'}`}>
                                                                 <label className="flex flex-1 cursor-pointer items-center gap-3 text-sm font-bold text-slate-900">
-                                                                    <span className={`flex h-6 w-6 items-center justify-center rounded border-2 ${owned ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                                                                    <span className={`flex h-6 w-6 items-center justify-center rounded-lg border-2 ${owned ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
                                                                         <Check className="h-4 w-4" />
                                                                     </span>
                                                                     <input type="checkbox" className="sr-only" checked={owned} onChange={() => toggleRole(value)} />
@@ -347,7 +372,7 @@ export default function PeopleManager() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setDraft({ ...draft, role: value })}
-                                                                        className={`min-h-9 rounded-lg border px-3 text-xs font-extrabold ${primary ? 'action-primary border-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400'}`}
+                                                                        className={`min-h-11 rounded-lg border px-3 text-xs font-extrabold ${primary ? 'action-primary border-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400'}`}
                                                                     >
                                                                         {primary ? 'บทบาทหลัก' : 'ตั้งเป็นหลัก'}
                                                                     </button>
@@ -356,6 +381,7 @@ export default function PeopleManager() {
                                                         );
                                                     })}
                                                 </div>
+                                                {fieldErrors.roles && <p id="person-roles-error" className="mt-2 text-sm font-bold text-rose-700">{fieldErrors.roles}</p>}
                                             </div>
                                             <Field label="ห้องประจำชั้น" hint="กรอกเมื่อเป็นครูประจำชั้น เช่น ป.1/1 จะทำให้เมนูงานประจำชั้นแสดงขึ้น">
                                                 <input value={draft.homeroom} onChange={e => setDraft({ ...draft, homeroom: e.target.value })} placeholder="เว้นว่างหากไม่ได้เป็นครูประจำชั้น" className={inputClass} />

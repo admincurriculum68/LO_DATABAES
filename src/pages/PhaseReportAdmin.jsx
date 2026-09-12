@@ -212,7 +212,7 @@ export default function PhaseReportAdmin() {
                             {['ตอนต้น', 'ตอนปลาย'].map(p => (
                                 <button key={p} onClick={() => handlePhaseChange(p)}
                                     className={`flex-1 py-3 px-6 rounded-2xl font-extrabold text-sm border-2 transition-all ${selectedPhase === p
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg'
+                                        ? 'bg-indigo-700 border-indigo-600 text-white shadow-md'
                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
                                     ช่วงชั้น{p}
                                     <span className={`block text-xs font-medium mt-0.5 ${selectedPhase === p ? 'text-indigo-100' : 'text-slate-500'}`}>
@@ -233,7 +233,7 @@ export default function PhaseReportAdmin() {
                                         className="w-full pl-10 pr-4 py-3 border border-field rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                                 </div>
                                 {searchTerm && (
-                                    <div className="absolute top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-20">
+                                    <div className="absolute top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl max-h-52 overflow-y-auto z-20">
                                         {filteredStudents.length === 0
                                             ? <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                             : filteredStudents.map(s => (
@@ -274,7 +274,7 @@ export default function PhaseReportAdmin() {
                                         <select
  aria-label={`ระดับที่ได้รับ: ${ab.name}`}                                            value={achievedLevels[ab.key] || ''}
                                             onChange={e => setAchievedLevels(prev => ({ ...prev, [ab.key]: e.target.value }))}
-                                            className="border border-field rounded-lg py-1.5 px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                            className="min-h-11 border border-field rounded-lg px-2 text-xs font-bold shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                             <option value="">เลือกระดับ</option>
                                             {LEVELS.map(l => <option key={l}>{l}</option>)}
                                         </select>
@@ -309,13 +309,13 @@ export default function PhaseReportAdmin() {
                         {/* Action buttons */}
                         <div className="hidden">
                             <button onClick={handleSave} disabled={saving || !selectedStudent}
-                                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
+                                className="flex items-center gap-2 bg-indigo-700 hover:bg-indigo-800 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
                                 {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                                 {saving ? 'กำลังบันทึก...' : 'บันทึกผลจบช่วงชั้น'}
                             </button>
                             <button onClick={() => { if (!selectedStudent) { toast.error('กรุณาเลือกนักเรียนก่อน'); return; } window.print(); }}
                                 disabled={!selectedStudent}
-                                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
+                                className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-md">
                                 <Printer className="w-4 h-4" /> พิมพ์รายงานจบช่วงชั้น
                             </button>
                         </div>

@@ -249,15 +249,15 @@ export default function BatchReportView() {
                     </span>
                     <button
                         onClick={() => window.print()}
-                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 hover:bg-indigo-700 transition flex items-center"
+                        className="btn-primary px-6 shadow-md"
                     >
-                        <Printer className="w-5 h-5 mr-2" /> พิมพ์ทั้งห้อง
+                        <Printer className="h-5 w-5" aria-hidden="true" /> พิมพ์ทั้งห้อง
                     </button>
                 </div>
             </div>
 
             {reports.length === 0 ? (
-                <div className="max-w-[210mm] mx-auto bg-white rounded-2xl p-20 text-center text-slate-500 font-bold shadow-lg">
+                <div className="max-w-[210mm] mx-auto bg-white rounded-2xl p-20 text-center text-slate-500 font-bold shadow-md">
                     ไม่พบข้อมูลในห้องนี้
                 </div>
             ) : (

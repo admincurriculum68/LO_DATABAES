@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen, CheckCircle2, Info, Save, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useDialog } from '../lib/dialogContext';
 import Layout from '../components/Layout';
 import { useAuth } from '../AuthContext';
 import { hasRole } from '../lib/roles';
@@ -15,6 +16,7 @@ export default function FormativeCompetencyView() {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
+    const dialog = useDialog();
     // ครูที่มีบทบาท teacher ต้องถูกตรวจการมอบหมายเสมอ แม้จะทำงานฝ่ายวิชาการด้วย
     const mustCheckAssignment = hasRole(currentUser, 'teacher');
     const roomParam = new URLSearchParams(location.search).get('room');
@@ -117,7 +119,11 @@ export default function FormativeCompetencyView() {
     const saveAll = async (submit = false) => {
         if (submit) {
             const missing = enrollments.reduce((count, enrollment) => count + areas.filter(area => !decisions[`${enrollment.enrollment_id}:${area}`]?.level).length, 0);
-            if (missing > 0 && !window.confirm(`ยังไม่ได้สรุประดับ ${missing} รายการ ต้องการส่งเฉพาะรายการที่กรอกแล้วให้ฝ่ายวิชาการหรือไม่?`)) return;
+            if (missing > 0 && !(await dialog.confirm({
+                title: 'ส่งเฉพาะรายการที่สรุปแล้ว?',
+                message: `ยังไม่ได้สรุประดับ ${missing} รายการ ฝ่ายวิชาการจะได้รับเฉพาะรายการที่กรอกแล้ว`,
+                confirmLabel: 'ส่งฝ่ายวิชาการ',
+            }))) return;
         }
         const payload = [];
         const deleteIds = [];
@@ -206,7 +212,7 @@ export default function FormativeCompetencyView() {
             <div className="mx-auto max-w-[1680px] space-y-5 pb-28">
                 <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
-                        <button onClick={() => navigate(-1)} className="mt-0.5 rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button>
+                        <button onClick={() => navigate(-1)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button>
                         <div>
                             <h1 className="text-lg font-extrabold text-slate-950">{subject?.subject_name || 'รายวิชา'}{roomParam ? ` · ห้อง ${roomParam}` : ''}</h1>
                             <p className="mt-1 text-sm text-slate-600">ขั้นที่ 2: ระบบนำข้อความจากแต่ละ LO มาให้แล้ว ครูเลือกเพียงระดับรายด้านและตรวจข้อความสรุป</p>
@@ -262,7 +268,7 @@ export default function FormativeCompetencyView() {
                 )}
             </div>
             {!loading && enrollments.length > 0 && (
-                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white/95 p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur print:hidden">
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur print:hidden">
                     <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-sm text-slate-700"><strong className="text-slate-950">กำหนดระดับแล้ว {totalDecisionCount - missingDecisionCount}/{totalDecisionCount}</strong><span className="ml-2">เหลือ {missingDecisionCount} รายการ{dirty ? ' · มีการแก้ไขที่ยังไม่บันทึก' : ''}</span></div>
                         <div className="flex gap-2"><button onClick={() => saveAll(false)} disabled={!dirty || saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-5 text-sm font-extrabold text-indigo-800 disabled:opacity-40 sm:flex-none"><Save className="h-4 w-4" />บันทึกฉบับร่าง</button><button onClick={() => saveAll(true)} disabled={saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white disabled:opacity-40 sm:flex-none"><Send className="h-4 w-4" />{saving ? 'กำลังส่ง...' : 'บันทึกและส่งฝ่ายวิชาการ'}</button></div>

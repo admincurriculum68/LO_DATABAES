@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeTeacherImportRows, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft } from '../src/lib/people.js';
+import { mergeTeacherImportRows, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft, personFieldErrors } from '../src/lib/people.js';
 
 const multiRole = {
     role: 'teacher',
@@ -85,4 +85,12 @@ test('mergeTeacherImportRows ไม่มีบทบาทให้เป็น
 
     assert.deepEqual(merged.get('1111111111119').roles, ['teacher']);
     assert.deepEqual(merged.get('2222222222228').roles, ['teacher', 'executive']);
+});
+
+test('personFieldErrors บอกข้อผิดพลาดแยกรายช่อง เพื่อแสดงใต้ช่องที่ผิด', () => {
+    const errors = personFieldErrors('teachers', { citizen_id: '123', first_name: ' ', last_name: 'ใจดี', roles: [] });
+
+    assert.deepEqual(Object.keys(errors), ['citizen_id', 'first_name', 'roles']);
+    assert.match(errors.citizen_id, /13 หลัก \(ขณะนี้ 3 หลัก\)/);
+    assert.deepEqual(personFieldErrors('students', { citizen_id: '1234567890123', first_name: 'ก', last_name: 'ข' }), {});
 });

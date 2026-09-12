@@ -6,12 +6,14 @@ import { hasRole } from '../lib/roles';
 import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useDocumentTitle from '../lib/useDocumentTitle';
+import { useDialog } from '../lib/dialogContext';
 
 export default function EvalView() {
     const { subjectId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
+    const dialog = useDialog();
     // ครูที่มีบทบาท teacher ต้องถูกตรวจการมอบหมายเสมอ แม้จะทำงานฝ่ายวิชาการด้วย
     const mustCheckAssignment = hasRole(currentUser, 'teacher');
 
@@ -256,9 +258,15 @@ export default function EvalView() {
     const filledCells = evaluations.filter(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()).length;
     const missingCount = Math.max(0, totalCells - filledCells);
 
-    const fillEvidenceColumn = lo => {
-        const note = window.prompt(`ข้อความตั้งต้นสำหรับ ${lo.lo_code || `LO ${lo.ability_no}`}\nระบบจะเติมให้นักเรียนในรายการที่กำลังแสดง และยังแก้รายคนได้`);
-        if (note === null || !note.trim()) return;
+    const fillEvidenceColumn = async lo => {
+        const label = lo.lo_code || `LO ${lo.ability_no}`;
+        const note = await dialog.prompt({
+            title: `เติมข้อความ ${label} ให้ทุกคนที่แสดงอยู่`,
+            message: `ระบบจะใส่ข้อความนี้ให้นักเรียน ${displayedEnrollments.length} คนที่กำลังแสดง ช่องที่ฝ่ายวิชาการรับรองแล้วจะไม่ถูกเปลี่ยน และยังแก้รายคนได้ภายหลัง`,
+            inputLabel: 'ข้อความตั้งต้น',
+            confirmLabel: 'เติมข้อความ',
+        });
+        if (!note) return;
         const now = new Date().toISOString();
         setEvaluations(previous => {
             const next = previous.map(item => ({ ...item }));
@@ -286,7 +294,11 @@ export default function EvalView() {
     };
 
     const submitForReview = async () => {
-        if (missingCount > 0 && !window.confirm(`มี ${missingCount} รายการที่ยังไม่มีการบันทึกข้อความพฤติกรรม ต้องการส่งฝ่ายวิชาการต่อหรือไม่?`)) {
+        if (missingCount > 0 && !(await dialog.confirm({
+            title: 'ส่งผลทั้งที่ยังกรอกไม่ครบ?',
+            message: `ยังมี ${missingCount} ช่องที่ไม่มีข้อความพฤติกรรม ฝ่ายวิชาการจะเห็นว่าช่องเหล่านี้ว่าง`,
+            confirmLabel: 'ส่งฝ่ายวิชาการ',
+        }))) {
             return;
         }
 
@@ -370,14 +382,46 @@ export default function EvalView() {
     }[submissionStatus] || 'ฉบับร่าง';
 
     // Warn if navigating away with unsaved changes
-    const handleBack = () => {
-        if (isDirty) {
-            if (window.confirm('มีข้อมูลที่ยังไม่ได้บันทึก\nต้องการออกจากหน้านี้โดยไม่บันทึกใช่ไหม?')) {
-                navigate(-1);
-            }
-        } else {
-            navigate(-1);
-        }
+    const handleBack = async () => {
+        if (isDirty && !(await dialog.confirm({
+            title: 'ออกจากหน้านี้โดยไม่บันทึก?',
+            message: 'ข้อความที่แก้หลังการบันทึกครั้งล่าสุดจะหายไป',
+            confirmLabel: 'ออกโดยไม่บันทึก',
+            tone: 'danger',
+        }))) return;
+        navigate(-1);
+    };
+
+    const statusTone = submissionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : submissionStatus === 'returned' ? 'border-rose-200 bg-rose-50 text-rose-700'
+            : submissionStatus === 'submitted' || submissionStatus === 'under_review' ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-slate-50 text-slate-600';
+    const StatusIcon = submissionStatus === 'returned' ? RotateCcw : ClipboardCheck;
+
+    // ช่องหลักฐานราย LO ใช้ทั้งในตาราง (จอกว้าง) และในการ์ดรายคน (จอเล็ก)
+    // บนจอเล็กใช้ตัวอักษร 16px เพราะ iPhone จะซูมทั้งหน้าเมื่อแตะช่องที่เล็กกว่านั้น
+    const renderEvidence = (enroll, st, lo, stacked = false) => {
+        const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
+        const cellLocked = submissionStatus === 'approved' || lockedCells.has(`${st.student_id}_${lo.lo_id}`);
+        const code = lo.lo_code || `LO ${lo.ability_no}`;
+        return (
+            <label key={lo.lo_id} className="block text-left">
+                {stacked
+                    ? <span className="mb-1 block text-xs font-bold text-indigo-900">{code}<span className="sr-only"> ของ {st.first_name}</span></span>
+                    : <span className="sr-only">หลักฐานเชิงคุณภาพ {code} ของ {st.first_name}</span>}
+                <div className="relative">
+                    <MessageSquareText className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" aria-hidden="true" />
+                    <textarea
+                        rows="2"
+                        value={ev?.evidence_note || ''}
+                        onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
+                        disabled={cellLocked}
+                        placeholder={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว' : 'บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน'}
+                        className={`w-full resize-y rounded-lg border border-field bg-white py-2 pl-8 pr-2 text-slate-800 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 ${stacked ? 'text-base leading-6' : 'text-xs leading-5'}`}
+                    />
+                </div>
+            </label>
+        );
     };
 
     return (
@@ -399,23 +443,18 @@ export default function EvalView() {
                     </div>
                     {/* Auto-save / Save state indicator */}
                     <div className="flex flex-wrap items-center gap-3">
-                        <span className={`hidden lg:inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold ${
-                            submissionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-                            submissionStatus === 'returned' ? 'border-rose-200 bg-rose-50 text-rose-700' :
-                            submissionStatus === 'submitted' || submissionStatus === 'under_review' ? 'border-blue-200 bg-blue-50 text-blue-700' :
-                            'border-slate-200 bg-slate-50 text-slate-600'
-                        }`}>
-                            {submissionStatus === 'returned' ? <RotateCcw className="h-3.5 w-3.5" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+                        <span className={`hidden md:inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold ${statusTone}`}>
+                            <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
                             {submissionLabel}
                         </span>
                         {isDirty && !saving && (
-                            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
+                            <span className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
                                 <Clock className="w-3.5 h-3.5" />
                                 มีการแก้ไข · บันทึกอัตโนมัติภายใน 30 วินาที
                             </span>
                         )}
                         {!isDirty && lastSaved && (
-                            <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-xl">
+                            <span className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-xl">
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 บันทึกแล้วเมื่อ {lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -423,33 +462,29 @@ export default function EvalView() {
                         <button
                             onClick={saveEvaluations}
                             disabled={saving || !isDirty || submissionStatus === 'approved'}
-                            className={`min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center ${
-                                isDirty
-                                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/30'
-                                    : 'bg-slate-100 text-slate-500 cursor-default'
-                            } disabled:opacity-50`}
+                            className="btn-secondary hidden md:inline-flex"
                         >
-                            {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                            {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
                             {saving ? 'กำลังบันทึกผล...' : 'บันทึกผลการประเมิน'}
                         </button>
                         <button
                             onClick={submitForReview}
                             disabled={submitting || loading || submissionStatus === 'approved'}
-                            className="hidden min-h-11 items-center rounded-xl bg-blue-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 sm:inline-flex"
+                            className="btn-primary hidden md:inline-flex"
                             title={missingCount > 0 ? `ส่งได้ โดยระบบจะถามยืนยัน ${missingCount} รายการที่ยังไม่ครบ` : 'ส่งผลการประเมินให้ฝ่ายวิชาการตรวจสอบ'}
                         >
-                            {submitting ? <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="mr-2 h-4 w-4" />}
+                            {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
                             ส่งให้ฝ่ายวิชาการตรวจสอบ
                         </button>
                     </div>
                 </div>
             </header>
 
-            <main className="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-8">
+            <main className="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 pt-8 pb-40 md:pb-8">
                 {loading ? (
                     <div className="py-20 flex justify-center"><div className="loader"></div></div>
                 ) : enrollments.length === 0 ? (
-                    <div className="text-center bg-white rounded-3xl p-16 border border-slate-200 mt-10 shadow-sm max-w-2xl mx-auto">
+                    <div className="text-center bg-white rounded-2xl p-16 border border-slate-200 mt-10 shadow-sm max-w-2xl mx-auto">
                         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <FileText className="w-8 h-8 text-slate-500" />
                         </div>
@@ -493,18 +528,54 @@ export default function EvalView() {
                                 )}
                             </div>
                         </div>
-                        <div className="relative overflow-x-auto">
+                        {learningOutcomes.length > 0 && (
+                            <div className="flex flex-wrap gap-2 border-b border-slate-200 p-4 md:hidden">
+                                {learningOutcomes.map(lo => (
+                                    <button key={lo.lo_id} type="button" onClick={() => fillEvidenceColumn(lo)} className="btn-secondary text-xs">
+                                        เติม {lo.lo_code || `LO ข้อ ${lo.ability_no}`} ทุกคน
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {/* จอเล็กใช้การ์ดรายคน ชื่อนักเรียนอยู่หัวการ์ดเสมอ ไม่ถูกช่องกรอกทับเหมือนเวลาเลื่อนตาราง */}
+                        <ul className="divide-y divide-slate-200 md:hidden" aria-label="นักเรียนที่ต้องบันทึกผล">
+                            {displayedEnrollments.map((enroll, i) => {
+                                const st = enroll.users_students;
+                                return (
+                                    <li key={enroll.enrollment_id} className="space-y-3 p-4">
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <h2 className="text-base font-bold text-slate-900">{i + 1}. {st.prefix || ''}{st.first_name} {st.last_name}</h2>
+                                            <span className="shrink-0 font-mono text-xs text-slate-600">{st.student_code}</span>
+                                        </div>
+                                        <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-700">
+                                            <span>เวลาเรียน (ร้อยละ)<span className="sr-only"> ของ {st.first_name}</span></span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                inputMode="decimal"
+                                                value={attendance[enroll.enrollment_id] ?? 100}
+                                                onChange={(e) => handleAttendanceChange(enroll.enrollment_id, e.target.value)}
+                                                className="min-h-11 w-20 rounded-lg border border-field px-2 text-center text-base font-bold focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                                            />
+                                        </label>
+                                        {learningOutcomes.map(lo => renderEvidence(enroll, st, lo, true))}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                        <div className="relative hidden overflow-x-auto md:block">
                             <table className="w-full text-left divide-y divide-slate-200 whitespace-nowrap">
                                 <thead className="bg-slate-50 text-slate-600">
                                     <tr>
-                                        <th className="px-6 py-4 text-center text-xs font-bold uppercase tracking-wider w-16 sticky left-0 bg-slate-50 z-20">เลขที่</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider w-24 sticky left-[110px] bg-slate-50 z-20">รหัส</th>
-                                        <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider min-w-[200px] sticky left-[190px] bg-slate-50 z-20 border-r border-slate-200 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
-                                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-slate-200">เวลาเรียน (%)</th>
+                                        <th scope="col" className="sticky left-0 z-20 w-16 min-w-16 bg-slate-50 px-3 py-4 text-center text-xs font-bold uppercase tracking-wider">เลขที่</th>
+                                        <th scope="col" className="sticky left-16 z-20 w-24 min-w-24 bg-slate-50 px-3 py-4 text-left text-xs font-bold uppercase tracking-wider">รหัส</th>
+                                        <th scope="col" className="sticky left-40 z-20 min-w-[200px] border-r border-slate-200 bg-slate-50 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
+                                        <th scope="col" className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-slate-200">เวลาเรียน (%)</th>
                                         {learningOutcomes.map(lo => (
-                                            <th key={lo.lo_id} className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
+                                            <th key={lo.lo_id} scope="col" className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
                                                 <div>{lo.lo_code ? lo.lo_code : `LO ข้อ ${lo.ability_no}`}</div>
-                                                {lo.lo_code && <div className="text-[10px] text-indigo-600 font-medium mt-1">ข้อ {lo.ability_no}</div>}
+                                                {lo.lo_code && <div className="mt-1 text-xs font-medium text-indigo-700">ข้อ {lo.ability_no}</div>}
                                                 <button type="button" onClick={() => fillEvidenceColumn(lo)} className="mt-2 min-h-11 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-extrabold normal-case text-indigo-900 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">เติมข้อความทั้งคอลัมน์</button>
                                             </th>
                                         ))}
@@ -514,10 +585,10 @@ export default function EvalView() {
                                     {displayedEnrollments.map((enroll, i) => {
                                         const st = enroll.users_students;
                                         return (
-                                            <tr key={enroll.enrollment_id} className="hover:bg-slate-50/80 transition-colors group">
-                                                <td className="px-6 py-3 text-center text-sm font-semibold text-slate-500 sticky left-0 bg-white group-hover:bg-slate-50/80">{i + 1}</td>
-                                                <td className="px-6 py-3 text-sm text-slate-600 font-mono sticky left-[110px] bg-white group-hover:bg-slate-50/80">{st.student_code}</td>
-                                                <th scope="row" className="px-6 py-2 text-left text-sm font-bold text-slate-800 border-r border-slate-100 sticky left-[190px] bg-white shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)] group-hover:bg-slate-50/80">
+                                            <tr key={enroll.enrollment_id} className="group transition-colors hover:bg-slate-50">
+                                                <td className="sticky left-0 z-10 w-16 min-w-16 bg-white px-3 py-3 text-center text-sm font-semibold text-slate-500 group-hover:bg-slate-50">{i + 1}</td>
+                                                <td className="sticky left-16 z-10 w-24 min-w-24 bg-white px-3 py-3 font-mono text-sm text-slate-600 group-hover:bg-slate-50">{st.student_code}</td>
+                                                <th scope="row" className="sticky left-40 z-10 min-w-[200px] border-r border-slate-100 bg-white px-4 py-2 text-left text-sm font-bold text-slate-800 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)] group-hover:bg-slate-50">
                                                     {st.prefix || ''}{st.first_name} {st.last_name}
                                                 </th>
                                                 <td className="px-4 py-2 text-center border-r border-slate-100 bg-slate-50/50">
@@ -528,31 +599,12 @@ export default function EvalView() {
                                                         value={attendance[enroll.enrollment_id] ?? 100}
                                                         aria-label={`เวลาเรียนของ ${st.first_name} ${st.last_name} (ร้อยละ)`}
                                                         onChange={(e) => handleAttendanceChange(enroll.enrollment_id, e.target.value)}
-                                                        className="w-16 px-2 py-1.5 text-center text-sm font-bold rounded-lg border border-field focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                                        className="min-h-11 w-16 px-2 text-center text-sm font-bold rounded-lg border border-field focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
                                                     />
                                                 </td>
-                                                {learningOutcomes.map(lo => {
-                                                    const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
-                                                    const cellLocked = submissionStatus === 'approved' || lockedCells.has(`${st.student_id}_${lo.lo_id}`);
-                                                    return (
-                                                        <td key={lo.lo_id} className="px-2 py-2 text-center">
-                                                            <label className="block text-left">
-                                                                <span className="sr-only">หลักฐานเชิงคุณภาพ {lo.lo_code || `LO ${lo.ability_no}`} ของ {st.first_name}</span>
-                                                                <div className="relative">
-                                                                    <MessageSquareText className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
-                                                                    <textarea
-                                                                        rows="2"
-                                                                        value={ev?.evidence_note || ''}
-                                                                        onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
-                                                                        disabled={cellLocked}
-                                                                        placeholder={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว' : 'บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน'}
-                                                                        className="w-full resize-y rounded-lg border border-field bg-white py-2 pl-8 pr-2 text-xs leading-5 text-slate-800 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                                                                    />
-                                                                </div>
-                                                            </label>
-                                                        </td>
-                                                    );
-                                                })}
+                                                {learningOutcomes.map(lo => (
+                                                    <td key={lo.lo_id} className="px-2 py-2 text-center">{renderEvidence(enroll, st, lo)}</td>
+                                                ))}
                                             </tr>
                                         )
                                     })}
@@ -562,6 +614,28 @@ export default function EvalView() {
                     </div>
                 )}
             </main>
+
+            {/* จอเล็ก: ปุ่มบันทึกและส่งอยู่ติดล่างจอเสมอ เดิมปุ่มส่งถูกซ่อนบนโทรศัพท์ ครูจึงส่งผลไม่ได้ */}
+            {!loading && enrollments.length > 0 && (
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden">
+                    <div className="mb-2 flex items-center justify-between gap-2 text-xs font-bold">
+                        <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ${statusTone}`}>
+                            <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />{submissionLabel}
+                        </span>
+                        <span className="text-right text-slate-700" aria-live="polite">
+                            {saving ? 'กำลังบันทึก...' : isDirty ? 'บันทึกอัตโนมัติภายใน 30 วินาที' : lastSaved ? `บันทึกแล้ว ${lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : `กรอกแล้ว ${filledCells}/${totalCells}`}
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button onClick={saveEvaluations} disabled={saving || !isDirty || submissionStatus === 'approved'} className="btn-secondary">
+                            <Save className="h-4 w-4" aria-hidden="true" />บันทึก
+                        </button>
+                        <button onClick={submitForReview} disabled={submitting || loading || submissionStatus === 'approved'} className="btn-primary">
+                            <Send className="h-4 w-4" aria-hidden="true" />{submitting ? 'กำลังส่ง...' : 'ส่งฝ่ายวิชาการ'}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

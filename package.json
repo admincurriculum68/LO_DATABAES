@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test tests/*.test.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:imports": "node scripts/check-tracked-imports.mjs",
+    "verify": "npm run lint && npm test && npm run build && npm run check:imports"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",

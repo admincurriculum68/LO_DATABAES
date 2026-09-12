@@ -18,6 +18,13 @@
   --font-sarabun-new: "THSarabunNew", serif;
   /* ขอบช่องกรอก: 3.5:1 บนพื้นขาว 3.35:1 บน slate-50 ผ่านเกณฑ์ 3:1 ของ WCAG 1.4.11 */
   --color-field: #7b8aa1;
+  /* สีหลักสีเดียวของปุ่มและสถานะที่เลือก */
+  --color-primary: #4338ca;
+  --color-primary-strong: #3730a3;
+  /* ภาษาไทยมีสระบนล่างและวรรณยุกต์ ระยะบรรทัดตั้งต้นของ Tailwind แน่นเกินไป */
+  --text-xs--line-height: 1.6;
+  --text-sm--line-height: 1.6;
+  --text-base--line-height: 1.65;
 }
 @layer base {
   /* หัวเว็บติดด้านบนสูงราว 122px เว้นระยะไว้ ช่องที่ได้โฟกัสจะไม่ถูกหัวเว็บบัง (WCAG 2.4.11) */
@@ -64,4 +71,30 @@ select {
   .action-success:hover { background-color: #065f46; }
   .action-danger { background-color: #be123c; color: #ffffff; }
   .action-danger:hover { background-color: #9f1239; }
+
+  /* ปุ่มมาตรฐาน 4 แบบ สูง 44px เท่ากันทั้งระบบ ใช้แทนการเขียนสีและขนาดเองทีละปุ่ม */
+  .btn-primary, .btn-secondary, .btn-danger, .btn-ghost {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply bg-indigo-700 text-white hover:bg-indigo-800 focus-visible:ring-indigo-600; }
+  .btn-secondary { @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:ring-indigo-600; }
+  .btn-danger { @apply bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-600; }
+  .btn-ghost { @apply text-indigo-800 hover:bg-indigo-50 focus-visible:ring-indigo-600; }
+}
+
+/* iPhone ซูมทั้งหน้าเมื่อแตะช่องกรอกที่ตัวอักษรเล็กกว่า 16px บนจอสัมผัสจึงใช้ 16px ทุกช่อง */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* คนที่ตั้งค่าเครื่องให้ลดการเคลื่อนไหว หยุดภาพหมุนและการเลื่อนเข้าออกทั้งระบบ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

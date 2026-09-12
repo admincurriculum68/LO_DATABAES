@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { Printer, ChevronDown, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/xlsx';
 import AcademicReportShell from '../components/AcademicReportShell';
 import SchoolReportHeader from '../components/SchoolReportHeader';
 import { loadSchoolProfile } from '../lib/schoolProfile';
@@ -151,8 +151,9 @@ export default function AdminReportLO() {
             description="นำข้อความสะท้อนพฤติกรรมที่ครูแต่ละวิชาเขียนใน LO เดียวกันมาไว้ในหน้าเดียว เพื่อใช้เป็นหลักฐานสรุปด้านความสามารถ"
             wide
             actions={<>
-                <button onClick={() => {
+                <button onClick={async () => {
                     if (!selectedLO || subjects.length === 0) return toast.error('กรุณาเลือก LO ก่อน');
+                    const XLSX = await loadXLSX();
                     const headers = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', ...subjects.map(s => `${s.subject_name} (${s.grade_level})`)];
                     const rows = students.map((st, i) => { const row = [i + 1, st.student_code, `${st.prefix || ''}${st.first_name} ${st.last_name}`]; subjects.forEach(sub => row.push(evalLookup[`${st.student_id}_${sub.subject_id}`] || '')); return row; });
                     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'ผลราย LO'); XLSX.writeFile(wb, `รายงานLO_${selectedLOData?.lo_code || 'report'}.xlsx`); toast.success('จัดทำไฟล์ Excel แล้ว');
@@ -230,14 +231,14 @@ export default function AdminReportLO() {
                                     <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
                                         <thead>
                                             {/* Row 1: subject headers */}
-                                            <tr className="bg-indigo-600 text-white print:bg-transparent print:text-black">
+                                            <tr className="bg-indigo-700 text-white print:bg-transparent print:text-black">
                                                 <th rowSpan={2} className="px-5 py-4 text-left font-extrabold min-w-[200px] border-r border-indigo-500 print:border-black align-middle">
                                                     รายชื่อนักเรียน
                                                 </th>
                                                 {subjects.map(sub => (
                                                     <th key={sub.subject_id} className="px-4 py-3 text-center font-bold border-r border-indigo-500 print:border-black min-w-[120px] text-xs">
                                                         <span className="block font-normal text-indigo-200 print:text-slate-500 mt-0.5 whitespace-normal leading-tight max-w-[120px]">{sub.subject_name}</span>
-                                                        <span className="block text-[11px] font-normal text-indigo-300 print:text-slate-400">{sub.grade_level} | ภาคเรียนที่ {sub.semester}/{sub.academic_year}</span>
+                                                        <span className="block text-xs font-normal text-indigo-300 print:text-slate-400">{sub.grade_level} | ภาคเรียนที่ {sub.semester}/{sub.academic_year}</span>
                                                     </th>
                                                 ))}
                                             </tr>
@@ -293,7 +294,7 @@ export default function AdminReportLO() {
                                         <button
                                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                             disabled={currentPage === totalPages}
-                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition"
+                                            className="px-4 py-2 rounded-xl text-sm font-bold bg-indigo-700 text-white hover:bg-indigo-700 disabled:opacity-50 transition"
                                         >
                                             หน้าถัดไป
                                         </button>

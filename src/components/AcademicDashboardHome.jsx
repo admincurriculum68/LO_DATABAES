@@ -21,7 +21,7 @@ function MetricCard({ icon: Icon, label, value, unit, onClick }) {
         <button
             type="button"
             onClick={onClick}
-            className="group min-h-32 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+            className="group min-h-28 rounded-2xl border border-slate-200 bg-white p-4 text-left sm:p-5 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
         >
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-700 text-white" aria-hidden="true">
                 <Icon className="h-5 w-5" />
@@ -84,7 +84,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
 
     return (
         <div className="space-y-6">
-            <header className="rounded-3xl border border-slate-800 bg-slate-950 p-6 text-white shadow-lg sm:p-8">
+            <header className="rounded-2xl border border-slate-800 bg-slate-950 p-6 text-white shadow-md sm:p-8">
                 <p className="text-sm font-bold text-indigo-200">งานฝ่ายวิชาการ · ภาคเรียนปัจจุบัน</p>
                 <h1 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">วันนี้ต้องจัดการอะไรต่อ</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
@@ -93,7 +93,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
             </header>
 
             {firstRun && (
-                <section className="rounded-3xl border-2 border-indigo-300 bg-indigo-50 p-6 sm:p-8" aria-labelledby="first-run-title">
+                <section className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-6 sm:p-8" aria-labelledby="first-run-title">
                     <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-sm font-extrabold text-indigo-800">เริ่มใช้งานครั้งแรก</p>
@@ -108,7 +108,7 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
             )}
 
             {!firstRun && (
-                <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="ข้อมูลภาพรวม">
+                <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4" aria-label="ข้อมูลภาพรวม">
                     <MetricCard icon={GraduationCap} label="ครูและบุคลากร" value={stats.teachers} unit="คน" onClick={() => onNavigate('/admin/people')} />
                     <MetricCard icon={UsersRound} label="นักเรียนที่ใช้งาน" value={stats.students} unit="คน" onClick={() => onNavigate('/admin/people?type=students')} />
                     <MetricCard icon={BookOpenCheck} label="วิชา หน่วย โครงงาน และกิจกรรม" value={learningFormatCount} unit="รายการ" onClick={() => onNavigate('/admin/learning-contexts')} />

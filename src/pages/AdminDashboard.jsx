@@ -1,19 +1,25 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { buildRoomEnrollmentRows, buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
 import { mergeTeacherImportRows } from '../lib/people';
-import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw, UsersRound } from 'lucide-react';
+import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw, UsersRound, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/xlsx';
+import { useDialog } from '../lib/dialogContext';
+import { excelSerialToThaiDob } from '../lib/importSanitizers';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
 import { CBE_CAPABILITIES_2568 } from '../constants/curriculum2568';
 import FlexibleImportWizard from '../components/FlexibleImportWizard';
+
+// แท็บที่ใช้เป็นครั้งคราว แยกไฟล์และโหลดเฉพาะตอนเปิดแท็บ
+const ProgressTab = lazy(() => import('../components/admin/ProgressTab'));
+const PromotionTab = lazy(() => import('../components/admin/PromotionTab'));
 
 const WORKSPACE_TABS = [
     { id: 'overview', label: 'หน้าหลักฝ่ายวิชาการ', description: 'ภาพรวมและงานที่ควรดำเนินการต่อ' },
@@ -143,6 +149,7 @@ const displayValue = (value, key, row) => {
 
 export default function AdminDashboard() {
     const { currentUser } = useAuth();
+    const dialog = useDialog();
     const { academicYear, semester } = useAcademic();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -208,120 +215,7 @@ export default function AdminDashboard() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Evaluation Progress States
-    const [evalProgress, setEvalProgress] = useState([]);
-    const [loadingProgress, setLoadingProgress] = useState(false);
-    const [progressLoaded, setProgressLoaded] = useState(false);
-    const [progressError, setProgressError] = useState('');
 
-    const loadEvaluationProgress = useCallback(async () => {
-        if (!currentUser?.school_id) return;
-
-        setLoadingProgress(true);
-        setProgressError('');
-        try {
-            const { data: subs, error: subjectsError } = await supabase
-                .from('subjects')
-                .select('subject_id, subject_name, grade_level, semester, academic_year, teacher_id, users_teachers(prefix, first_name, last_name)')
-                .eq('school_id', currentUser.school_id)
-                .eq('academic_year', academicYear)
-                .eq('semester', semester)
-                .order('subject_name');
-            if (subjectsError) throw subjectsError;
-
-            const subjectIds = (subs || []).map(subject => subject.subject_id);
-            if (subjectIds.length === 0) {
-                setEvalProgress([]);
-                return;
-            }
-
-            const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                .from('student_enrollments')
-                .select('enrollment_id, subject_id')
-                .in('subject_id', batch)
-                .eq('enrollment_status', 'active')
-                .range(from, to));
-
-            const loMaps = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                .from('subject_lo_mapping')
-                .select('subject_id, lo_id')
-                .in('subject_id', batch)
-                .range(from, to));
-
-            const enrollmentIds = enrolls.map(enrollment => enrollment.enrollment_id);
-            const evaluations = enrollmentIds.length > 0
-                ? await fetchAllByIn(enrollmentIds, (batch, from, to) => supabase
-                    .from('lo_evaluations')
-                    .select('enrollment_id, lo_id, evidence_note')
-                    .in('enrollment_id', batch)
-                    .range(from, to))
-                : [];
-
-            const enrollmentCountBySubject = new Map();
-            const subjectByEnrollment = new Map();
-            enrolls.forEach(enrollment => {
-                enrollmentCountBySubject.set(enrollment.subject_id, (enrollmentCountBySubject.get(enrollment.subject_id) || 0) + 1);
-                subjectByEnrollment.set(enrollment.enrollment_id, enrollment.subject_id);
-            });
-
-            const loIdsBySubject = new Map();
-            loMaps.forEach(mapping => {
-                if (!loIdsBySubject.has(mapping.subject_id)) loIdsBySubject.set(mapping.subject_id, new Set());
-                loIdsBySubject.get(mapping.subject_id).add(mapping.lo_id);
-            });
-
-            const filledCountBySubject = new Map();
-            evaluations.forEach(evaluation => {
-                if (!evaluation.evidence_note?.trim()) return;
-                const subjectId = subjectByEnrollment.get(evaluation.enrollment_id);
-                if (!subjectId || !loIdsBySubject.get(subjectId)?.has(evaluation.lo_id)) return;
-                filledCountBySubject.set(subjectId, (filledCountBySubject.get(subjectId) || 0) + 1);
-            });
-
-            const progress = (subs || []).map(subject => {
-                const studentCount = enrollmentCountBySubject.get(subject.subject_id) || 0;
-                const loCount = loIdsBySubject.get(subject.subject_id)?.size || 0;
-                const totalCells = studentCount * loCount;
-                const filledCells = filledCountBySubject.get(subject.subject_id) || 0;
-                const percent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
-                const teacher = subject.users_teachers;
-
-                return {
-                    ...subject,
-                    teacherName: teacher ? `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}` : 'ยังไม่มอบหมาย',
-                    studentCount,
-                    loCount,
-                    totalCells,
-                    filledCells,
-                    percent,
-                };
-            }).sort((a, b) => a.percent - b.percent || (a.subject_name || '').localeCompare(b.subject_name || '', 'th'));
-
-            setEvalProgress(progress);
-        } catch (error) {
-            const message = error.message || 'ไม่สามารถโหลดสถานะการรายงานผลได้';
-            setProgressError(message);
-            toast.error('โหลดข้อมูลไม่สำเร็จ: ' + message);
-        } finally {
-            setLoadingProgress(false);
-            setProgressLoaded(true);
-        }
-    }, [academicYear, currentUser?.school_id, semester]);
-
-    useEffect(() => {
-        if (activeTab !== 'progress') return;
-        setProgressLoaded(false);
-        setEvalProgress([]);
-        loadEvaluationProgress();
-    }, [activeTab, loadEvaluationProgress]);
-
-    // Promotion States
-    const [promoFromRoom, setPromoFromRoom] = useState('');
-    const [promoToGrade, setPromoToGrade] = useState('');
-    const [promoToRoom, setPromoToRoom] = useState('');
-    const [loadingPromo, setLoadingPromo] = useState(false);
-    const [promoStudents, setPromoStudents] = useState([]);
-    const [promoSelectedStudents, setPromoSelectedStudents] = useState([]);
     const [importWizardType, setImportWizardType] = useState(null);
 
     // Load common base data & stats
@@ -405,7 +299,12 @@ export default function AdminDashboard() {
             toast.error('คลังคำบรรยายกลางเป็นข้อมูลอ่านอย่างเดียว เพื่อไม่ให้โรงเรียนหนึ่งแก้ข้อมูลที่ทุกโรงเรียนใช้ร่วมกัน');
             return;
         }
-        if (!window.confirm('ยืนยันการลบข้อมูลรายการนี้ หากมีผลการประเมินเชื่อมโยงอยู่ ระบบจะไม่อนุญาตให้ลบ')) return;
+        if (!(await dialog.confirm({
+            title: 'ลบรายการนี้?',
+            message: 'ลบแล้วกู้คืนไม่ได้ ถ้ามีผลการประเมินเชื่อมกับรายการนี้อยู่ ระบบจะไม่ยอมให้ลบ',
+            confirmLabel: 'ลบรายการ',
+            tone: 'danger',
+        }))) return;
         try {
             let query = supabase.from(selectedTable).delete().eq(idCol, idValue);
             if (SCHOOL_SCOPED_TABLES.includes(selectedTable)) {
@@ -504,16 +403,6 @@ export default function AdminDashboard() {
         return String(formattedValue ?? '').trim();
     };
 
-    // แปลงวันที่ของ Excel เป็น DDMMYYYY พุทธศักราช
-    // เซลล์วันที่จริงจะถูกเก็บเป็นเลขลำดับวัน ต้องแปลงก่อน
-    // ปีที่ได้ถ้าน้อยกว่า 2400 แปลว่าเป็น ค.ศ. ต้องบวก 543
-    const excelSerialToThaiDob = (serial) => {
-        if (typeof serial !== 'number' || !Number.isFinite(serial) || serial <= 0) return null;
-        const parsed = XLSX.SSF?.parse_date_code?.(serial);
-        if (!parsed || !parsed.y || !parsed.m || !parsed.d) return null;
-        const year = parsed.y < 2400 ? parsed.y + 543 : parsed.y;
-        return `${String(parsed.d).padStart(2, '0')}${String(parsed.m).padStart(2, '0')}${year}`;
-    };
     const sanitizeCitizenId = (raw) => {
         if (!raw && raw !== 0) return '';
         let s = String(raw).trim();
@@ -607,8 +496,9 @@ export default function AdminDashboard() {
         const ext = file.name.split('.').pop().toLowerCase();
         if (ext === 'xlsx' || ext === 'xls') {
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
+                    const XLSX = await loadXLSX();
                     const workbook = XLSX.read(e.target.result, { type: 'array', cellText: true });
                     const sheet = workbook.Sheets[workbook.SheetNames[0]];
                     // ข้อความตามที่แสดงใช้กับข้อความทั่วไป ส่วนเลขบัตรและวันเกิดต้องใช้ค่าดิบ
@@ -644,6 +534,81 @@ export default function AdminDashboard() {
     // ──────────────────────────────────────────────────────────────
 
     // --- DMC Import Handler ---
+    const reloadEnrollments = async subjectId => {
+        const reloaded = await fetchAllRows((from, to) =>
+            supabase.from('student_enrollments')
+                .select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)')
+                .eq('subject_id', subjectId)
+                .eq('enrollment_status', 'active')
+                .range(from, to)
+        );
+        setSubjectEnrollments(reloaded || []);
+    };
+
+    // ผลการประเมินผูกกับแถวลงทะเบียนแบบ ON DELETE CASCADE การนำนักเรียนออกจากวิชาจึงเปลี่ยนสถานะเป็น withdrawn
+    // แทนการลบแถว (เดิมลบแถว ผลที่ครูบันทึกไว้หายไปด้วยโดยไม่มีใครรู้) การเพิ่มนักเรียนที่เคยถูกนำออก
+    // จึงเปิดแถวเดิมกลับมา ผลเดิมกลับมาด้วย แทนการสร้างแถวซ้ำ
+    const enrollStudents = async (studentIds, room) => {
+        const { data: existing, error: existingError } = await supabase.from('student_enrollments')
+            .select('enrollment_id, student_id, enrollment_status')
+            .eq('subject_id', enrollSubject)
+            .in('student_id', studentIds);
+        if (existingError) return { error: existingError };
+        const existingStudents = new Set((existing || []).map(row => row.student_id));
+        const reactivated = (existing || []).filter(row => row.enrollment_status !== 'active');
+        if (reactivated.length) {
+            const { error } = await supabase.from('student_enrollments')
+                .update({ enrollment_status: 'active', room })
+                .in('enrollment_id', reactivated.map(row => row.enrollment_id));
+            if (error) return { error };
+        }
+        const freshIds = studentIds.filter(id => !existingStudents.has(id));
+        let inserted = [];
+        if (freshIds.length) {
+            const { data, error } = await supabase.from('student_enrollments')
+                .insert(freshIds.map(student_id => ({ student_id, subject_id: enrollSubject, room, enrollment_status: 'active' })))
+                .select('enrollment_id');
+            if (error) return { error };
+            inserted = data || [];
+        }
+        return { error: null, inserted, reactivated };
+    };
+
+    // เลิกทำการเพิ่มทั้งห้อง: แถวที่เพิ่งสร้างเปลี่ยนเป็น withdrawn (ไม่ลบ กันผลที่อาจเพิ่งถูกบันทึก)
+    // ส่วนแถวที่เปิดกลับมาคืนสถานะเดิม
+    const undoEnrollment = async ({ inserted = [], reactivated = [] }) => {
+        if (inserted.length) {
+            const { error } = await supabase.from('student_enrollments').update({ enrollment_status: 'withdrawn' }).in('enrollment_id', inserted.map(row => row.enrollment_id));
+            if (error) return error;
+        }
+        for (const row of reactivated) {
+            const { error } = await supabase.from('student_enrollments').update({ enrollment_status: row.enrollment_status }).eq('enrollment_id', row.enrollment_id);
+            if (error) return error;
+        }
+        return null;
+    };
+
+    const withdrawEnrollment = async enrollment => {
+        const student = enrollment.users_students;
+        const name = `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
+        const confirmed = await dialog.confirm({
+            title: `นำ ${name} ออกจากวิชานี้?`,
+            message: 'ผลการประเมินที่บันทึกไว้ยังเก็บอยู่ ถ้าเพิ่มกลับเข้ามาภายหลัง ผลเดิมจะกลับมาด้วย',
+            confirmLabel: 'นำออกจากวิชา',
+            tone: 'danger',
+        });
+        if (!confirmed) return;
+        const { error } = await supabase.from('student_enrollments').update({ enrollment_status: 'withdrawn' }).eq('enrollment_id', enrollment.enrollment_id);
+        if (error) return toast.error('นำออกไม่สำเร็จ: ' + error.message);
+        setSubjectEnrollments(previous => previous.filter(row => row.enrollment_id !== enrollment.enrollment_id));
+        dialog.undo(`นำ ${name} ออกจากวิชาแล้ว`, async () => {
+            const { error: undoError } = await supabase.from('student_enrollments').update({ enrollment_status: 'active' }).eq('enrollment_id', enrollment.enrollment_id);
+            if (undoError) return toast.error('เลิกทำไม่สำเร็จ: ' + undoError.message);
+            setSubjectEnrollments(previous => (previous.some(row => row.enrollment_id === enrollment.enrollment_id) ? previous : [...previous, enrollment]));
+            toast.success(`นำ ${name} กลับเข้าวิชาแล้ว`);
+        });
+    };
+
     // ข้อความเตือนตอนนำเข้าหายไปเองในไม่กี่วินาที ครูที่อ่านช้าหรือใช้โปรแกรมอ่านหน้าจอจะพลาดว่าแถวไหน
     // ต้องแก้ จึงเก็บทุกข้อความไว้ในแผงบนหน้านำเข้าจนกว่าจะปิดเอง (WCAG 2.2.1)
     const [importIssues, setImportIssues] = useState([]);
@@ -661,6 +626,7 @@ export default function AdminDashboard() {
         try {
             const reader = new FileReader();
             const buffer = await new Promise((res, rej) => { reader.onload = ev => res(ev.target.result); reader.onerror = rej; reader.readAsArrayBuffer(file); });
+            const XLSX = await loadXLSX();
             const wb = XLSX.read(buffer, { type: 'array', cellText: true });
             const ws = wb.Sheets[wb.SheetNames[0]];
             // อ่านสองชุด ข้อความตามที่แสดงใช้กับวันเกิด ค่าดิบใช้กับเลขบัตรและรหัสนักเรียน
@@ -900,7 +866,9 @@ export default function AdminDashboard() {
 
                         if (plan.hoursConflicts.length > 0) {
                             const detail = plan.hoursConflicts.slice(0, 5).map(item => `${item.subjectName} ${item.gradeLevel}: ${item.hours.join(' / ')} ชม. → บันทึก ${item.keptHours}`).join('\n');
-                            toast(`${plan.hoursConflicts.length} วิชามีจำนวนชั่วโมงไม่เท่ากันระหว่างห้อง ระบบเก็บได้วิชาละค่าเดียว จึงใช้ค่าจากแถวแรก\n${detail}${plan.hoursConflicts.length > 5 ? '\n...' : ''}`, { icon: '⚠️', duration: 20000 });
+                            const hoursMessage = `${plan.hoursConflicts.length} วิชามีจำนวนชั่วโมงไม่เท่ากันระหว่างห้อง ระบบเก็บได้วิชาละค่าเดียว จึงใช้ค่าจากแถวแรก\n${detail}${plan.hoursConflicts.length > 5 ? '\n...' : ''}`;
+                            setImportIssues(previous => [...previous, hoursMessage]);
+                            toast(hoursMessage, { icon: <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />, duration: 20000 });
                         }
 
                         const wantsEnrollment = Boolean(options.autoEnroll) && plan.enrollmentRooms.length > 0;
@@ -1249,7 +1217,7 @@ export default function AdminDashboard() {
                                     <select
  aria-label="เลือกชุดข้อมูลที่ต้องการตรวจสอบ"                                        value={selectedTable}
                                         onChange={(e) => loadTableData(e.target.value)}
-                                        className="w-full md:w-64 bg-slate-50 border border-field text-slate-700 py-3.5 px-4 rounded-2xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-inner"
+                                        className="w-full md:w-64 bg-slate-50 border border-field text-slate-700 py-3.5 px-4 rounded-2xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none"
                                     >
                                         <option value="" disabled>เลือกประเภทข้อมูล</option>
                                         <option value="subjects">ข้อมูลวิชา</option>
@@ -1266,7 +1234,7 @@ export default function AdminDashboard() {
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             placeholder="ค้นหาข้อมูลในตารางนี้..."
-                                            className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-field rounded-2xl shadow-inner font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-field rounded-2xl font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
                                             disabled={!selectedTable || loadingData}
                                         />
                                     </div>
@@ -1337,7 +1305,7 @@ export default function AdminDashboard() {
                                                                 </select>
                                                             ) : isEditing && selectedTable === 'users_teachers' && key === 'role' ? (
                                                                 <div className="min-w-[15rem] space-y-1.5 rounded-lg border-2 border-indigo-400 bg-white p-2.5">
-                                                                    <p className="text-[11px] font-bold text-slate-600">เลือกได้มากกว่า 1 บทบาท</p>
+                                                                    <p className="text-xs font-bold text-slate-600">เลือกได้มากกว่า 1 บทบาท</p>
                                                                     {ROLE_CHOICES.map(([val, label]) => {
                                                                         const selected = (editingRow.data.roles || []).includes(val);
                                                                         const isPrimary = editingRow.data.role === val;
@@ -1366,7 +1334,7 @@ export default function AdminDashboard() {
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => setEditingRow({ ...editingRow, data: { ...editingRow.data, role: val } })}
-                                                                                        className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${isPrimary ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 text-slate-600 hover:border-indigo-400'}`}
+                                                                                        className={`rounded-lg border px-2 py-0.5 text-xs font-bold ${isPrimary ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 text-slate-600 hover:border-indigo-400'}`}
                                                                                         title="บทบาทหลักใช้ตัดสินหน้าแรกหลังเข้าสู่ระบบ"
                                                                                     >
                                                                                         {isPrimary ? 'บทบาทหลัก' : 'ตั้งเป็นหลัก'}
@@ -1395,7 +1363,7 @@ export default function AdminDashboard() {
                                                                     onChange={(e) => setEditingRow({ ...editingRow, data: { ...editingRow.data, [key]: e.target.value } })}
                                                                 />
                                                             ) : (
-                                                                <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded' : ''}>
+                                                                <span className={key === 'new_password' ? 'font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg' : ''}>
                                                                     {displayValue(row[key], key, row)}
                                                                 </span>
                                                             )}
@@ -1404,13 +1372,13 @@ export default function AdminDashboard() {
                                                     <td className="px-5 py-3 text-center sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100 flex justify-center gap-2 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">
                                                         {isEditing ? (
                                                             <>
-                                                                <button aria-label="บันทึกการแก้ไข" onClick={() => handleUpdate(idValue, idCol, editingRow.data)} className="text-white bg-green-500 p-2 rounded-xl hover:bg-green-600 shadow-sm transition-all"><Save className="w-4 h-4" /></button>
-                                                                <button aria-label="ยกเลิกการแก้ไข" onClick={() => setEditingRow(null)} className="text-slate-600 bg-slate-200 p-2 rounded-xl hover:bg-slate-300 transition-all"><X className="w-4 h-4" /></button>
+                                                                <button aria-label="บันทึกการแก้ไข" onClick={() => handleUpdate(idValue, idCol, editingRow.data)} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white shadow-sm transition-colors hover:bg-emerald-800"><Save className="w-4 h-4" /></button>
+                                                                <button aria-label="ยกเลิกการแก้ไข" onClick={() => setEditingRow(null)} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-slate-200 text-slate-700 transition-colors hover:bg-slate-300"><X className="w-4 h-4" /></button>
                                                             </>
                                                         ) : (
                                                             <>
-                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => setEditingRow({ id: idValue, data: { ...row, roles: Array.isArray(row.teacher_roles) && row.teacher_roles.length ? row.teacher_roles.map(item => item.role) : (row.role ? [row.role] : []) } })} aria-label={`แก้ไข ${row.subject_name || row.lo_code || row.competency_area || 'รายการนี้'}`} className="text-indigo-600 bg-indigo-50 p-2 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"><Edit className="w-4 h-4" /></button>}
-                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => handleDelete(idValue, idCol)} aria-label={`ลบ ${row.subject_name || row.lo_code || row.competency_area || 'รายการนี้'}`} className="text-red-600 bg-red-50 p-2 rounded-xl hover:bg-red-100 transition-colors border border-red-100"><Trash2 className="w-4 h-4" /></button>}
+                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => setEditingRow({ id: idValue, data: { ...row, roles: Array.isArray(row.teacher_roles) && row.teacher_roles.length ? row.teacher_roles.map(item => item.role) : (row.role ? [row.role] : []) } })} aria-label={`แก้ไข ${row.subject_name || row.lo_code || row.competency_area || 'รายการนี้'}`} className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 transition-colors hover:bg-indigo-100"><Edit className="w-4 h-4" /></button>}
+                                                                {!READ_ONLY_TABLES.has(selectedTable) && <button onClick={() => handleDelete(idValue, idCol)} aria-label={`ลบ ${row.subject_name || row.lo_code || row.competency_area || 'รายการนี้'}`} className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 transition-colors hover:bg-red-100"><Trash2 className="w-4 h-4" /></button>}
                                                             </>
                                                         )}
                                                     </td>
@@ -1431,14 +1399,14 @@ export default function AdminDashboard() {
                                                 <button 
                                                     onClick={() => loadTableData(selectedTable, currentPage - 1)}
                                                     disabled={currentPage === 1 || loadingData}
-                                                    className="px-4 py-2 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
+                                                    className="min-h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
                                                 >
                                                     &larr; หน้าก่อน
                                                 </button>
                                                 <button 
                                                     onClick={() => loadTableData(selectedTable, currentPage + 1)}
                                                     disabled={currentPage === totalPages || loadingData}
-                                                    className="px-4 py-2 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
+                                                    className="min-h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all shadow-sm"
                                                 >
                                                     หน้าถัดไป &rarr;
                                                 </button>
@@ -1485,7 +1453,7 @@ export default function AdminDashboard() {
                                     <button onClick={() => setImportWizardType('students')} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />เริ่มนำเข้าข้อมูล</button>
                                 </div>
 
-                                {/* 🏫 DMC Import Card (Prominent) */}
+                                {/* การ์ดนำเข้าไฟล์ DMC */}
                                 <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
                                     <div className="flex flex-col md:flex-row md:items-start gap-5 mb-5 md:mb-0">
                                         <div className="flex items-start gap-4 flex-1">
@@ -1496,8 +1464,8 @@ export default function AdminDashboard() {
                                             </div>
                                         </div>
                                         <div className="flex w-full shrink-0 flex-col gap-2 md:w-auto md:self-center">
-                                            <button onClick={() => setImportWizardType('students')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-extrabold text-white hover:bg-blue-800"><Upload className="h-4 w-4" />ตรวจสอบไฟล์ก่อนนำเข้า</button>
-                                            <label className="relative flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-100 focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2">นำเข้าไฟล์ DMC รูปแบบมาตรฐานแบบด่วน<input type="file" accept=".xlsx,.xls" className="sr-only" onChange={handleDMCImport} /></label>
+                                            <button onClick={() => setImportWizardType('students')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />ตรวจสอบไฟล์ก่อนนำเข้า</button>
+                                            <label className="relative flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-100 focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2">นำเข้าไฟล์ DMC รูปแบบมาตรฐานแบบด่วน<input type="file" accept=".xlsx,.xls" className="sr-only" onChange={handleDMCImport} /></label>
                                         </div>
                                     </div>
                                 </div>
@@ -1526,10 +1494,11 @@ export default function AdminDashboard() {
                                                 </div>
                                             </div>
                                             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                                                {card.readOnly ? <span className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-600"><Lock className="h-4 w-4" />คลังกลาง นำเข้าไม่ได้</span> : <>
+                                                {card.readOnly ? <span className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-bold text-slate-600"><Lock className="h-4 w-4" />คลังกลาง นำเข้าไม่ได้</span> : <>
                                                 <button
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         // Build XLSX with Text-formatted columns
+                                                        const XLSX = await loadXLSX();
                                                         const ws = XLSX.utils.aoa_to_sheet([]);
                                                         const headers = card.template.split('\n')[0].split(',');
                                                         const sampleRows = card.template.split('\n').slice(1).map(row => row.split(','));
@@ -1564,15 +1533,15 @@ export default function AdminDashboard() {
                                                         XLSX.utils.book_append_sheet(wb, guide, 'วิธีใช้');
                                                         XLSX.writeFile(wb, `แม่แบบ_${card.id}.xlsx`);
                                                     }}
-                                                    className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                                                    className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
                                                 >
                                                     <Download className="w-4 h-4 group-hover/btn:-translate-y-1 transition-transform" />
                                                     <span>ไฟล์ Excel แม่แบบ (.xlsx)</span>
                                                 </button>
-                                                {WIZARD_IMPORT_TYPES.has(card.id) ? <button onClick={() => setImportWizardType(card.id)} className="flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800">
+                                                {WIZARD_IMPORT_TYPES.has(card.id) ? <button onClick={() => setImportWizardType(card.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800">
                                                     <Upload className="w-4 h-4 group-hover/btn2:-translate-y-1 transition-transform" />
                                                     <span>เปิดตัวช่วยนำเข้า</span>
-                                                </button> : <label className="relative flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800 focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2"><Upload className="h-4 w-4" /><span>อัปโหลดแบบเดิม</span><input type="file" accept=".csv,.xlsx,.xls" className="sr-only" onChange={(e) => handleFileUpload(e, card.id)} /></label>}
+                                                </button> : <label className="relative flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 text-sm font-bold text-white hover:bg-indigo-800 focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2"><Upload className="h-4 w-4" /><span>อัปโหลดแบบเดิม</span><input type="file" accept=".csv,.xlsx,.xls" className="sr-only" onChange={(e) => handleFileUpload(e, card.id)} /></label>}
                                                 </>}
                                             </div>
                                         </div>
@@ -1624,7 +1593,7 @@ export default function AdminDashboard() {
                                                 <button
                                                     onClick={saveMapping}
                                                     disabled={savingMapping}
-                                                    className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 flex items-center transition-all"
+                                                    className="bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 flex items-center transition-all"
                                                 >
                                                     {savingMapping ? <div className="loader w-4 h-4 !border-2 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                                     บันทึก LO ของวิชานี้
@@ -1643,17 +1612,17 @@ export default function AdminDashboard() {
                                                                 className="sr-only"
                                                             />
                                                             <div className="flex items-center h-full mr-4">
-                                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isChecked ? 'border-indigo-600 bg-indigo-600' : 'border-slate-300'}`}>
+                                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isChecked ? 'border-indigo-600 bg-indigo-700' : 'border-slate-300'}`}>
                                                                     {isChecked && <CheckCircle className="w-4 h-4 text-white" />}
                                                                 </div>
                                                             </div>
                                                             <div className="flex-1">
                                                                 <span className={`block font-extrabold text-sm mb-1.5 ${isChecked ? 'text-indigo-900' : 'text-slate-800'}`}>
-                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs mr-2 border border-slate-200">ข้อ {lo.ability_no}</span>
+                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-xs mr-2 border border-slate-200">ข้อ {lo.ability_no}</span>
                                                                     {lo.lo_code ? `${lo.lo_code} ` : ''} 
                                                                     <span className="text-indigo-600">[{lo.competency_area || 'ทั่วไป'}]</span>
-                                                                    {lo.grade_level && <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{lo.grade_level}</span>}
-                                                                    {lo.is_custom_competency && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
+                                                                    {lo.grade_level && <span className="ml-2 rounded-lg bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{lo.grade_level}</span>}
+                                                                    {lo.is_custom_competency && <span className="ml-2 rounded-lg bg-amber-100 px-2 py-0.5 text-xs text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
                                                                 </span>
                                                                 <span className={`block text-sm leading-relaxed ${isChecked ? 'text-slate-700 font-medium' : 'text-slate-500'}`}>{lo.lo_description}</span>
                                                             </div>
@@ -1712,7 +1681,7 @@ export default function AdminDashboard() {
                                                 className="w-full bg-white border border-field text-slate-700 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm disabled:bg-slate-100 disabled:opacity-75"
                                             />
                                             {showStudentDropdown && enrollSubject && (
-                                                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                                                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
                                                     {filteredEnrollStudents.length > 0 ? (
                                                         filteredEnrollStudents.map(st => (
                                                             <div 
@@ -1726,14 +1695,12 @@ export default function AdminDashboard() {
                                                                         return;
                                                                     }
                                                                     toast.loading('กำลังเพิ่มนักเรียน...', { id: 'add_en' });
-                                                                    const { data, error } = await supabase.from('student_enrollments').insert([
-                                                                        { student_id: st.student_id, subject_id: enrollSubject, room: enrollRoom, enrollment_status: 'active' }
-                                                                    ]).select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)');
+                                                                    const { error } = await enrollStudents([st.student_id], enrollRoom);
                                                                     if (error) {
                                                                         toast.error('เพิ่มไม่สำเร็จ ' + error.message, { id: 'add_en' });
                                                                     } else {
                                                                         toast.success('เพิ่มนักเรียนสำเร็จ', { id: 'add_en' });
-                                                                        setSubjectEnrollments(prev => [...prev, data[0]]);
+                                                                        await reloadEnrollments(enrollSubject);
                                                                     }
                                                                 }}
                                                             >
@@ -1763,7 +1730,7 @@ export default function AdminDashboard() {
 
                                     </div>
 
-                                    {/* 🔥 Bulk Enrollment: เพิ่มทั้งห้อง */}
+                                    {/* เพิ่มนักเรียนทั้งห้อง */}
                                     <div className="flex w-full flex-col items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center">
                                         <div className="flex items-center gap-3 flex-1">
                                             <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
@@ -1782,7 +1749,7 @@ export default function AdminDashboard() {
                                                 value={enrollRoom}
                                                 onChange={(e) => setEnrollRoom(e.target.value)}
                                                 disabled={!enrollSubject}
-                                                className="bg-white border border-emerald-200 text-slate-800 py-2.5 px-3 rounded-xl font-bold text-sm focus:ring-2 focus:ring-emerald-400 outline-none shadow-sm disabled:opacity-50"
+                                                className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-800 shadow-sm outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50"
                                             />
                                             <datalist id="enroll-rooms-list">
                                                 {[...new Set(allStudents.map(s => s.current_room).filter(Boolean))].sort().map(room => (
@@ -1804,31 +1771,30 @@ export default function AdminDashboard() {
                                                         toast.error(`นักเรียนในห้อง ${enrollRoom} ลงทะเบียนในวิชานี้ครบแล้ว`);
                                                         return;
                                                     }
-                                                    if (!window.confirm(`ยืนยันเพิ่มนักเรียน ${newStudents.length} คน จากห้อง ${enrollRoom} เข้าวิชานี้?`)) return;
+                                                    const confirmed = await dialog.confirm({
+                                                        title: `เพิ่มนักเรียน ${newStudents.length} คนเข้าวิชานี้?`,
+                                                        message: `นักเรียนในห้อง ${enrollRoom} ที่ยังไม่อยู่ในวิชานี้จะถูกเพิ่มทั้งหมด เลิกทำได้ภายใน 8 วินาทีหลังเพิ่ม`,
+                                                        confirmLabel: `เพิ่ม ${newStudents.length} คน`,
+                                                    });
+                                                    if (!confirmed) return;
+                                                    const subjectId = enrollSubject;
+                                                    const room = enrollRoom;
                                                     toast.loading(`กำลังเพิ่ม ${newStudents.length} คน...`, { id: 'bulk_en' });
-                                                    const payload = newStudents.map(s => ({
-                                                        student_id: s.student_id,
-                                                        subject_id: enrollSubject,
-                                                        room: enrollRoom,
-                                                        enrollment_status: 'active'
-                                                    }));
-                                                    const { error } = await supabase.from('student_enrollments').insert(payload);
-                                                    if (error) {
-                                                        toast.error('เพิ่มไม่สำเร็จ: ' + error.message, { id: 'bulk_en' });
-                                                    } else {
-                                                        toast.success(`จัดนักเรียนเข้ารายวิชาแล้ว ${newStudents.length} คน จากห้อง ${enrollRoom}`, { id: 'bulk_en' });
-                                                        // Reload enrollments (paginated)
-                                                        const reloaded = await fetchAllRows((from, to) =>
-                                                            supabase.from('student_enrollments')
-                                                                .select('enrollment_id, student_id, subject_id, room, attendance_percent, enrollment_status, users_students(student_id, student_code, prefix, first_name, last_name, current_room, current_grade_level)')
-                                                                .eq('subject_id', enrollSubject)
-                                                                .eq('enrollment_status', 'active')
-                                                                .range(from, to)
-                                                        );
-                                                        setSubjectEnrollments(reloaded || []);
+                                                    const result = await enrollStudents(newStudents.map(s => s.student_id), room);
+                                                    if (result.error) {
+                                                        toast.error('เพิ่มไม่สำเร็จ: ' + result.error.message, { id: 'bulk_en' });
+                                                        return;
                                                     }
+                                                    toast.dismiss('bulk_en');
+                                                    await reloadEnrollments(subjectId);
+                                                    dialog.undo(`จัดนักเรียนเข้ารายวิชาแล้ว ${newStudents.length} คน จากห้อง ${room}`, async () => {
+                                                        const undoError = await undoEnrollment(result);
+                                                        if (undoError) return toast.error('เลิกทำไม่สำเร็จ: ' + undoError.message);
+                                                        await reloadEnrollments(subjectId);
+                                                        toast.success(`นำนักเรียน ${newStudents.length} คนออกจากวิชาแล้ว`);
+                                                    });
                                                 }}
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition-all disabled:opacity-50 whitespace-nowrap"
+                                                className="inline-flex min-h-11 items-center whitespace-nowrap rounded-xl bg-emerald-700 px-5 text-sm font-extrabold text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
                                             >
                                                 เพิ่มทั้งห้อง
                                             </button>
@@ -1839,7 +1805,7 @@ export default function AdminDashboard() {
                                 {loadingEnrollments ? (
                                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
                                 ) : enrollSubject ? (
-                                    <div className="overflow-x-auto rounded-2xl border border-slate-200 overflow-hidden shadow-inner">
+                                    <div className="overflow-x-auto rounded-2xl border border-slate-200 overflow-hidden">
                                         <table className="w-full text-sm text-left whitespace-nowrap">
                                             <thead className="bg-slate-800 text-white sticky top-0 z-10">
                                                 <tr>
@@ -1856,19 +1822,11 @@ export default function AdminDashboard() {
                                                 ) : subjectEnrollments.map((en, idx) => (
                                                     <tr key={en.enrollment_id} className="hover:bg-slate-50 transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-500 font-medium">{idx + 1}</td>
-                                                        <td className="px-5 py-3 font-mono text-slate-600 bg-slate-50 text-center rounded">{en.users_students?.student_code}</td>
+                                                        <td className="px-5 py-3 font-mono text-slate-600 bg-slate-50 text-center rounded-lg">{en.users_students?.student_code}</td>
                                                         <td className="px-5 py-3 font-extrabold text-slate-800">{en.users_students?.prefix || ''}{en.users_students?.first_name} {en.users_students?.last_name}</td>
-                                                        <td className="px-5 py-3 text-center font-bold text-indigo-600 bg-indigo-50/50 rounded">{en.room}</td>
+                                                        <td className="px-5 py-3 text-center font-bold text-indigo-600 bg-indigo-50/50 rounded-lg">{en.room}</td>
                                                         <td className="px-5 py-3 text-center">
-                                                            <button onClick={async () => {
-                                                                if (!window.confirm('ยืนยันระบบลบนักเรียนคนนี้ออกจากวิชา?')) return;
-                                                                const { error } = await supabase.from('student_enrollments').delete().eq('enrollment_id', en.enrollment_id);
-                                                                if (error) toast.error('ลบไม่สำเร็จ: ' + error.message);
-                                                                else {
-                                                                    setSubjectEnrollments(prev => prev.filter(p => p.enrollment_id !== en.enrollment_id));
-                                                                    toast.success('นำรายชื่อนักเรียนออกจากรายวิชาแล้ว');
-                                                                }
-                                                            }} className="text-red-600 hover:text-white border border-red-200 hover:bg-red-500 hover:border-red-500 px-4 py-2 rounded-xl font-bold transition-all w-full shadow-sm">
+                                                            <button onClick={() => withdrawEnrollment(en)} aria-label={`นำออก: ${en.users_students?.first_name || ''} ${en.users_students?.last_name || ''}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-300 px-4 font-bold text-red-700 shadow-sm transition-colors hover:border-red-700 hover:bg-red-700 hover:text-white">
                                                                 นำออก
                                                             </button>
                                                         </td>
@@ -1884,267 +1842,16 @@ export default function AdminDashboard() {
                                 )}
                             </div>
                         )}
-                        {/* --- TAB 5: EVALUATION PROGRESS --- */}
                         {activeTab === 'progress' && (
-                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>
-                                        <h2 className="flex items-center text-lg font-extrabold text-slate-900"><CheckCircle className="mr-2 h-5 w-5 text-emerald-700" />สถานะรายวิชาทั้งหมด</h2>
-                                        <p className="mt-1 text-sm leading-6 text-slate-600">แสดงวิชาที่ยังรายงานไม่ครบก่อน เพื่อให้ติดตามงานต่อได้ทันที</p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={loadEvaluationProgress}
-                                        disabled={loadingProgress}
-                                        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-                                    >
-                                        <RefreshCw className={`h-4 w-4 ${loadingProgress ? 'animate-spin' : ''}`} />
-                                        {loadingProgress ? 'กำลังอัปเดต' : 'รีเฟรชข้อมูล'}
-                                    </button>
-                                </div>
-
-                                {loadingProgress && !progressLoaded ? (
-                                    <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-sm font-bold text-slate-600" role="status">
-                                        <div className="loader scale-125"></div>
-                                        กำลังรวบรวมสถานะการรายงานผล
-                                    </div>
-                                ) : progressError ? (
-                                    <div className="surface-danger rounded-2xl border border-rose-200 px-5 py-10 text-center" role="alert">
-                                        <p className="font-extrabold text-rose-950">โหลดสถานะการรายงานผลไม่สำเร็จ</p>
-                                        <p className="mt-1 text-sm text-rose-800">{progressError}</p>
-                                        <button type="button" onClick={loadEvaluationProgress} className="action-danger mt-4 min-h-11 rounded-xl px-4 text-sm font-extrabold">ลองโหลดอีกครั้ง</button>
-                                    </div>
-                                ) : evalProgress.length === 0 ? (
-                                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-16 text-center">
-                                        <p className="font-extrabold text-slate-800">ยังไม่มีรายวิชาในภาคเรียนนี้</p>
-                                        <p className="mt-1 text-sm text-slate-600">ตรวจสอบปีการศึกษาและภาคเรียน หรือเพิ่มข้อมูลรายวิชาก่อนติดตามผล</p>
-                                        <button type="button" onClick={() => navigate('/admin/setup')} className="mt-4 min-h-11 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-extrabold text-indigo-700 hover:bg-indigo-50">ไปที่ตั้งค่าข้อมูล</button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {/* Summary bar */}
-                                        <div className="mb-6 grid gap-3 sm:grid-cols-3">
-                                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
-                                                <p className="text-3xl font-extrabold text-emerald-700">{evalProgress.filter(p => p.percent === 100).length}</p>
-                                                <p className="text-xs font-bold text-emerald-700">ประเมินครบแล้ว</p>
-                                            </div>
-                                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
-                                                <p className="text-3xl font-extrabold text-amber-700">{evalProgress.filter(p => p.percent > 0 && p.percent < 100).length}</p>
-                                                <p className="text-xs font-bold text-amber-700">กำลังดำเนินการ</p>
-                                            </div>
-                                            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-                                                <p className="text-3xl font-extrabold text-red-700">{evalProgress.filter(p => p.percent === 0).length}</p>
-                                                <p className="text-xs font-bold text-red-700">ยังไม่เริ่ม</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Per-subject cards */}
-                                        {evalProgress.map(p => (
-                                            <div key={p.subject_id} className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 rounded-2xl border transition-all ${
-                                                p.percent === 100 ? 'bg-emerald-50/50 border-emerald-200' :
-                                                p.percent > 0 ? 'bg-amber-50/30 border-amber-200' :
-                                                'bg-red-50/30 border-red-200'
-                                            }`}>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-extrabold text-slate-800 text-sm truncate">{p.subject_name}</p>
-                                                    <p className="text-xs text-slate-500 mt-0.5">
-                                                        ครู: <span className="font-bold text-slate-700">{p.teacherName}</span>
-                                                        &ensp;|&ensp;{p.grade_level} ภาคเรียนที่ {p.semester}/{p.academic_year}
-                                                        &ensp;|&ensp;{p.studentCount} คน · {p.loCount} ผลลัพธ์การเรียนรู้
-                                                    </p>
-                                                </div>
-                                                <div className="w-full sm:w-48 shrink-0">
-                                                    <div className="flex justify-between text-xs font-bold mb-1">
-                                                        <span className={p.percent === 100 ? 'text-emerald-700' : p.percent > 0 ? 'text-amber-700' : 'text-red-600'}>
-                                                            {p.filledCells}/{p.totalCells}
-                                                        </span>
-                                                        <span className="text-slate-600">{p.percent}%</span>
-                                                    </div>
-                                                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                                                        <div
-                                                            className={`h-full rounded-full transition-all duration-500 ${
-                                                                p.percent === 100 ? 'bg-emerald-500' : p.percent > 50 ? 'bg-indigo-500' : p.percent > 0 ? 'bg-amber-400' : 'bg-red-300'
-                                                            }`}
-                                                            style={{ width: `${Math.max(p.percent, 1)}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <span className={`text-xs font-extrabold px-3 py-1.5 rounded-lg border shrink-0 ${
-                                                    p.percent === 100 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                                                    p.percent > 0 ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                                                    'bg-red-100 text-red-600 border-red-300'
-                                                }`}>
-                                                    {p.percent === 100 ? 'ประเมินครบ' : p.percent > 0 ? `ดำเนินการแล้ว ${p.percent}%` : 'ยังไม่เริ่มประเมิน'}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            <Suspense fallback={<div className="flex min-h-72 items-center justify-center" role="status"><div className="loader" aria-label="กำลังเปิดแท็บ" /></div>}>
+                                <ProgressTab />
+                            </Suspense>
                         )}
 
-                        {/* --- TAB 6: STUDENT PROMOTION --- */}
                         {activeTab === 'promotion' && (
-                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="mb-2 flex items-center text-lg font-extrabold text-slate-900"><ArrowUpCircle className="mr-2 h-5 w-5 text-indigo-600" />เลือกนักเรียนและกำหนดห้องใหม่</h2>
-                                    <p className="text-sm font-medium text-slate-600">จัดการทั้งห้องหรือเลือกเฉพาะนักเรียนที่ย้ายห้องและต้องดูแลรายบุคคล</p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
-                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                                        <h3 className="font-bold text-slate-700 mb-4 flex items-center"><Search className="w-4 h-4 mr-2"/> 1. ค้นหานักเรียนจากห้องปัจจุบัน</h3>
-                                        <div className="flex gap-2">
-                                            <input aria-label="ห้องปัจจุบันที่จะค้นหานักเรียน" 
-                                                type="text" 
-                                                placeholder="เช่น ป.1/1 (พิมพ์หรือเลือกจากรายการ)"
-                                                list="promo-rooms-list"
-                                                className="flex-1 px-4 py-2 border border-field rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                                value={promoFromRoom}
-                                                onChange={(e) => setPromoFromRoom(e.target.value)}
-                                            />
-                                            <datalist id="promo-rooms-list">
-                                                {[...new Set(allStudents.map(s => s.current_room).filter(Boolean))].sort().map(room => (
-                                                    <option key={room} value={room} />
-                                                ))}
-                                            </datalist>
-                                            <button 
-                                                onClick={async () => {
-                                                    if (!promoFromRoom.trim()) return toast.error('กรุณาระบุห้อง');
-                                                    setLoadingPromo(true);
-                                                    try {
-                                                        const { data, error } = await supabase
-                                                            .from('users_students')
-                                                            .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room, student_status')
-                                                            .eq('school_id', currentUser.school_id)
-                                                            .eq('current_room', promoFromRoom.trim())
-                                                            .order('student_code');
-                                                        if (error) throw error;
-                                                        if (data.length === 0) toast.error('ไม่พบนักเรียนในห้องนี้');
-                                                        else toast.success(`พบนักเรียน ${data.length} คน`);
-                                                        setPromoStudents(data || []);
-                                                        setPromoSelectedStudents((data || []).map(s => s.student_id));
-                                                    } catch (err) {
-                                                        toast.error('ข้อผิดพลาด: ' + err.message);
-                                                    } finally {
-                                                        setLoadingPromo(false);
-                                                    }
-                                                }}
-                                                className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold hover:bg-slate-900 transition flex items-center"
-                                            >
-                                                {loadingPromo ? <div className="loader w-4 h-4 mr-2" /> : <Search className="w-4 h-4 mr-2" />}
-                                                ค้นหา
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-200">
-                                        <h3 className="font-bold text-indigo-800 mb-4 flex items-center"><ArrowUpCircle className="w-4 h-4 mr-2"/> 2. กำหนดระดับชั้นและห้องเรียนใหม่</h3>
-                                        <div className="flex flex-col gap-3">
-                                            <input aria-label="ระดับชั้นใหม่" 
-                                                type="text" 
-                                                placeholder="ชั้นใหม่ (เช่น ป.2) พิมพ์หรือเลือก"
-                                                list="promo-grades-list"
-                                                className="w-full px-4 py-2 border border-field rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                                value={promoToGrade}
-                                                onChange={(e) => setPromoToGrade(e.target.value)}
-                                            />
-                                            <datalist id="promo-grades-list">
-                                                {[...new Set(allStudents.map(s => s.current_grade_level).filter(Boolean))].sort().map(grade => (
-                                                    <option key={grade} value={grade} />
-                                                ))}
-                                            </datalist>
-                                            <input aria-label="ห้องเรียนใหม่" 
-                                                type="text" 
-                                                placeholder="ห้องใหม่ (เช่น ป.2/1) พิมพ์หรือเลือก"
-                                                list="promo-rooms-list"
-                                                className="w-full px-4 py-2 border border-field rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                                value={promoToRoom}
-                                                onChange={(e) => setPromoToRoom(e.target.value)}
-                                            />
-                                            <button 
-                                                disabled={promoSelectedStudents.length === 0 || !promoToGrade || !promoToRoom}
-                                                onClick={async () => {
-                                                    if (!window.confirm(`ยืนยันการเปลี่ยนนักเรียนที่เลือกทั้ง ${promoSelectedStudents.length} คน ไปยังชั้น ${promoToGrade} ห้อง ${promoToRoom} หรือไม่?`)) return;
-                                                    try {
-                                                        for (let index = 0; index < promoSelectedStudents.length; index += 200) {
-                                                            const { error } = await supabase.from('users_students')
-                                                                .update({ current_grade_level: promoToGrade.trim(), current_room: promoToRoom.trim() })
-                                                                .eq('school_id', currentUser.school_id)
-                                                                .in('student_id', promoSelectedStudents.slice(index, index + 200));
-                                                            if (error) throw error;
-                                                        }
-                                                        toast.success('บันทึกการเลื่อนชั้นและจัดห้องเรียนแล้ว');
-                                                        setPromoStudents([]);
-                                                        setPromoSelectedStudents([]);
-                                                        setPromoFromRoom('');
-                                                        setPromoToGrade('');
-                                                        setPromoToRoom('');
-                                                    } catch (err) {
-                                                        toast.error('บันทึกไม่สำเร็จ: ' + err.message);
-                                                    }
-                                                }}
-                                                className="w-full mt-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                บันทึกการเลื่อนชั้น ({promoSelectedStudents.length} คน)
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {promoStudents.length > 0 && (
-                                    <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden">
-                                        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 font-bold text-slate-700 flex justify-between items-center">
-                                            <span>รายชื่อนักเรียนในห้อง</span>
-                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-lg">เลือก {promoSelectedStudents.length}/{promoStudents.length} คน</span>
-                                        </div>
-                                        <div className="max-h-80 overflow-y-auto">
-                                            <table className="w-full text-left text-sm whitespace-nowrap">
-                                                <thead className="bg-white sticky top-0 border-b border-slate-100 z-10 shadow-sm">
-                                                    <tr className="text-slate-500">
-                                                        <th className="px-4 py-3 font-medium w-16 text-center">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                                checked={promoSelectedStudents.length === promoStudents.length && promoStudents.length > 0}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) setPromoSelectedStudents(promoStudents.map(s => s.student_id));
-                                                                    else setPromoSelectedStudents([]);
-                                                                }}
-                                                            />
-                                                        </th>
-                                                        <th className="px-4 py-3 font-medium w-16 text-center">ลำดับ</th>
-                                                        <th className="px-4 py-3 font-medium w-32">รหัสนักเรียน</th>
-                                                        <th className="px-4 py-3 font-medium">ชื่อ-นามสกุล</th>
-                                                        <th className="px-4 py-3 font-medium">ชั้นปัจจุบัน</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 bg-white">
-                                                    {promoStudents.map((s, i) => (
-                                                        <tr key={s.student_id} className="hover:bg-slate-50">
-                                                            <td className="px-4 py-2 text-center">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                                    checked={promoSelectedStudents.includes(s.student_id)}
-                                                                    onChange={(e) => {
-                                                                        if (e.target.checked) setPromoSelectedStudents([...promoSelectedStudents, s.student_id]);
-                                                                        else setPromoSelectedStudents(promoSelectedStudents.filter(id => id !== s.student_id));
-                                                                    }}
-                                                                />
-                                                            </td>
-                                                            <td className="px-4 py-2 text-center text-slate-500 font-semibold">{i+1}</td>
-                                                            <td className="px-4 py-2 font-mono text-slate-600">{s.student_code}</td>
-                                                            <td className="px-4 py-2 font-bold text-slate-800">{s.prefix||''}{s.first_name} {s.last_name}</td>
-                                                            <td className="px-4 py-2 text-slate-500">{s.current_grade_level} ({s.current_room})</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                            <Suspense fallback={<div className="flex min-h-72 items-center justify-center" role="status"><div className="loader" aria-label="กำลังเปิดแท็บ" /></div>}>
+                                <PromotionTab allStudents={allStudents} />
+                            </Suspense>
                         )}
                     </div>
                 </div>

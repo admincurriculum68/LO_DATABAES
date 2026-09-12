@@ -1,0 +1,22 @@
+# ตรวจโค้ดจาก checkout ที่สะอาดทุกครั้งที่ push และเปิด pull request
+# ดักปัญหาแบบที่เคยหลุดไปถึงเว็บจริง: คอมโพเนนต์ที่ไม่ได้ import และไฟล์ที่ลืม commit
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

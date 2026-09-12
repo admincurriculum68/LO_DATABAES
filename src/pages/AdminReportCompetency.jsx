@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/xlsx';
 import AcademicReportShell from '../components/AcademicReportShell';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
@@ -92,8 +92,9 @@ export default function AdminReportCompetency() {
 
     useEffect(() => setPage(1), [query, selectedArea, status]);
 
-    const exportExcel = () => {
+    const exportExcel = async () => {
         if (!selectedArea) return toast.error('ยังไม่มีด้านความสามารถสำหรับออกรายงาน');
+        const XLSX = await loadXLSX();
         const rows = filteredStudents.map((student, index) => {
             const decision = decisionMap.get(`${student.student_id}:${selectedArea}`);
             return [index + 1, student.student_code, studentName(student), student.current_grade_level, student.current_room, decision?.final_level || '', statusLabel(decision?.decision_status), decision?.decision_reason || ''];
@@ -134,7 +135,7 @@ export default function AdminReportCompetency() {
                     <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-100 text-xs font-extrabold text-slate-700"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">ผู้เรียน</th><th className="px-4 py-3">ชั้น/ห้อง</th><th className="px-4 py-3 text-center">ผลรับรองรายด้าน</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">เหตุผล/หมายเหตุ</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="px-4 py-3 text-slate-500">{(page - 1) * pageSize + index + 1}</td><td className="px-4 py-3"><strong className="block text-slate-900">{studentName(student)}</strong><span className="text-xs text-slate-500">{student.student_code}</span></td><td className="px-4 py-3 text-slate-700">{student.current_grade_level || '-'} / {student.current_room || '-'}</td><td className="px-4 py-3 text-center">{decision?.final_level ? <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-extrabold ${LEVEL_STYLES[decision.final_level] || LEVEL_STYLES['N/A']}`}>{decision.final_level}</span> : <span className="text-slate-500">-</span>}</td><td className="px-4 py-3 font-bold text-slate-700">{statusLabel(decision?.decision_status)}</td><td className="max-w-md whitespace-normal px-4 py-3 text-slate-600">{decision?.decision_reason || '-'}</td></tr>; })}{!visibleStudents.length && <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">ไม่พบผู้เรียนตามเงื่อนไข</td></tr>}</tbody></table></div>
                 )}
             </section>
-            {totalPages > 1 && <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 print:hidden"><span className="text-sm font-semibold text-slate-600">หน้า {page} จาก {totalPages}</span><div className="flex gap-2"><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1} className="min-h-10 rounded-lg bg-slate-100 px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="min-h-10 rounded-lg bg-indigo-700 px-4 text-sm font-bold text-white disabled:opacity-40">ถัดไป</button></div></div>}
+            {totalPages > 1 && <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 print:hidden"><span className="text-sm font-semibold text-slate-600">หน้า {page} จาก {totalPages}</span><div className="flex gap-2"><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1} className="min-h-11 rounded-lg bg-slate-100 px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="min-h-11 rounded-lg bg-indigo-700 px-4 text-sm font-bold text-white disabled:opacity-40">ถัดไป</button></div></div>}
         </AcademicReportShell>
     );
 }

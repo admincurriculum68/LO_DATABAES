@@ -44,26 +44,32 @@ export function teacherRoleSummary(teacher) {
 }
 
 /**
- * ตรวจข้อมูลก่อนบันทึก คืนรายการข้อความเตือน
+ * ข้อผิดพลาดรายช่อง ใช้แสดงใต้ช่องที่ผิดในแผงแก้ไข แทน toast มุมจอที่หายเองในไม่กี่วินาที
+ * คืน object เช่น { citizen_id: '...', first_name: '...' } ช่องที่ถูกต้องไม่มี key
  * ข้อความอธิบายผลที่จะเกิดจริง ไม่ใช่แค่บอกว่าข้อมูลไม่ถูกต้อง
  */
-export function validatePersonDraft(kind, data) {
-    const errors = [];
+export function personFieldErrors(kind, data) {
+    const errors = {};
     const id = String(data.citizen_id ?? '').replace(/\D/g, '');
     if (id.length !== 13) {
-        errors.push(`เลขประจำตัวประชาชนต้องมี 13 หลัก (ขณะนี้ ${id.length} หลัก) หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`);
+        errors.citizen_id = `เลขประจำตัวประชาชนต้องมี 13 หลัก (ขณะนี้ ${id.length} หลัก) หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`;
     }
-    if (!String(data.first_name ?? '').trim()) errors.push('ต้องกรอกชื่อ');
-    if (!String(data.last_name ?? '').trim()) errors.push('ต้องกรอกนามสกุล');
+    if (!String(data.first_name ?? '').trim()) errors.first_name = 'ต้องกรอกชื่อ';
+    if (!String(data.last_name ?? '').trim()) errors.last_name = 'ต้องกรอกนามสกุล';
 
     if (kind === 'teachers' && (!Array.isArray(data.roles) || data.roles.length === 0)) {
-        errors.push('ครู 1 คนต้องมีอย่างน้อย 1 บทบาท');
+        errors.roles = 'ครู 1 คนต้องมีอย่างน้อย 1 บทบาท';
     }
     if (data.new_password !== undefined && data.new_password !== null && String(data.new_password).trim() !== '') {
         const pw = String(data.new_password).replace(/\D/g, '');
-        if (pw.length !== 8) errors.push('รหัสผ่านต้องเป็นวันเดือนปีเกิด 8 หลัก เช่น 05012555');
+        if (pw.length !== 8) errors.new_password = 'รหัสผ่านต้องเป็นวันเดือนปีเกิด 8 หลัก เช่น 05012555';
     }
     return errors;
+}
+
+/** ตรวจข้อมูลก่อนบันทึก คืนรายการข้อความเตือนตามลำดับช่อง */
+export function validatePersonDraft(kind, data) {
+    return Object.values(personFieldErrors(kind, data));
 }
 
 /** ข้อความค้นหาของคน 1 คน ใช้กรองรายชื่อฝั่งเบราว์เซอร์ */

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, FileSpreadsheet, RefreshCw, Upload, X } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '../lib/xlsx';
 import Papa from 'papaparse';
 import { normalizeThaiDob, sanitizeCitizenId } from '../lib/importSanitizers';
 import { detectHeaderRow, suggestMapping } from '../lib/columnMapping';
@@ -27,8 +27,9 @@ const readFile = file => new Promise((resolve, reject) => {
         return;
     }
     const reader = new FileReader();
-    reader.onload = event => {
+    reader.onload = async event => {
         try {
+            const XLSX = await loadXLSX();
             const workbook = XLSX.read(event.target.result, { type: 'array', cellText: true, cellDates: false });
             const sheets = workbook.SheetNames.map(name => {
                 const formattedRows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '', raw: false, blankrows: false });
@@ -211,7 +212,7 @@ export default function FlexibleImportWizard({ initialType = 'students', onCance
             </div>}
 
             {step === 2 && <div className="space-y-5 p-5 sm:p-6">
-                <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><FileSpreadsheet className="h-7 w-7 text-blue-700" /><div><strong className="block text-sm text-blue-950">{fileName}</strong><span className="text-xs text-blue-800">เลือกชีตและแถวที่เป็นชื่อคอลัมน์ให้ถูกต้อง</span></div></div><button onClick={() => fileInputRef.current?.click()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-3 text-sm font-bold text-blue-800"><RefreshCw className="h-4 w-4" />เปลี่ยนไฟล์</button></div>
+                <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><FileSpreadsheet className="h-7 w-7 text-blue-700" /><div><strong className="block text-sm text-blue-950">{fileName}</strong><span className="text-xs text-blue-800">เลือกชีตและแถวที่เป็นชื่อคอลัมน์ให้ถูกต้อง</span></div></div><button onClick={() => fileInputRef.current?.click()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-3 text-sm font-bold text-blue-800"><RefreshCw className="h-4 w-4" />เปลี่ยนไฟล์</button></div>
                 <div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-1.5 block text-sm font-extrabold text-slate-700">ชีตข้อมูล</span><select value={sheetIndex} onChange={event => changeSheet(Number(event.target.value))} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold">{sheets.map((sheet, index) => <option key={sheet.name} value={index}>{sheet.name} · {sheet.rows.length} แถว</option>)}</select></label><label><span className="mb-1.5 block text-sm font-extrabold text-slate-700">แถวที่เป็นชื่อคอลัมน์</span><select value={headerRow} onChange={event => changeHeaderRow(event.target.value)} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold">{rows.slice(0, 20).map((row, index) => <option key={index} value={index}>แถวที่ {index + 1}: {(row || []).filter(Boolean).slice(0, 4).join(' · ') || 'ไม่มีข้อมูล'}</option>)}</select></label></div>
                 <div className="overflow-hidden rounded-xl border border-slate-200"><div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h3 className="font-extrabold text-slate-900">จับคู่ข้อมูลที่ระบบต้องการกับคอลัมน์ในไฟล์</h3><p className="mt-1 text-xs text-slate-600">ระบบจับคู่ให้อัตโนมัติแล้ว โปรดตรวจช่องที่มีเครื่องหมาย *</p></div><div className="grid gap-px bg-slate-200 sm:grid-cols-2">{schema.fields.map(field => <label key={field.key} className="bg-white p-4"><span className="mb-1.5 flex items-center justify-between text-sm font-extrabold text-slate-800"><span>{field.label}{field.required && <span className="text-rose-600"> *</span>}</span>{mapping[field.key] !== '' && <CheckCircle2 className="h-4 w-4 text-emerald-700" />}</span><select value={mapping[field.key] ?? ''} onChange={event => setMapping(previous => ({ ...previous, [field.key]: event.target.value }))} className={`min-h-11 w-full rounded-xl border bg-white px-3 text-sm font-bold ${field.required && (mapping[field.key] === '' || mapping[field.key] === undefined) ? 'border-rose-400 text-rose-800' : 'border-field text-slate-800'}`}><option value="">— ไม่มีคอลัมน์นี้ —</option>{headers.map((header, index) => String(header ?? '').trim() && <option key={`${index}-${header}`} value={String(index)}>{String(header)} · คอลัมน์ {index + 1}</option>)}</select></label>)}</div></div>
                 {requiredMissing.length > 0 && <div className="flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900"><AlertCircle className="h-5 w-5 shrink-0" /><p>ยังไม่ได้จับคู่: <strong>{requiredMissing.map(field => field.label).join(', ')}</strong></p></div>}
