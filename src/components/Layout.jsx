@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
-import { LogOut, UserCircle, BookOpen, ChevronRight, Calendar, ChevronDown } from 'lucide-react';
+import { LogOut, UserCircle, BookOpen, Calendar, ChevronDown } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ROLE_TONES, defaultRouteFor, hasRole, roleLabelsFor, rolesOf } from '../lib/roles';
+import { defaultRouteFor, hasRole, roleLabelsFor } from '../lib/roles';
 import useDocumentTitle from '../lib/useDocumentTitle';
 import { useDialog } from '../lib/dialogContext';
 
@@ -30,7 +30,6 @@ export default function Layout({ children, title, onActionClick, actionText, act
     }, [showTermPicker]);
 
     // เมนูเลื่อนแนวนอนได้บนจอเล็ก ขอบจางบอกว่ายังมีเมนูต่อ และเมนูของหน้าปัจจุบันต้องอยู่ในจอเสมอ
-    // (เดิมที่ 375px เมนู "รับรองผล" ตกขอบจอ และ "ติดตามการรายงานผล" ถูกตัดครึ่งคำ)
     const navScrollRef = useRef(null);
     const [navFade, setNavFade] = useState({ left: false, right: false });
     const updateNavFade = useCallback(() => {
@@ -64,11 +63,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
     };
 
     // ครู 1 คนมีได้หลายบทบาท ป้ายจึงแสดงทุกบทบาทที่ปฏิบัติจริง
-    const userRoles = rolesOf(currentUser);
-    const roleBadges = roleLabelsFor(currentUser).map((label, index) => ({
-        label,
-        color: ROLE_TONES[userRoles[index]] || 'bg-slate-100 text-slate-600 border-slate-200',
-    }));
+    const roleLabels = roleLabelsFor(currentUser);
 
     // เมนูของทุกบทบาทถูกนำมารวมกัน แล้วแยกเป็นหัวข้อ เพื่อให้ครูที่เป็นฝ่ายวิชาการด้วย
     // ทำงานต่อเนื่องได้โดยไม่ต้องสลับโหมด
@@ -154,157 +149,141 @@ export default function Layout({ children, title, onActionClick, actionText, act
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+        <div className="flex min-h-screen flex-col bg-paper font-sans text-slate-800">
             {/* ลิงก์แบบ #anchor ใช้ไม่ได้เพราะแอปใช้ HashRouter จึงย้ายโฟกัสด้วยปุ่มแทน */}
             <button
                 type="button"
                 onClick={() => document.getElementById('main-content')?.focus()}
-                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-indigo-700 focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-white focus:shadow-lg print:hidden"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-indigo-700 focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg print:hidden"
             >
                 ข้ามไปยังเนื้อหาหลัก
             </button>
-            <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-40 backdrop-blur-xl bg-white/90 print:hidden">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
-                    {/* Brand + Title */}
-                    <div className="flex items-center gap-3 min-w-0">
+
+            <header className="sticky top-0 z-40 print:hidden">
+                {/* แถบตัวตน: ชื่อระบบ ชื่อโรงเรียน ภาคเรียนที่ใช้อยู่ และผู้ใช้ */}
+                <div className="bg-indigo-800 text-white">
+                    <div className="mx-auto flex min-h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
                         <button
                             onClick={() => navigate(defaultRouteFor(currentUser))}
                             aria-label="กลับหน้าหลัก CBE Track"
-                            className="flex min-h-11 items-center gap-2.5 shrink-0 group"
+                            className="flex min-h-11 shrink-0 items-center gap-2.5 rounded-lg px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                         >
-                            <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm border border-blue-500/20 group-hover:shadow-blue-500/20 group-hover:shadow-md transition-all">
-                                <BookOpen className="text-white w-4 h-4 flex-shrink-0" />
-                            </div>
-                            <div className="hidden sm:flex flex-col justify-center leading-none">
-                                <span className="font-extrabold text-sm text-slate-800 tracking-tight">
-                                    CBE <span className="text-blue-600">Track</span>
-                                </span>
-                                <span className="text-xs text-slate-600 font-medium truncate max-w-[160px]" title={currentUser?.school_name || undefined}>
+                            <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 bg-white/10" aria-hidden="true">
+                                <BookOpen className="h-4 w-4" />
+                            </span>
+                            <span className="flex min-w-0 flex-col text-left leading-tight">
+                                <span className="font-display text-sm font-semibold tracking-wide">CBE Track</span>
+                                <span className="truncate text-xs text-indigo-100" title={currentUser?.school_name || undefined}>
                                     {currentUser?.school_name || 'ระบบติดตามผลลัพธ์การเรียนรู้'}
                                 </span>
-                            </div>
+                            </span>
                         </button>
 
-                        {title && (
-                            <>
-                                <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 hidden sm:block" />
-                                <span className="font-semibold text-slate-600 truncate text-sm hidden sm:block max-w-[200px] lg:max-w-xs">{title}</span>
-                            </>
-                        )}
-                    </div>
+                        <div className="flex items-center gap-2">
+                            {!hasRole(currentUser, 'student') && academicYear && (
+                                <div className="relative">
+                                    <button
+                                        ref={termToggleRef}
+                                        onClick={() => setShowTermPicker(!showTermPicker)}
+                                        className="flex min-h-11 items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 text-xs font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                                        aria-expanded={showTermPicker}
+                                        aria-label="เลือกปีการศึกษาและภาคเรียน"
+                                    >
+                                        <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                                        <span className="hidden sm:inline">ภาคเรียนที่</span> {semester}/{academicYear}
+                                        <ChevronDown className={`h-3 w-3 transition-transform ${showTermPicker ? 'rotate-180' : ''}`} aria-hidden="true" />
+                                    </button>
 
-                    {/* Right side */}
-                    <div className="flex items-center gap-2">
-                        {/* Academic Year / Semester Picker */}
-                        {!hasRole(currentUser, 'student') && academicYear && (
-                            <div className="relative">
-                                <button
-                                    ref={termToggleRef}
-                                    onClick={() => setShowTermPicker(!showTermPicker)}
-                                    className="flex min-h-11 items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold text-indigo-800 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
-                                    aria-expanded={showTermPicker}
-                                    aria-label="เลือกปีการศึกษาและภาคเรียน"
-                                >
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    <span className="hidden sm:inline">ภาคเรียนที่</span> {semester}/{academicYear}
-                                    <ChevronDown className={`w-3 h-3 transition-transform ${showTermPicker ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {showTermPicker && (
-                                    <>
-                                        {/* Backdrop */}
-                                        <div className="fixed inset-0 z-30" onClick={() => setShowTermPicker(false)} />
-                                        <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-40 w-64 animate-in fade-in slide-in-from-top-2 duration-200">
-                                            <p className="mb-3 text-xs font-bold text-slate-600">
-                                                {isAdmin ? 'กำหนดปีการศึกษาและภาคเรียนของระบบ' : 'เลือกปีการศึกษาและภาคเรียน'}
-                                            </p>
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <label htmlFor="term-year" className="text-xs font-bold text-slate-600 mb-1 block">ปีการศึกษา</label>
-                                                    <select
-                                                        id="term-year"
-                                                        value={academicYear}
-                                                        onChange={(e) => handleTermChange(parseInt(e.target.value), semester)}
-                                                        className="w-full border border-field rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                                                    >
-                                                        {yearOptions.map(y => (
-                                                            <option key={y} value={y}>{y}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <p id="term-semester-label" className="text-xs font-bold text-slate-600 mb-1 block">ภาคเรียน</p>
-                                                    <div className="flex gap-2" role="group" aria-labelledby="term-semester-label">
-                                                        {[1, 2].map(s => (
-                                                            <button
-                                                                key={s}
-                                                                onClick={() => handleTermChange(academicYear, s)}
-                                                                aria-pressed={semester === s}
-                                                                className={`min-h-11 flex-1 py-2.5 rounded-xl text-sm font-extrabold border-2 transition-all ${
-                                                                    semester === s
-                                                                        ? 'bg-indigo-700 border-indigo-600 text-white shadow-md'
-                                                                        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
-                                                                }`}
-                                                            >
-                                                                ภาคเรียนที่ {s}
-                                                            </button>
-                                                        ))}
+                                    {showTermPicker && (
+                                        <>
+                                            <div className="fixed inset-0 z-30" onClick={() => setShowTermPicker(false)} />
+                                            <div className="absolute right-0 top-full z-40 mt-2 w-64 rounded-2xl border border-line bg-white p-4 text-slate-800 shadow-xl">
+                                                <p className="mb-3 text-xs font-semibold text-slate-600">
+                                                    {isAdmin ? 'กำหนดปีการศึกษาและภาคเรียนของระบบ' : 'เลือกปีการศึกษาและภาคเรียน'}
+                                                </p>
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <label htmlFor="term-year" className="mb-1 block text-xs font-semibold text-slate-600">ปีการศึกษา</label>
+                                                        <select
+                                                            id="term-year"
+                                                            value={academicYear}
+                                                            onChange={(e) => handleTermChange(parseInt(e.target.value), semester)}
+                                                            className="min-h-11 w-full rounded-lg border border-field px-3 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                                                        >
+                                                            {yearOptions.map(y => (
+                                                                <option key={y} value={y}>{y}</option>
+                                                            ))}
+                                                        </select>
                                                     </div>
+                                                    <div>
+                                                        <p id="term-semester-label" className="mb-1 block text-xs font-semibold text-slate-600">ภาคเรียน</p>
+                                                        <div className="flex gap-2" role="group" aria-labelledby="term-semester-label">
+                                                            {[1, 2].map(s => (
+                                                                <button
+                                                                    key={s}
+                                                                    onClick={() => handleTermChange(academicYear, s)}
+                                                                    aria-pressed={semester === s}
+                                                                    className={`min-h-11 flex-1 rounded-lg border text-sm font-semibold transition-colors ${
+                                                                        semester === s
+                                                                            ? 'border-indigo-700 bg-indigo-700 text-white'
+                                                                            : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400'
+                                                                    }`}
+                                                                >
+                                                                    ภาคเรียนที่ {s}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    {isAdmin && (
+                                                        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                                            การเปลี่ยนค่านี้มีผลต่อปีการศึกษาและภาคเรียนเริ่มต้นของผู้ใช้ทุกบทบาท
+                                                        </p>
+                                                    )}
                                                 </div>
-                                                {isAdmin && (
-                                                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                                                        การเปลี่ยนค่านี้มีผลต่อปีการศึกษาและภาคเรียนเริ่มต้นของผู้ใช้ทุกบทบาท
-                                                    </p>
-                                                )}
                                             </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
 
-                        {/* Action button */}
-                        {onActionClick && (
-                            <button
-                                onClick={onActionClick}
-                                className="hidden min-h-11 sm:flex text-sm bg-indigo-50 border border-indigo-100 text-indigo-800 hover:bg-indigo-100 hover:border-indigo-200 px-4 py-2 rounded-xl font-semibold transition-all items-center gap-2 shadow-sm"
-                            >
-                                {ActionIcon && <ActionIcon className="w-4 h-4" />}
-                                {actionText}
-                            </button>
-                        )}
+                            {onActionClick && (
+                                <button
+                                    onClick={onActionClick}
+                                    className="hidden min-h-11 items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:flex"
+                                >
+                                    {ActionIcon && <ActionIcon className="h-4 w-4" aria-hidden="true" />}
+                                    {actionText}
+                                </button>
+                            )}
 
-                        {/* User Pill */}
-                        <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-                            <UserCircle className="w-6 h-6 text-slate-500 shrink-0" />
-                            <div className="hidden sm:flex flex-col leading-none">
-                                <span className="text-xs font-bold text-slate-800 truncate max-w-[140px]">{currentUser?.full_name}</span>
-                                <span className="mt-0.5 flex flex-wrap gap-1">
-                                    {roleBadges.map(badge => (
-                                        <span key={badge.label} className={`text-xs font-bold px-1.5 py-0.5 rounded-full border w-fit ${badge.color}`}>{badge.label}</span>
-                                    ))}
+                            <div className="hidden items-center gap-2 border-l border-white/20 pl-3 sm:flex">
+                                <UserCircle className="h-6 w-6 shrink-0 text-indigo-100" aria-hidden="true" />
+                                <span className="flex flex-col leading-tight">
+                                    <span className="max-w-[160px] truncate text-xs font-semibold">{currentUser?.full_name}</span>
+                                    <span className="truncate text-xs text-indigo-100">{roleLabels.join(' · ')}</span>
                                 </span>
                             </div>
-                        </div>
 
-                        {/* Logout */}
-                        <button
-                            onClick={handleLogout}
-                            title="ออกจากระบบ"
-                            aria-label="ออกจากระบบ"
-                            className="flex h-11 w-11 items-center justify-center text-slate-600 hover:text-red-700 hover:bg-slate-100 rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
-                        >
-                            <LogOut className="w-5 h-5" />
-                        </button>
+                            <button
+                                onClick={handleLogout}
+                                title="ออกจากระบบ"
+                                aria-label="ออกจากระบบ"
+                                className="flex h-11 w-11 items-center justify-center rounded-lg text-indigo-100 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                            >
+                                <LogOut className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                        </div>
                     </div>
                 </div>
+
+                {/* แถบเมนู: ขีดเส้นใต้รายการที่เปิดอยู่ แบบเดียวกับเว็บหน่วยงาน */}
                 {navigationGroups.length > 0 && (
-                    <nav className="relative border-t border-slate-200 bg-white" aria-label="เมนูหลัก">
-                        <div ref={navScrollRef} onScroll={updateNavFade} className="mx-auto flex max-w-7xl snap-x items-center gap-1 overflow-x-auto scroll-px-4 px-4 py-1.5 sm:px-6 lg:px-8">
+                    <nav className="relative border-b border-line bg-white" aria-label="เมนูหลัก">
+                        <div ref={navScrollRef} onScroll={updateNavFade} className="mx-auto flex max-w-7xl snap-x items-stretch gap-1 overflow-x-auto scroll-px-4 px-4 sm:px-6 lg:px-8">
                             {navigationGroups.map((group, groupIndex) => (
-                                <div key={group.key} className="flex shrink-0 items-center gap-1">
+                                <div key={group.key} className="flex shrink-0 items-stretch gap-1">
                                     {showGroupHeadings && group.heading && (
-                                        <span className={`shrink-0 whitespace-nowrap px-2 text-xs font-bold text-slate-500 ${groupIndex > 0 ? 'ml-2 border-l border-slate-200 pl-4' : ''}`}>
+                                        <span className={`flex shrink-0 items-center whitespace-nowrap px-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 ${groupIndex > 0 ? 'ml-2 border-l border-line pl-4' : ''}`}>
                                             {group.heading}
                                         </span>
                                     )}
@@ -314,8 +293,10 @@ export default function Layout({ children, title, onActionClick, actionText, act
                                             type="button"
                                             onClick={() => navigate(item.path)}
                                             aria-current={isActive(item) ? 'page' : undefined}
-                                            className={`min-h-11 shrink-0 snap-start rounded-xl px-3.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
-                                                isActive(item) ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'
+                                            className={`min-h-12 shrink-0 snap-start border-b-2 px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 ${
+                                                isActive(item)
+                                                    ? 'border-indigo-700 text-indigo-800'
+                                                    : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-indigo-800'
                                             }`}
                                         >
                                             {item.label}
@@ -330,20 +311,17 @@ export default function Layout({ children, title, onActionClick, actionText, act
                 )}
             </header>
 
-            {/* Mobile action button */}
+            {/* ปุ่มงานหลักของหน้า สำหรับจอเล็กที่ซ่อนปุ่มบนแถบตัวตน */}
             {onActionClick && (
-                <div className="sm:hidden px-4 pt-4 print:hidden">
-                    <button
-                        onClick={onActionClick}
-                        className="w-full flex text-sm bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 px-4 py-3 rounded-xl font-semibold transition-all justify-center items-center gap-2 shadow-sm"
-                    >
-                        {ActionIcon && <ActionIcon className="w-4 h-4" />}
+                <div className="px-4 pt-4 sm:hidden print:hidden">
+                    <button onClick={onActionClick} className="btn-secondary w-full">
+                        {ActionIcon && <ActionIcon className="h-4 w-4" aria-hidden="true" />}
                         {actionText}
                     </button>
                 </div>
             )}
 
-            <main id="main-content" tabIndex={-1} className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 focus:outline-none print:max-w-none print:p-0">
+            <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-grow px-4 py-8 focus:outline-none sm:px-6 lg:px-8 print:max-w-none print:p-0">
                 {children}
             </main>
         </div>

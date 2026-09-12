@@ -165,7 +165,7 @@ export default function AdminReportLO() {
 
             <section className="w-full print:p-4">
                 {/* LO Selector */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-6 print:hidden">
+                <div className="bg-white rounded-2xl border border-line shadow-sm p-5 mb-6 print:hidden">
                     <label htmlFor="report-lo" className="block text-sm font-bold text-slate-700 mb-2">เลือก LO สำหรับจัดทำรายงาน</label>
                     <div className="relative max-w-xl">
                         <select
@@ -197,7 +197,7 @@ export default function AdminReportLO() {
                             <p className="text-sm text-slate-600 font-semibold mb-2">ผลการประเมินจากทุกวิชาที่เชื่อมโยงกับ LO นี้</p>
                             <div className="bg-white rounded-2xl border border-indigo-100 p-5 shadow-sm">
                                 <p className="text-sm font-bold text-indigo-700 mb-1">ผลลัพธ์การเรียนรู้</p>
-                                <h2 className="text-lg font-extrabold text-slate-800">
+                                <h2 className="text-lg font-bold text-slate-800">
                                     {selectedLOData?.lo_code ? `${selectedLOData.lo_code} — ` : ''}ข้อ {selectedLOData?.ability_no}: {selectedLOData?.lo_description}
                                 </h2>
                                 <p className="text-sm text-slate-500 mt-1">ด้านความสามารถ: <span className="font-bold text-slate-700">{selectedLOData?.competency_area || '-'}</span> | ระดับช่วงชั้น: <span className="font-bold text-slate-700">{selectedLOData?.level_group || '-'}</span></p>
@@ -223,16 +223,16 @@ export default function AdminReportLO() {
                         </section>
 
                         {subjects.length === 0 ? (
-                            <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้นี้</div>
+                            <div className="text-center py-16 bg-white rounded-2xl border border-line text-slate-500 font-bold">ยังไม่มีรายวิชาที่เชื่อมโยงกับผลลัพธ์การเรียนรู้นี้</div>
                         ) : (
                             <>
-                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm print:hidden">
+                            <div className="overflow-hidden rounded-2xl border border-line bg-white print:hidden">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left whitespace-nowrap border-collapse text-sm print:border print:border-black">
                                         <thead>
                                             {/* Row 1: subject headers */}
                                             <tr className="bg-indigo-700 text-white print:bg-transparent print:text-black">
-                                                <th rowSpan={2} className="px-5 py-4 text-left font-extrabold min-w-[200px] border-r border-indigo-500 print:border-black align-middle">
+                                                <th rowSpan={2} className="px-5 py-4 text-left font-bold min-w-[200px] border-r border-indigo-500 print:border-black align-middle">
                                                     รายชื่อนักเรียน
                                                 </th>
                                                 {subjects.map(sub => (
@@ -250,12 +250,12 @@ export default function AdminReportLO() {
                                                 ))}
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white print:divide-black">
+                                        <tbody className="divide-y divide-line bg-white print:divide-black">
                                             {paginatedStudents.map((st, i) => {
                                                 const globalIdx = (currentPage - 1) * pageSize + i + 1;
                                                 return (
                                                 <tr key={st.student_id} className="hover:bg-slate-50 transition-colors group">
-                                                    <td className="px-5 py-3 font-bold text-slate-800 border-r border-slate-100 print:border-black sticky left-0 bg-white group-hover:bg-slate-50">
+                                                    <td className="px-5 py-3 font-bold text-slate-800 border-r border-line print:border-black sticky left-0 bg-white group-hover:bg-slate-50">
                                                         <span className="text-slate-500 font-normal text-xs mr-2">{globalIdx}.</span>
                                                         {st.prefix || ''}{st.first_name} {st.last_name}
                                                         <span className="block text-xs text-slate-500 font-mono">{st.student_code}</span>
@@ -264,7 +264,7 @@ export default function AdminReportLO() {
                                                         const key = `${st.student_id}_${sub.subject_id}`;
                                                         const evidenceText = evalLookup[key] || '';
                                                         return (
-                                                            <td key={sub.subject_id} className="px-4 py-3 align-top border-r border-slate-100 print:border-black">
+                                                            <td key={sub.subject_id} className="px-4 py-3 align-top border-r border-line print:border-black">
                                                                 <EvidenceCell value={evidenceText} />
                                                             </td>
                                                         );
@@ -278,7 +278,7 @@ export default function AdminReportLO() {
                             
                             {/* Pagination UI */}
                             {totalPages > 1 && (
-                                <div className="mt-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm print:hidden gap-4">
+                                <div className="mt-6 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-line shadow-sm print:hidden gap-4">
                                     <p className="text-sm text-slate-500 font-bold">
                                         แสดงหน้าที่ <span className="text-indigo-600">{currentPage}</span> จากทั้งหมด <span className="text-slate-800">{totalPages}</span> หน้า
                                         (ทั้งหมด {students.length} คน)

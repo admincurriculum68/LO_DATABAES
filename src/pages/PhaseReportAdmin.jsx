@@ -204,16 +204,16 @@ export default function PhaseReportAdmin() {
 
                 {/* ─── Control Panel ─────────────────────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <h2 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
+                    <div className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
+                        <h2 className="font-bold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
 
                         {/* Phase Selector */}
                         <div className="flex gap-3 mb-6">
                             {['ตอนต้น', 'ตอนปลาย'].map(p => (
                                 <button key={p} onClick={() => handlePhaseChange(p)}
-                                    className={`flex-1 py-3 px-6 rounded-2xl font-extrabold text-sm border-2 transition-all ${selectedPhase === p
+                                    className={`flex-1 py-3 px-6 rounded-2xl font-bold text-sm border-2 transition-all ${selectedPhase === p
                                         ? 'bg-indigo-700 border-indigo-600 text-white shadow-md'
-                                        : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                                        : 'bg-white border-line text-slate-600 hover:border-indigo-300'}`}>
                                     ช่วงชั้น{p}
                                     <span className={`block text-xs font-medium mt-0.5 ${selectedPhase === p ? 'text-indigo-100' : 'text-slate-500'}`}>
                                         {p === 'ตอนต้น' ? 'ป.1 – ป.3' : 'ป.4 – ป.6'}
@@ -233,13 +233,13 @@ export default function PhaseReportAdmin() {
                                         className="w-full pl-10 pr-4 py-3 border border-field rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                                 </div>
                                 {searchTerm && (
-                                    <div className="absolute top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl max-h-52 overflow-y-auto z-20">
+                                    <div className="absolute top-full mt-1 w-full bg-white border border-line rounded-xl shadow-2xl max-h-52 overflow-y-auto z-20">
                                         {filteredStudents.length === 0
                                             ? <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                             : filteredStudents.map(s => (
                                                 <button key={s.student_id}
                                                     onClick={() => { setSelectedStudent(s); setSearchTerm(''); }}
-                                                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-slate-100 last:border-0">
+                                                    className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-line last:border-0">
                                                     {s.prefix}{s.first_name} {s.last_name}
                                                     <span className="ml-2 text-slate-500 text-xs">{s.student_code}</span>
                                                 </button>
@@ -265,10 +265,10 @@ export default function PhaseReportAdmin() {
 
                         {/* ─── Ability Level Inputs ─── */}
                         <div className="mb-5">
-                            <h2 className="font-extrabold text-slate-700 mb-3 text-sm">ระดับความสามารถที่นักเรียนได้รับ</h2>
+                            <h2 className="font-bold text-slate-700 mb-3 text-sm">ระดับความสามารถที่นักเรียนได้รับ</h2>
                             <div className="space-y-2">
                                 {allAbilities.map(ab => (
-                                    <div key={ab.key} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                                    <div key={ab.key} className="flex items-center gap-3 bg-slate-50 border border-line rounded-xl px-4 py-3">
                                         <p className="text-sm text-slate-700 flex-1 font-medium">{ab.name}</p>
                                         <span className="text-xs text-slate-500 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{ab.expected}</span></span>
                                         <select
@@ -323,7 +323,7 @@ export default function PhaseReportAdmin() {
                 </div>
 
                 {/* ─── Print Document ──────────────────────────────────── */}
-                <div className="report-document print-doc rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <div className="report-document print-doc rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-8">
                     {!selectedStudent ? (
                         <div className="no-print text-center py-24 text-slate-500 font-medium">
                             เลือกนักเรียนเพื่อแสดงตัวอย่างเอกสาร
@@ -332,7 +332,7 @@ export default function PhaseReportAdmin() {
                         <>
                             {/* Header */}
                             <div className="text-center mb-6">
-                                <h1 className="text-xl font-extrabold text-slate-900">
+                                <h1 className="text-xl font-bold text-slate-900">
                                     แบบการรายงานผลการเรียนระดับ{phaseConfig.label}
                                 </h1>
                                 <div className="flex justify-center gap-10 mt-2 text-base font-medium text-slate-700">
@@ -370,20 +370,20 @@ export default function PhaseReportAdmin() {
 
                                     {/* Activities */}
                                     <tr className="bg-slate-50">
-                                        <td className="border border-black p-3 font-extrabold">กิจกรรมพัฒนาผู้เรียน</td>
+                                        <td className="border border-black p-3 font-bold">กิจกรรมพัฒนาผู้เรียน</td>
                                         <td className="border border-black p-3 text-center">
                                             <span className="text-sm">☑ ผ่าน &nbsp; □ ไม่ผ่าน</span>
                                         </td>
-                                        <td className={`border border-black p-3 text-center font-extrabold ${learnerActivities === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                        <td className={`border border-black p-3 text-center font-bold ${learnerActivities === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
                                             {learnerActivities === 'ผ่าน' ? '☑ ผ่าน' : '☑ ไม่ผ่าน'}
                                         </td>
                                     </tr>
                                     <tr className="bg-slate-50">
-                                        <td className="border border-black p-3 font-extrabold">คุณลักษณะอันพึงประสงค์</td>
+                                        <td className="border border-black p-3 font-bold">คุณลักษณะอันพึงประสงค์</td>
                                         <td className="border border-black p-3 text-center">
                                             <span className="text-sm">☑ ผ่าน &nbsp; □ ไม่ผ่าน</span>
                                         </td>
-                                        <td className={`border border-black p-3 text-center font-extrabold ${desirableChars === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                        <td className={`border border-black p-3 text-center font-bold ${desirableChars === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
                                             {desirableChars === 'ผ่าน' ? '☑ ผ่าน' : '☑ ไม่ผ่าน'}
                                         </td>
                                     </tr>
@@ -407,7 +407,7 @@ export default function PhaseReportAdmin() {
                             {/* ─── Table 2: Behavior Descriptions (สพฐ. central data) ─── */}
                             {hasBehaviors && (
                                 <>
-                                    <h2 className="text-base font-extrabold text-slate-800 mb-3">คำอธิบายพฤติกรรม</h2>
+                                    <h2 className="text-base font-bold text-slate-800 mb-3">คำอธิบายพฤติกรรม</h2>
                                     <table className="w-full border-collapse text-sm">
                                         <thead>
                                             <tr>

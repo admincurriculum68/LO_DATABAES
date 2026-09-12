@@ -139,7 +139,7 @@ export default function ReportView() {
             <div className="max-w-[210mm] mx-auto mb-6 flex justify-between items-center print:hidden px-4">
                 <button
                     onClick={() => navigate(-1)}
-                    className="bg-white/80 backdrop-blur border border-slate-300 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:bg-slate-50 transition flex items-center group"
+                    className="bg-white border border-slate-300 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:bg-slate-50 transition flex items-center group"
                 >
                     <ChevronLeft className="w-5 h-5 mr-1 group-hover:-translate-x-1 transition-transform" /> กลับ
                 </button>

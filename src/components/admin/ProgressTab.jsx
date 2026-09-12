@@ -116,17 +116,17 @@ export default function ProgressTab() {
     }, [loadEvaluationProgress]);
 
     return (
-        <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="mb-6 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-h-[500px] rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-6 flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 className="flex items-center text-lg font-extrabold text-slate-900"><CheckCircle className="mr-2 h-5 w-5 text-emerald-700" />สถานะรายวิชาทั้งหมด</h2>
+                    <h2 className="flex items-center text-lg font-bold text-slate-900"><CheckCircle className="mr-2 h-5 w-5 text-emerald-700" />สถานะรายวิชาทั้งหมด</h2>
                     <p className="mt-1 text-sm leading-6 text-slate-600">แสดงวิชาที่ยังรายงานไม่ครบก่อน เพื่อให้ติดตามงานต่อได้ทันที</p>
                 </div>
                 <button
                     type="button"
                     onClick={loadEvaluationProgress}
                     disabled={loadingProgress}
-                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
                 >
                     <RefreshCw className={`h-4 w-4 ${loadingProgress ? 'animate-spin' : ''}`} />
                     {loadingProgress ? 'กำลังอัปเดต' : 'รีเฟรชข้อมูล'}
@@ -140,30 +140,30 @@ export default function ProgressTab() {
                 </div>
             ) : progressError ? (
                 <div className="surface-danger rounded-2xl border border-rose-200 px-5 py-10 text-center" role="alert">
-                    <p className="font-extrabold text-rose-950">โหลดสถานะการรายงานผลไม่สำเร็จ</p>
+                    <p className="font-bold text-rose-950">โหลดสถานะการรายงานผลไม่สำเร็จ</p>
                     <p className="mt-1 text-sm text-rose-800">{progressError}</p>
-                    <button type="button" onClick={loadEvaluationProgress} className="action-danger mt-4 min-h-11 rounded-xl px-4 text-sm font-extrabold">ลองโหลดอีกครั้ง</button>
+                    <button type="button" onClick={loadEvaluationProgress} className="action-danger mt-4 min-h-11 rounded-xl px-4 text-sm font-bold">ลองโหลดอีกครั้ง</button>
                 </div>
             ) : evalProgress.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-16 text-center">
-                    <p className="font-extrabold text-slate-800">ยังไม่มีรายวิชาในภาคเรียนนี้</p>
+                    <p className="font-bold text-slate-800">ยังไม่มีรายวิชาในภาคเรียนนี้</p>
                     <p className="mt-1 text-sm text-slate-600">ตรวจสอบปีการศึกษาและภาคเรียน หรือเพิ่มข้อมูลรายวิชาก่อนติดตามผล</p>
-                    <button type="button" onClick={() => navigate('/admin/setup')} className="mt-4 min-h-11 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-extrabold text-indigo-700 hover:bg-indigo-50">ไปที่ตั้งค่าข้อมูล</button>
+                    <button type="button" onClick={() => navigate('/admin/setup')} className="mt-4 min-h-11 rounded-xl border border-indigo-200 bg-white px-4 text-sm font-bold text-indigo-700 hover:bg-indigo-50">ไปที่ตั้งค่าข้อมูล</button>
                 </div>
             ) : (
                 <div className="space-y-3">
                     {/* Summary bar */}
                     <div className="mb-6 grid gap-3 sm:grid-cols-3">
                         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
-                            <p className="text-3xl font-extrabold text-emerald-700">{evalProgress.filter(p => p.percent === 100).length}</p>
+                            <p className="text-3xl font-bold text-emerald-700">{evalProgress.filter(p => p.percent === 100).length}</p>
                             <p className="text-xs font-bold text-emerald-700">ประเมินครบแล้ว</p>
                         </div>
                         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
-                            <p className="text-3xl font-extrabold text-amber-700">{evalProgress.filter(p => p.percent > 0 && p.percent < 100).length}</p>
+                            <p className="text-3xl font-bold text-amber-700">{evalProgress.filter(p => p.percent > 0 && p.percent < 100).length}</p>
                             <p className="text-xs font-bold text-amber-700">กำลังดำเนินการ</p>
                         </div>
                         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
-                            <p className="text-3xl font-extrabold text-red-700">{evalProgress.filter(p => p.percent === 0).length}</p>
+                            <p className="text-3xl font-bold text-red-700">{evalProgress.filter(p => p.percent === 0).length}</p>
                             <p className="text-xs font-bold text-red-700">ยังไม่เริ่ม</p>
                         </div>
                     </div>
@@ -176,7 +176,7 @@ export default function ProgressTab() {
                             'bg-red-50/30 border-red-200'
                         }`}>
                             <div className="flex-1 min-w-0">
-                                <p className="font-extrabold text-slate-800 text-sm truncate">{p.subject_name}</p>
+                                <p className="font-bold text-slate-800 text-sm truncate">{p.subject_name}</p>
                                 <p className="text-xs text-slate-500 mt-0.5">
                                     ครู: <span className="font-bold text-slate-700">{p.teacherName}</span>
                                     &ensp;|&ensp;{p.grade_level} ภาคเรียนที่ {p.semester}/{p.academic_year}
@@ -199,7 +199,7 @@ export default function ProgressTab() {
                                     />
                                 </div>
                             </div>
-                            <span className={`text-xs font-extrabold px-3 py-1.5 rounded-lg border shrink-0 ${
+                            <span className={`text-xs font-bold px-3 py-1.5 rounded-lg border shrink-0 ${
                                 p.percent === 100 ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
                                 p.percent > 0 ? 'bg-amber-100 text-amber-700 border-amber-300' :
                                 'bg-red-100 text-red-700 border-red-300'

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* ฟอนต์สำหรับเอกสาร ปพ. ที่ต้องพิมพ์ออกกระดาษ */
 @font-face {
   font-family: 'THSarabunNew';
   src: url('https://cdn.jsdelivr.net/gh/lazywasabi/thai-web-fonts@master/fonts/ThSarabunNew/THSarabunNew.woff2') format('woff2');
@@ -13,46 +14,105 @@
   font-style: normal;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   ระบบดีไซน์ CBE Track — โทนราชการยุคใหม่
+   น้ำเงินเข้มเป็นสีประจำระบบ ทองหม่นใช้เน้นเฉพาะจุด พื้นเป็นสีกระดาษ
+   การ์ดใช้เส้นขอบบางแทนเงาฟุ้ง และมุมโค้งเล็กลงเพื่อให้อ่านเหมือนเอกสารราชการ
+   ค่าทั้งหมดกำหนดที่นี่ที่เดียว ทุกหน้าจึงเปลี่ยนตามพร้อมกัน
+   ───────────────────────────────────────────────────────────── */
 @theme {
   --font-sans: "Sarabun", sans-serif;
+  --font-display: "IBM Plex Sans Thai", "Sarabun", sans-serif;
   --font-sarabun-new: "THSarabunNew", serif;
-  /* ขอบช่องกรอก: 3.5:1 บนพื้นขาว 3.35:1 บน slate-50 ผ่านเกณฑ์ 3:1 ของ WCAG 1.4.11 */
-  --color-field: #7b8aa1;
-  /* สีหลักสีเดียวของปุ่มและสถานะที่เลือก */
-  --color-primary: #4338ca;
-  --color-primary-strong: #3730a3;
+
   /* ภาษาไทยมีสระบนล่างและวรรณยุกต์ ระยะบรรทัดตั้งต้นของ Tailwind แน่นเกินไป */
   --text-xs--line-height: 1.6;
   --text-sm--line-height: 1.6;
   --text-base--line-height: 1.65;
+
+  /* สีประจำระบบ: แทนที่ชุด indigo เดิมด้วยน้ำเงินราชการ ทุกหน้าที่เขียน indigo ไว้จึงเปลี่ยนตาม */
+  --color-indigo-50: #eef2fb;
+  --color-indigo-100: #dde5f6;
+  --color-indigo-200: #c2d0ec;
+  --color-indigo-300: #9bb1de;
+  --color-indigo-400: #6d8bcb;
+  --color-indigo-500: #4a6bb5;
+  --color-indigo-600: #33509b;
+  --color-indigo-700: #1e3a8a;
+  --color-indigo-800: #172c6b;
+  --color-indigo-900: #132355;
+  --color-indigo-950: #0c1636;
+
+  /* ชื่อเรียกตามหน้าที่ ใช้กับงานใหม่ ๆ ได้ตรงกว่าเลขเฉด */
+  --color-primary: #1e3a8a;
+  --color-primary-strong: #172c6b;
+  --color-primary-soft: #eef2fb;
+  --color-accent: #b45309;      /* ทองหม่น ใช้เน้นหัวข้อสำคัญและเส้นคาด */
+  --color-accent-soft: #fdf4e7;
+  --color-ink: #0f172a;
+  --color-body: #334155;
+  --color-muted: #5b677a;       /* 4.9:1 บนพื้นขาว */
+  --color-line: #d7dee8;        /* เส้นขอบบาง */
+  --color-paper: #f4f6fa;       /* พื้นหลังหน้าเว็บ */
+  /* ขอบช่องกรอก 3.5:1 บนพื้นขาว ผ่านเกณฑ์ 3:1 ของ WCAG 1.4.11 */
+  --color-field: #7b8aa1;
+
+  /* มุมโค้งเล็กลงทั้งระบบ: การ์ดมุม 12px ช่องกรอกและปุ่ม 8px */
+  --radius-md: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+  --radius-3xl: 0.75rem;
+
+  /* เงาบางลงมาก ใช้บอกระดับความลอยจริง ๆ เท่านั้น */
+  --shadow-2xs: 0 1px 1px rgb(15 23 42 / 0.03);
+  --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 2px 6px rgb(15 23 42 / 0.07);
+  --shadow-lg: 0 6px 16px rgb(15 23 42 / 0.09);
+  --shadow-xl: 0 10px 24px rgb(15 23 42 / 0.10);
+  --shadow-2xl: 0 16px 40px rgb(15 23 42 / 0.16);
 }
+
 @layer base {
-  /* หัวเว็บติดด้านบนสูงราว 122px เว้นระยะไว้ ช่องที่ได้โฟกัสจะไม่ถูกหัวเว็บบัง (WCAG 2.4.11) */
+  /* หัวเว็บติดด้านบน เว้นระยะไว้ ช่องที่ได้โฟกัสจะไม่ถูกหัวเว็บบัง (WCAG 2.4.11) */
   html {
-    scroll-padding-top: 8rem;
+    scroll-padding-top: 9rem;
   }
 
   body {
-    @apply font-sans bg-slate-50 text-slate-900 antialiased;
+    @apply font-sans bg-paper text-slate-800 antialiased;
+  }
+
+  /* หัวข้อทุกระดับใช้ฟอนต์หัวข้อเดียวกันทั้งระบบ ไม่ต้องไล่ใส่ทีละหน้า */
+  /* คุมเฉพาะฟอนต์และระยะตัวอักษร ไม่กำหนดสี เพราะหัวข้อบนพื้นเข้มรับสีขาวมาจากกล่องแม่ */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  /* ตัวเลขในตารางและสถิติต้องกว้างเท่ากันทุกหลัก ไม่ขยับเวลาค่าเปลี่ยน */
+  table, .tabular {
+    font-variant-numeric: tabular-nums;
   }
 
   ::placeholder {
-    color: #475569;
+    color: #5b677a;
     opacity: 1;
   }
 
   :focus-visible {
-    outline: 2px solid #4f46e5;
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 }
 
 .loader {
-  @apply border-4 border-slate-200 border-t-indigo-600 rounded-full w-8 h-8 animate-spin mx-auto;
+  @apply border-4 border-slate-200 border-t-indigo-700 rounded-full w-8 h-8 animate-spin mx-auto;
 }
 
 select {
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%235b677a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 0.75rem center;
   background-repeat: no-repeat;
   background-size: 1.5em 1.5em;
@@ -61,25 +121,51 @@ select {
 }
 
 @layer components {
-  .surface-selected { background-color: #eef2ff; }
+  .surface-selected { background-color: #eef2fb; }
   .surface-success { background-color: #ecfdf5; }
   .surface-danger { background-color: #fff1f2; }
   .surface-warning { background-color: #fffbeb; }
-  .action-primary { background-color: #4338ca; color: #ffffff; }
-  .action-primary:hover { background-color: #3730a3; }
+  .action-primary { background-color: #1e3a8a; color: #ffffff; }
+  .action-primary:hover { background-color: #172c6b; }
   .action-success { background-color: #047857; color: #ffffff; }
   .action-success:hover { background-color: #065f46; }
   .action-danger { background-color: #be123c; color: #ffffff; }
   .action-danger:hover { background-color: #9f1239; }
 
-  /* ปุ่มมาตรฐาน 4 แบบ สูง 44px เท่ากันทั้งระบบ ใช้แทนการเขียนสีและขนาดเองทีละปุ่ม */
+  /* ปุ่มมาตรฐาน สูง 44px เท่ากันทั้งระบบ */
   .btn-primary, .btn-secondary, .btn-danger, .btn-ghost {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
-  .btn-primary { @apply bg-indigo-700 text-white hover:bg-indigo-800 focus-visible:ring-indigo-600; }
-  .btn-secondary { @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:ring-indigo-600; }
+  .btn-primary { @apply bg-indigo-700 text-white hover:bg-indigo-800 focus-visible:ring-indigo-700; }
+  .btn-secondary { @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:ring-indigo-700; }
   .btn-danger { @apply bg-red-700 text-white hover:bg-red-800 focus-visible:ring-red-600; }
-  .btn-ghost { @apply text-indigo-800 hover:bg-indigo-50 focus-visible:ring-indigo-600; }
+  .btn-ghost { @apply text-indigo-800 hover:bg-indigo-50 focus-visible:ring-indigo-700; }
+
+  /* การ์ดของระบบ: ขอบบาง ไม่มีเงาฟุ้ง */
+  .card { @apply rounded-2xl border border-line bg-white; }
+  .card-header { @apply flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between; }
+  .card-body { @apply p-5; }
+
+  /* หัวข้อหน้า ใช้รูปแบบเดียวกันทุกหน้า พร้อมเส้นคาดสีทองสั้น ๆ เป็นเอกลักษณ์ */
+  .page-header { @apply border-b border-line pb-5; }
+  .page-eyebrow { @apply flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-accent; }
+  .page-eyebrow::before { content: ""; @apply block h-0.5 w-6 bg-accent; }
+  .page-title { @apply mt-2 text-2xl font-bold text-ink; }
+  .page-description { @apply mt-1.5 max-w-3xl text-sm leading-6 text-slate-600; }
+
+  /* ป้ายสถานะ: พื้นอ่อน ตัวอักษรเข้ม อ่านได้ทั้งหมดตามเกณฑ์ 4.5:1 */
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold; }
+  .chip-neutral { @apply border-slate-200 bg-slate-50 text-slate-700; }
+  .chip-info { @apply border-indigo-200 bg-indigo-50 text-indigo-800; }
+  .chip-success { @apply border-emerald-200 bg-emerald-50 text-emerald-800; }
+  .chip-warning { @apply border-amber-200 bg-amber-50 text-amber-800; }
+  .chip-danger { @apply border-rose-200 bg-rose-50 text-rose-800; }
+
+  /* ตารางข้อมูล: หัวตารางพื้นจาง เส้นคั่นบาง อ่านเป็นเอกสาร */
+  .data-table { @apply w-full text-left text-sm; }
+  .data-table thead th { @apply border-b border-line bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600; }
+  .data-table tbody td, .data-table tbody th { @apply border-b border-slate-100 px-4 py-3 align-top font-normal; }
+  .data-table tbody tr:last-child td, .data-table tbody tr:last-child th { @apply border-b-0; }
 }
 
 /* iPhone ซูมทั้งหน้าเมื่อแตะช่องกรอกที่ตัวอักษรเล็กกว่า 16px บนจอสัมผัสจึงใช้ 16px ทุกช่อง */

@@ -395,7 +395,7 @@ export default function EvalView() {
     const statusTone = submissionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
         : submissionStatus === 'returned' ? 'border-rose-200 bg-rose-50 text-rose-700'
             : submissionStatus === 'submitted' || submissionStatus === 'under_review' ? 'border-blue-200 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-slate-50 text-slate-600';
+                : 'border-line bg-slate-50 text-slate-600';
     const StatusIcon = submissionStatus === 'returned' ? RotateCcw : ClipboardCheck;
 
     // ช่องหลักฐานราย LO ใช้ทั้งในตาราง (จอกว้าง) และในการ์ดรายคน (จอเล็ก)
@@ -426,7 +426,7 @@ export default function EvalView() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-            <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 sticky top-0 z-40">
+            <header className="bg-white shadow-sm border-b border-line sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center space-x-4">
                         <button
@@ -484,7 +484,7 @@ export default function EvalView() {
                 {loading ? (
                     <div className="py-20 flex justify-center"><div className="loader"></div></div>
                 ) : enrollments.length === 0 ? (
-                    <div className="text-center bg-white rounded-2xl p-16 border border-slate-200 mt-10 shadow-sm max-w-2xl mx-auto">
+                    <div className="text-center bg-white rounded-2xl p-16 border border-line mt-10 shadow-sm max-w-2xl mx-auto">
                         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <FileText className="w-8 h-8 text-slate-500" />
                         </div>
@@ -492,9 +492,9 @@ export default function EvalView() {
                         <p className="text-slate-500 mt-2">กรุณาแจ้งฝ่ายวิชาการเพื่อจัดนักเรียนเข้ากลุ่มเรียนก่อนเริ่มประเมินผลลัพธ์การเรียนรู้</p>
                     </div>
                 ) : (
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm border border-line overflow-hidden">
                         {/* Toolbar above table */}
-                        <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                        <div className="p-4 border-b border-line bg-slate-50 flex items-center justify-between">
                             <div className="flex flex-wrap items-center gap-4">
                                 <div className="text-sm font-bold text-slate-700">
                                     ความคืบหน้า: <span className={missingCount === 0 ? "text-emerald-700" : "text-amber-700"}>{filledCells}/{totalCells}</span>
@@ -529,7 +529,7 @@ export default function EvalView() {
                             </div>
                         </div>
                         {learningOutcomes.length > 0 && (
-                            <div className="flex flex-wrap gap-2 border-b border-slate-200 p-4 md:hidden">
+                            <div className="flex flex-wrap gap-2 border-b border-line p-4 md:hidden">
                                 {learningOutcomes.map(lo => (
                                     <button key={lo.lo_id} type="button" onClick={() => fillEvidenceColumn(lo)} className="btn-secondary text-xs">
                                         เติม {lo.lo_code || `LO ข้อ ${lo.ability_no}`} ทุกคน
@@ -538,7 +538,7 @@ export default function EvalView() {
                             </div>
                         )}
                         {/* จอเล็กใช้การ์ดรายคน ชื่อนักเรียนอยู่หัวการ์ดเสมอ ไม่ถูกช่องกรอกทับเหมือนเวลาเลื่อนตาราง */}
-                        <ul className="divide-y divide-slate-200 md:hidden" aria-label="นักเรียนที่ต้องบันทึกผล">
+                        <ul className="divide-y divide-line md:hidden" aria-label="นักเรียนที่ต้องบันทึกผล">
                             {displayedEnrollments.map((enroll, i) => {
                                 const st = enroll.users_students;
                                 return (
@@ -565,33 +565,33 @@ export default function EvalView() {
                             })}
                         </ul>
                         <div className="relative hidden overflow-x-auto md:block">
-                            <table className="w-full text-left divide-y divide-slate-200 whitespace-nowrap">
+                            <table className="w-full text-left divide-y divide-line whitespace-nowrap">
                                 <thead className="bg-slate-50 text-slate-600">
                                     <tr>
                                         <th scope="col" className="sticky left-0 z-20 w-16 min-w-16 bg-slate-50 px-3 py-4 text-center text-xs font-bold uppercase tracking-wider">เลขที่</th>
                                         <th scope="col" className="sticky left-16 z-20 w-24 min-w-24 bg-slate-50 px-3 py-4 text-left text-xs font-bold uppercase tracking-wider">รหัส</th>
-                                        <th scope="col" className="sticky left-40 z-20 min-w-[200px] border-r border-slate-200 bg-slate-50 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
-                                        <th scope="col" className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-slate-200">เวลาเรียน (%)</th>
+                                        <th scope="col" className="sticky left-40 z-20 min-w-[200px] border-r border-line bg-slate-50 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
+                                        <th scope="col" className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-line">เวลาเรียน (%)</th>
                                         {learningOutcomes.map(lo => (
                                             <th key={lo.lo_id} scope="col" className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
                                                 <div>{lo.lo_code ? lo.lo_code : `LO ข้อ ${lo.ability_no}`}</div>
                                                 {lo.lo_code && <div className="mt-1 text-xs font-medium text-indigo-700">ข้อ {lo.ability_no}</div>}
-                                                <button type="button" onClick={() => fillEvidenceColumn(lo)} className="mt-2 min-h-11 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-extrabold normal-case text-indigo-900 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">เติมข้อความทั้งคอลัมน์</button>
+                                                <button type="button" onClick={() => fillEvidenceColumn(lo)} className="mt-2 min-h-11 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-bold normal-case text-indigo-900 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600">เติมข้อความทั้งคอลัมน์</button>
                                             </th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100 bg-white">
+                                <tbody className="divide-y divide-line bg-white">
                                     {displayedEnrollments.map((enroll, i) => {
                                         const st = enroll.users_students;
                                         return (
                                             <tr key={enroll.enrollment_id} className="group transition-colors hover:bg-slate-50">
                                                 <td className="sticky left-0 z-10 w-16 min-w-16 bg-white px-3 py-3 text-center text-sm font-semibold text-slate-500 group-hover:bg-slate-50">{i + 1}</td>
                                                 <td className="sticky left-16 z-10 w-24 min-w-24 bg-white px-3 py-3 font-mono text-sm text-slate-600 group-hover:bg-slate-50">{st.student_code}</td>
-                                                <th scope="row" className="sticky left-40 z-10 min-w-[200px] border-r border-slate-100 bg-white px-4 py-2 text-left text-sm font-bold text-slate-800 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)] group-hover:bg-slate-50">
+                                                <th scope="row" className="sticky left-40 z-10 min-w-[200px] border-r border-line bg-white px-4 py-2 text-left text-sm font-bold text-slate-800 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)] group-hover:bg-slate-50">
                                                     {st.prefix || ''}{st.first_name} {st.last_name}
                                                 </th>
-                                                <td className="px-4 py-2 text-center border-r border-slate-100 bg-slate-50/50">
+                                                <td className="px-4 py-2 text-center border-r border-line bg-slate-50/50">
                                                     <input
                                                         type="number"
                                                         min="0"
@@ -617,7 +617,7 @@ export default function EvalView() {
 
             {/* จอเล็ก: ปุ่มบันทึกและส่งอยู่ติดล่างจอเสมอ เดิมปุ่มส่งถูกซ่อนบนโทรศัพท์ ครูจึงส่งผลไม่ได้ */}
             {!loading && enrollments.length > 0 && (
-                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur md:hidden">
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden">
                     <div className="mb-2 flex items-center justify-between gap-2 text-xs font-bold">
                         <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ${statusTone}`}>
                             <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />{submissionLabel}

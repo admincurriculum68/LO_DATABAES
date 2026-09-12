@@ -34,13 +34,13 @@ export default function AcademicReportShell({ title, description, actions, child
                 <div className="report-controls mb-6 space-y-4">
                     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <h1 className="text-2xl font-extrabold text-slate-950">{title}</h1>
+                            <h1 className="text-2xl font-bold text-slate-950">{title}</h1>
                             <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
                         </div>
                         {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
                     </header>
 
-                    <nav className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm" aria-label="เลือกรายงานทางวิชาการ">
+                    <nav className="overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกรายงานทางวิชาการ">
                         <div className="flex min-w-max gap-1">
                             {visibleReports.map(report => {
                                 const Icon = report.icon;

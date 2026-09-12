@@ -90,14 +90,14 @@ export default function PromotionTab({ allStudents }) {
     const grades = [...new Set(allStudents.map(s => s.current_grade_level).filter(Boolean))].sort();
 
     return (
-        <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="mb-6 border-b border-slate-100 pb-6">
-                <h2 className="mb-2 flex items-center text-lg font-extrabold text-slate-900"><ArrowUpCircle className="mr-2 h-5 w-5 text-indigo-700" aria-hidden="true" />เลือกนักเรียนและกำหนดห้องใหม่</h2>
+        <div className="min-h-[500px] rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-6 border-b border-line pb-6">
+                <h2 className="mb-2 flex items-center text-lg font-bold text-slate-900"><ArrowUpCircle className="mr-2 h-5 w-5 text-indigo-700" aria-hidden="true" />เลือกนักเรียนและกำหนดห้องใหม่</h2>
                 <p className="text-sm font-medium text-slate-600">จัดการทั้งห้องหรือเลือกเฉพาะนักเรียนที่ย้ายห้องและต้องดูแลรายบุคคล</p>
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-8 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="rounded-2xl border border-line bg-slate-50 p-5">
                     <h3 className="mb-4 flex items-center font-bold text-slate-700"><Search className="mr-2 h-4 w-4" aria-hidden="true" /> 1. ค้นหานักเรียนจากห้องปัจจุบัน</h3>
                     <div className="flex gap-2">
                         <input
@@ -160,14 +160,14 @@ export default function PromotionTab({ allStudents }) {
             </div>
 
             {promoStudents.length > 0 && (
-                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
-                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 font-bold text-slate-700">
+                <div className="mt-6 overflow-hidden rounded-2xl border border-line">
+                    <div className="flex items-center justify-between border-b border-line bg-slate-50 px-4 py-3 font-bold text-slate-700">
                         <span>รายชื่อนักเรียนในห้อง</span>
                         <span className="rounded-lg bg-indigo-100 px-2 py-1 text-xs text-indigo-700">เลือก {promoSelectedStudents.length}/{promoStudents.length} คน</span>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
                         <table className="w-full whitespace-nowrap text-left text-sm">
-                            <thead className="sticky top-0 z-10 border-b border-slate-100 bg-white shadow-sm">
+                            <thead className="sticky top-0 z-10 border-b border-line bg-white shadow-sm">
                                 <tr className="text-slate-600">
                                     <th scope="col" className="w-16 px-4 py-3 text-center font-medium">
                                         <input
@@ -184,7 +184,7 @@ export default function PromotionTab({ allStudents }) {
                                     <th scope="col" className="px-4 py-3 font-medium">ชั้นปัจจุบัน</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white">
+                            <tbody className="divide-y divide-line bg-white">
                                 {promoStudents.map((s, i) => (
                                     <tr key={s.student_id} className="hover:bg-slate-50">
                                         <td className="px-4 py-2 text-center">

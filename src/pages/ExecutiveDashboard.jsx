@@ -32,7 +32,7 @@ const levelTone = {
 };
 
 const submissionMeta = {
-    draft: { label: 'ครูยังไม่ส่ง', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+    draft: { label: 'ครูยังไม่ส่ง', className: 'bg-slate-100 text-slate-700 border-line' },
     submitted: { label: 'ส่งให้วิชาการแล้ว', className: 'bg-blue-50 text-blue-800 border-blue-200' },
     under_review: { label: 'วิชาการกำลังตรวจ', className: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
     returned: { label: 'ส่งกลับให้แก้ไข', className: 'bg-rose-50 text-rose-800 border-rose-200' },
@@ -43,12 +43,12 @@ const teacherName = teacher => (teacher ? `${teacher.prefix || ''}${teacher.firs
 
 function SectionCard({ title, description, icon: Icon, action, children }) {
     return (
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
+        <section className="overflow-hidden rounded-2xl border border-line bg-white">
+            <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-6">
                 <div className="flex items-start gap-3">
                     <span className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700"><Icon className="h-5 w-5" /></span>
                     <div>
-                        <h2 className="font-extrabold text-slate-950">{title}</h2>
+                        <h2 className="font-bold text-slate-950">{title}</h2>
                         <p className="mt-0.5 max-w-3xl text-sm leading-6 text-slate-600">{description}</p>
                     </div>
                 </div>
@@ -295,12 +295,12 @@ export default function ExecutiveDashboard() {
     }, [data]);
 
     const StatCard = ({ title, value, unit, icon: Icon, tone }) => (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3">
                 <span className={`rounded-xl p-2.5 ${tone}`}><Icon className="h-5 w-5" /></span>
                 <span className="text-sm font-bold text-slate-600">{title}</span>
             </div>
-            <p className="mt-3 text-4xl font-extrabold tracking-tight text-slate-900">
+            <p className="mt-3 text-4xl font-bold tracking-tight text-slate-900">
                 {loading || !view ? '–' : value}
                 {unit && <span className="ml-1.5 text-base font-bold text-slate-500">{unit}</span>}
             </p>
@@ -309,11 +309,11 @@ export default function ExecutiveDashboard() {
 
     return (
         <Layout title="สารสนเทศเพื่อการบริหารสถานศึกษา">
-            <header className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
+            <header className="mb-8 flex flex-col gap-4 border-b border-line pb-6 md:flex-row md:items-end md:justify-between">
                 <div className="flex items-center gap-4">
                     <span className="hidden rounded-2xl bg-slate-900 p-3.5 text-amber-400 sm:block"><BarChart3 className="h-8 w-8" /></span>
                     <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h1>
+                        <h1 className="text-3xl font-bold tracking-tight text-slate-950">ข้อมูลภาพรวมของสถานศึกษา</h1>
                         <p className="mt-1.5 text-slate-600">
                             <span className="font-bold text-slate-800">{currentUser?.full_name}</span> · สถิติและผลการประเมินสำหรับประกอบการบริหารจัดการ
                         </p>
@@ -323,7 +323,7 @@ export default function ExecutiveDashboard() {
                     <Award className="h-6 w-6 text-amber-400" />
                     <div>
                         <div className="text-xs font-bold text-slate-300">รอบข้อมูลที่แสดง</div>
-                        <div className="text-sm font-extrabold">ภาคเรียนที่ {semester}/{academicYear}</div>
+                        <div className="text-sm font-bold">ภาคเรียนที่ {semester}/{academicYear}</div>
                     </div>
                 </div>
             </header>
@@ -348,7 +348,7 @@ export default function ExecutiveDashboard() {
                         title="สถานะการรับรองผลลัพธ์การเรียนรู้"
                         description="นับเป็นคู่ ผู้เรียน × ด้านความสามารถที่ครูส่งตรวจแล้ว ตัวเลขนี้เป็นขั้นหลังจากการบันทึกข้อความ LO จึงอาจมีร้อยละต่างกัน"
                     >
-                        <div className="grid grid-cols-2 divide-slate-200 border-b border-slate-200 sm:grid-cols-4 sm:divide-x">
+                        <div className="grid grid-cols-2 divide-line border-b border-line sm:grid-cols-4 sm:divide-x">
                             {[
                                 { label: 'รอฝ่ายวิชาการรับรอง', value: view.certification.pending, tone: 'text-amber-700' },
                                 { label: 'รับรองแล้ว', value: view.certification.approved, tone: 'text-emerald-700' },
@@ -356,7 +356,7 @@ export default function ExecutiveDashboard() {
                                 { label: 'ทั้งหมด', value: view.certification.total, tone: 'text-slate-900' },
                             ].map(item => (
                                 <div key={item.label} className="px-5 py-4">
-                                    <p className={`text-3xl font-extrabold ${item.tone}`}>{item.value.toLocaleString()}</p>
+                                    <p className={`text-3xl font-bold ${item.tone}`}>{item.value.toLocaleString()}</p>
                                     <p className="mt-1 text-sm font-bold text-slate-600">{item.label}</p>
                                 </div>
                             ))}
@@ -395,7 +395,7 @@ export default function ExecutiveDashboard() {
                                             <th className="w-44 px-4 py-3">สถานะ</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-line">
                                         {view.subjectRows.map(row => {
                                             const meta = submissionMeta[row.status] || submissionMeta.draft;
                                             return (
@@ -418,7 +418,7 @@ export default function ExecutiveDashboard() {
                                                                 <div aria-hidden="true" className="h-2.5 w-24 overflow-hidden rounded-full bg-slate-200">
                                                                     <div className={`h-full rounded-full ${row.percent === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${row.percent}%` }} />
                                                                 </div>
-                                                                <span className="text-sm font-extrabold text-slate-800">{row.percent}%</span>
+                                                                <span className="text-sm font-bold text-slate-800">{row.percent}%</span>
                                                                 <span className="text-xs font-semibold text-slate-500">{row.filled}/{row.total}</span>
                                                             </div>
                                                         )}
@@ -443,7 +443,7 @@ export default function ExecutiveDashboard() {
                         action={
                             <button
                                 onClick={() => navigate('/admin/report-competency')}
-                                className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             >
                                 เปิดรายงานฉบับเต็ม <ArrowRight className="h-4 w-4" />
                             </button>
@@ -452,7 +452,7 @@ export default function ExecutiveDashboard() {
                         {view.competencyAreas.length === 0 ? (
                             <EmptyRow>ยังไม่มีผลที่ฝ่ายวิชาการรับรอง จึงยังไม่สามารถสรุปรายด้านความสามารถได้</EmptyRow>
                         ) : (
-                            <ul className="divide-y divide-slate-100">
+                            <ul className="divide-y divide-line">
                                 {view.competencyAreas.map(area => (
                                     <li key={area.area} className="px-5 py-4 lg:px-6">
                                         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -502,17 +502,17 @@ export default function ExecutiveDashboard() {
                                                 <th className="w-36 px-4 py-3 text-center">ผ่านเกณฑ์</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100">
+                                        <tbody className="divide-y divide-line">
                                             {view.rooms.map(room => (
                                                 <tr key={room.room} className="hover:bg-slate-50/70">
                                                     <td className="px-5 py-3 font-bold text-slate-900">{room.room}</td>
                                                     <td className="px-4 py-3 text-center font-bold text-slate-800">{room.studentCount}</td>
-                                                    <td className="px-4 py-3 text-center font-extrabold text-slate-800">{room.progressPercent}%</td>
+                                                    <td className="px-4 py-3 text-center font-bold text-slate-800">{room.progressPercent}%</td>
                                                     <td className="px-4 py-3 text-center">
                                                         {room.passPercent === null ? (
                                                             <span className="text-xs font-semibold text-slate-500">ยังไม่รับรอง</span>
                                                         ) : (
-                                                            <span className={`font-extrabold ${room.passPercent >= 80 ? 'text-emerald-700' : room.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
+                                                            <span className={`font-bold ${room.passPercent >= 80 ? 'text-emerald-700' : room.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
                                                                 {room.passPercent}%
                                                             </span>
                                                         )}
@@ -533,7 +533,7 @@ export default function ExecutiveDashboard() {
                             action={
                                 <button
                                     onClick={() => navigate('/admin/report-lo')}
-                                    className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 >
                                     ผลราย LO <ArrowRight className="h-4 w-4" />
                                 </button>
@@ -549,7 +549,7 @@ export default function ExecutiveDashboard() {
                                         return (
                                             <div key={level}>
                                                 <div className="mb-1.5 flex items-baseline justify-between">
-                                                    <span className={`font-extrabold ${levelTone[level].text}`}>{formalLevelLabel(level)}</span>
+                                                    <span className={`font-bold ${levelTone[level].text}`}>{formalLevelLabel(level)}</span>
                                                     <span className="text-sm font-bold text-slate-700">{count.toLocaleString()} <span className="text-slate-500">({percent}%)</span></span>
                                                 </div>
                                                 <div aria-hidden="true" className="h-4 overflow-hidden rounded-full bg-slate-100">
@@ -560,7 +560,7 @@ export default function ExecutiveDashboard() {
                                     })
                                 )}
                                 {view.draftTotal > 0 && (
-                                    <p className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-600">
+                                    <p className="flex items-start gap-2 rounded-xl border border-line bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-600">
                                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                                         มีอีก {view.draftTotal.toLocaleString()} รายการที่ครูยังบันทึกเป็นฉบับร่าง ยังไม่นับรวมในสัดส่วนด้านบน
                                     </p>

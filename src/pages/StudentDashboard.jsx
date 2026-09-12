@@ -117,62 +117,59 @@ export default function StudentDashboard() {
     return (
         <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">
             {/* Hero / Header Section */}
-            <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
+            <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-line pb-8">
                 <div className="flex items-center">
-                    <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-4 rounded-2xl shadow-md shadow-emerald-500/20 mr-6 hidden sm:block">
+                    <div className="mr-6 hidden rounded-2xl bg-indigo-800 p-4 sm:block">
                         <GraduationCap className="w-10 h-10 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-4xl font-extrabold text-emerald-800 tracking-tight">ผลการเรียนรู้ของฉัน</h1>
-                        <p className="text-slate-500 font-medium text-lg mt-2">
+                        <h1 className="text-4xl font-bold text-ink tracking-tight">ผลการเรียนรู้ของฉัน</h1>
+                        <p className="text-slate-600 font-medium text-lg mt-2">
                             <span className="font-bold text-slate-700">{currentUser?.full_name}</span> · ข้อมูลผลการประเมินและผลลัพธ์การเรียนรู้ (LO)
                         </p>
                     </div>
                 </div>
 
-                <div className="bg-white/80 backdrop-blur-xl px-6 py-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4 min-w-[280px]">
-                    <div className="bg-emerald-100 p-3 rounded-2xl">
-                        <UserCircle2 className="w-8 h-8 text-emerald-700" />
+                <div className="bg-white px-6 py-4 rounded-2xl shadow-sm border border-line flex items-center gap-4 min-w-[280px]">
+                    <div className="bg-indigo-50 p-3 rounded-lg">
+                        <UserCircle2 className="w-8 h-8 text-indigo-700" />
                     </div>
                     <div>
-                        <div className="mb-0.5 text-xs font-bold text-emerald-700">รหัสนักเรียน</div>
-                        <div className="text-sm text-slate-700 font-extrabold font-mono">{currentUser.student_code || currentUser.student_id?.split('-')[0] || 'ไม่ระบุ'}</div>
+                        <div className="mb-0.5 text-xs font-semibold text-slate-600">รหัสนักเรียน</div>
+                        <div className="text-sm text-slate-700 font-bold font-mono">{currentUser.student_code || currentUser.student_id?.split('-')[0] || 'ไม่ระบุ'}</div>
                     </div>
                 </div>
             </div>
 
             {/* Quick Stats Dashboard */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-5 relative overflow-hidden group">
-                    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full group-hover:scale-150 transition-transform duration-500 ease-out z-0"></div>
-                    <div className="w-14 h-14 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center z-10">
+                <div className="bg-white rounded-2xl p-6 border border-line flex items-center gap-5 relative overflow-hidden group">
+                    <div className="h-11 w-11 bg-indigo-50 text-indigo-700 rounded-lg flex items-center justify-center z-10">
                         <BookOpen className="w-7 h-7" />
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">รายวิชาที่ลงทะเบียน</p>
-                        <p className="text-3xl font-extrabold text-slate-800 leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-medium text-slate-500 ml-1">วิชา</span></p>
+                        <p className="text-3xl font-bold text-ink leading-none">{loading ? '-' : totalSubjects} <span className="text-base font-medium text-slate-600 ml-1">วิชา</span></p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-5 relative overflow-hidden group">
-                    <div className="absolute -right-6 -top-6 w-24 h-24 bg-teal-50 rounded-full group-hover:scale-150 transition-transform duration-500 ease-out z-0"></div>
-                    <div className="w-14 h-14 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center z-10">
+                <div className="bg-white rounded-2xl p-6 border border-line flex items-center gap-5 relative overflow-hidden group">
+                    <div className="h-11 w-11 bg-indigo-50 text-indigo-700 rounded-lg flex items-center justify-center z-10">
                         <Compass className="w-7 h-7" />
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">ผลลัพธ์การเรียนรู้ที่ประเมินแล้ว</p>
-                        <p className="text-3xl font-extrabold text-slate-800 leading-none">{loading ? '-' : totalEvals} <span className="text-base font-medium text-slate-500 ml-1">ข้อ</span></p>
+                        <p className="text-3xl font-bold text-ink leading-none">{loading ? '-' : totalEvals} <span className="text-base font-medium text-slate-600 ml-1">ข้อ</span></p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-5 relative overflow-hidden group">
-                    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-500 ease-out z-0"></div>
-                    <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center z-10">
+                <div className="bg-white rounded-2xl p-6 border border-line flex items-center gap-5 relative overflow-hidden group">
+                    <div className="h-11 w-11 bg-indigo-50 text-indigo-700 rounded-lg flex items-center justify-center z-10">
                         <UserCheck className="w-7 h-7" />
                     </div>
                     <div className="z-10">
                         <p className="font-bold text-slate-600 text-sm mb-1">ด้านความสามารถที่ครูสรุปแล้ว</p>
-                        <p className="text-3xl font-extrabold text-slate-800 leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-500 ml-1">ด้าน</span></p>
+                        <p className="text-3xl font-bold text-ink leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-600 ml-1">ด้าน</span></p>
                     </div>
                 </div>
             </div>
@@ -182,16 +179,16 @@ export default function StudentDashboard() {
                     <div className="flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="rounded-2xl bg-emerald-700 p-3 text-white"><ShieldCheck className="h-6 w-6" /></div>
-                            <div><h2 id="certified-results-title" className="text-xl font-extrabold text-emerald-950">ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรอง</h2><p className="text-sm text-emerald-800">ผลที่ผ่านการพิจารณา Formative และข้อความพฤติกรรมราย LO แล้ว</p></div>
+                            <div><h2 id="certified-results-title" className="text-xl font-bold text-emerald-950">ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรอง</h2><p className="text-sm text-emerald-800">ผลที่ผ่านการพิจารณา Formative และข้อความพฤติกรรมราย LO แล้ว</p></div>
                         </div>
-                        <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-extrabold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
+                        <span className="w-fit rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-bold text-emerald-800">{finalResults.length} ผลลัพธ์</span>
                     </div>
-                    <div className="divide-y divide-slate-200">
+                    <div className="divide-y divide-line">
                         {finalResults.map(result => (
                                 <article key={result.decision_id} className="grid gap-3 px-6 py-5 md:grid-cols-[150px_minmax(0,1fr)_140px] md:items-center">
-                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-700">ผลรับรองรายด้าน</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
+                                    <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">ผลรับรองรายด้าน</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
                                     <div><p className="font-bold leading-6 text-slate-900">{result.competency_area}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
-                                    <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-extrabold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{formalLevelLabel(result.final_level)}</span></div>
+                                    <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-bold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{formalLevelLabel(result.final_level)}</span></div>
                                 </article>
                             ))}
                     </div>
@@ -205,11 +202,11 @@ export default function StudentDashboard() {
                     <p className="text-slate-500 font-medium animate-pulse">กำลังโหลดข้อมูลผลการเรียนรู้...</p>
                 </div>
             ) : data.length === 0 ? (
-                <div className="text-center bg-white rounded-2xl p-16 border-2 border-dashed border-slate-200 shadow-sm flex flex-col items-center">
-                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 border border-slate-100">
+                <div className="text-center bg-white rounded-2xl p-16 border-2 border-dashed border-line shadow-sm flex flex-col items-center">
+                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 border border-line">
                         <BookMarked className="w-12 h-12 text-slate-300" />
                     </div>
-                    <h2 className="text-2xl font-extrabold text-slate-700 mb-2">ยังไม่มีข้อมูลการลงทะเบียนเรียน</h2>
+                    <h2 className="text-2xl font-bold text-slate-700 mb-2">ยังไม่มีข้อมูลการลงทะเบียนเรียน</h2>
                     <p className="text-slate-500 text-lg max-w-md mx-auto">
                         กรุณาติดต่อครูผู้สอนหรือฝ่ายวิชาการเพื่อตรวจสอบการลงทะเบียนรายวิชา
                     </p>
@@ -217,13 +214,12 @@ export default function StudentDashboard() {
             ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                     {data.map(sub => (
-                        <div key={sub.subject_id} className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-slate-200 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:-translate-y-1">
+                        <div key={sub.subject_id} className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-line overflow-hidden flex flex-col transition-all duration-300 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)] hover:-translate-y-1">
                             {/* Card Header */}
-                            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-8 py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
-                                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white opacity-5 rounded-full blur-2xl"></div>
+                            <div className="relative flex flex-col items-start justify-between gap-4 overflow-hidden bg-indigo-800 px-8 py-6 sm:flex-row sm:items-center">
                                 <div className="flex items-center relative z-10 w-full">
-                                    <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl mr-4 border border-white/10">
-                                        <Bookmark className="w-6 h-6 text-emerald-400" />
+                                    <div className="bg-white/10 p-3 rounded-2xl mr-4 border border-white/10">
+                                        <Bookmark className="w-6 h-6 text-amber-300" />
                                     </div>
                                     <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-3 mb-1.5">
@@ -238,17 +234,17 @@ export default function StudentDashboard() {
 
                             {/* Evaluation Table */}
                             <div className="p-6 md:p-8 flex-1 bg-slate-50/30">
-                                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                                <div className="bg-white rounded-2xl border border-line overflow-hidden shadow-sm">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm text-left">
-                                            <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 uppercase text-xs tracking-wider font-extrabold">
+                                            <thead className="bg-slate-100 text-slate-600 border-b border-line uppercase text-xs tracking-wider font-bold">
                                                 <tr>
                                                     <th className="py-4 px-5 w-20 text-center">ข้อที่</th>
                                                     <th className="py-4 px-5">ผลลัพธ์การเรียนรู้ (LO)</th>
                                                     <th className="py-4 px-5 min-w-[280px]">ข้อความสะท้อนพฤติกรรม</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100">
+                                            <tbody className="divide-y divide-line">
                                                 {sub.evaluations.length === 0 ? (
                                                     <tr>
                                                         <td colSpan="3" className="py-12 text-center text-slate-500 font-medium">
@@ -260,14 +256,14 @@ export default function StudentDashboard() {
                                                         return (
                                                             <tr key={ev.ability_no} className="hover:bg-slate-50 transition-colors group">
                                                                 <td className="py-5 px-5 text-center align-top border-r border-slate-50">
-                                                                    <div className="font-extrabold text-slate-500 text-xl group-hover:text-emerald-500 transition-colors">{ev.ability_no}</div>
+                                                                    <div className="font-bold text-slate-500 text-xl group-hover:text-emerald-500 transition-colors">{ev.ability_no}</div>
                                                                     {ev.lo_code && <div className="text-xs text-slate-600 font-bold mt-1 bg-slate-100 rounded-lg px-1 py-0.5 inline-block">{ev.lo_code}</div>}
                                                                 </td>
                                                                 <td className="py-4 px-5 text-slate-700 font-medium leading-relaxed align-top">
                                                                     {ev.description}
                                                                 </td>
                                                                 <td className="py-4 px-5 align-top border-l border-slate-50">
-                                                                    <p className={`rounded-xl border px-3 py-2 text-sm leading-6 ${ev.evidence_text ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                                                                    <p className={`rounded-xl border px-3 py-2 text-sm leading-6 ${ev.evidence_text ? 'border-emerald-200 bg-emerald-50 text-emerald-950' : 'border-line bg-slate-50 text-slate-500'}`}>
                                                                         {ev.evidence_text || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}
                                                                     </p>
                                                                 </td>
@@ -280,7 +276,7 @@ export default function StudentDashboard() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-slate-50 border-t border-slate-200 py-4 px-8 flex justify-between items-center text-sm font-bold text-slate-500">
+                            <div className="bg-slate-50 border-t border-line py-4 px-8 flex justify-between items-center text-sm font-bold text-slate-500">
                                 <span>ภาคเรียนที่ {sub.term}</span>
                             </div>
                         </div>

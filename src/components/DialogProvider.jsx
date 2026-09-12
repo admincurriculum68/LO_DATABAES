@@ -72,7 +72,7 @@ export default function DialogProvider({ children }) {
                 onCancel={event => { event.preventDefault(); finish(cancelResult); }}
                 aria-labelledby="app-dialog-title"
                 aria-describedby={request?.message ? 'app-dialog-message' : undefined}
-                className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50"
+                className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-line bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50"
             >
                 {request && (
                     <form onSubmit={submit} className="space-y-5 p-6">
@@ -83,7 +83,7 @@ export default function DialogProvider({ children }) {
                                 </span>
                             )}
                             <div className="min-w-0 space-y-1.5">
-                                <h2 id="app-dialog-title" className="text-lg font-extrabold text-slate-950">{request.title}</h2>
+                                <h2 id="app-dialog-title" className="text-lg font-bold text-slate-950">{request.title}</h2>
                                 {request.message && <p id="app-dialog-message" className="whitespace-pre-line text-sm leading-6 text-slate-700">{request.message}</p>}
                             </div>
                         </div>

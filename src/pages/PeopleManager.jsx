@@ -20,7 +20,7 @@ const isActivePerson = (person, kind) => (kind === 'teachers' ? person.is_active
 function Field({ label, hint, error, errorId, children }) {
     return (
         <label className="block">
-            <span className="text-sm font-extrabold text-slate-800">{label}</span>
+            <span className="text-sm font-bold text-slate-800">{label}</span>
             {hint && <span className="mt-0.5 block text-xs text-slate-600">{hint}</span>}
             <div className="mt-2">{children}</div>
             {error && (
@@ -192,13 +192,13 @@ export default function PeopleManager() {
         <Layout title="ครูและนักเรียน">
             <div className="mx-auto w-full max-w-7xl space-y-5">
                 <header>
-                    <h1 className="text-2xl font-extrabold text-slate-950">ครูและนักเรียน</h1>
+                    <h1 className="text-2xl font-bold text-slate-950">ครูและนักเรียน</h1>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
                         ค้นหาและแก้ไขข้อมูลรายบุคคล การเปลี่ยนบทบาทมีผลกับเมนูที่ครูท่านนั้นเห็นทันทีที่เข้าสู่ระบบครั้งถัดไป
                     </p>
                 </header>
 
-                <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="ตัวกรอง">
+                <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white p-4 shadow-sm" aria-label="ตัวกรอง">
                     <div className="flex rounded-xl border border-slate-300 p-1" role="group" aria-label="เลือกกลุ่มผู้ใช้">
                         {[['teachers', 'ครูและบุคลากร'], ['students', 'นักเรียน']].map(([value, label]) => (
                             <button
@@ -206,7 +206,7 @@ export default function PeopleManager() {
                                 type="button"
                                 onClick={() => switchKind(value)}
                                 aria-pressed={kind === value}
-                                className={`min-h-11 rounded-lg px-4 text-sm font-extrabold transition ${kind === value ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'}`}
+                                className={`min-h-11 rounded-lg px-4 text-sm font-bold transition ${kind === value ? 'action-primary' : 'text-slate-700 hover:bg-slate-100'}`}
                             >
                                 {label}
                             </button>
@@ -253,16 +253,16 @@ export default function PeopleManager() {
                 )}
 
                 <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-                    <aside className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${selectedId ? 'hidden lg:block' : ''}`}>
-                        <div className="border-b border-slate-200 px-4 py-3">
-                            <h2 className="font-extrabold text-slate-900">
+                    <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${selectedId ? 'hidden lg:block' : ''}`}>
+                        <div className="border-b border-line px-4 py-3">
+                            <h2 className="font-bold text-slate-900">
                                 {kind === 'teachers' ? 'ครูและบุคลากร' : 'นักเรียน'} {visiblePeople.length} คน
                             </h2>
                             {visiblePeople.length !== people.length && (
                                 <p className="mt-0.5 text-xs text-slate-600">จากทั้งหมด {people.length} คน</p>
                             )}
                         </div>
-                        <div className="max-h-[640px] divide-y divide-slate-100 overflow-y-auto">
+                        <div className="max-h-[640px] divide-y divide-line overflow-y-auto">
                             {loading ? (
                                 <div className="h-64 animate-pulse bg-slate-100" />
                             ) : visiblePeople.length ? visiblePeople.map(person => {
@@ -304,7 +304,7 @@ export default function PeopleManager() {
                         </div>
                     </aside>
 
-                    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${selectedId ? '' : 'hidden lg:block'}`}>
+                    <section className={`overflow-hidden rounded-2xl border border-line bg-white ${selectedId ? '' : 'hidden lg:block'}`}>
                         {!selected || !draft ? (
                             <div className="p-16 text-center text-slate-600">
                                 <UserRound className="mx-auto mb-3 h-10 w-10 text-slate-300" />
@@ -312,11 +312,11 @@ export default function PeopleManager() {
                             </div>
                         ) : (
                             <>
-                                <header className="border-b border-slate-200 p-5">
+                                <header className="border-b border-line p-5">
                                     <button type="button" onClick={() => setSelectedId('')} className="btn-ghost -ml-2 mb-2 lg:hidden">
                                         <ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายชื่อ
                                     </button>
-                                    <h2 className="text-lg font-extrabold text-slate-950">{fullName(selected)}</h2>
+                                    <h2 className="text-lg font-bold text-slate-950">{fullName(selected)}</h2>
                                     <p className="mt-1 text-sm text-slate-600">
                                         {kind === 'teachers'
                                             ? teacherRoleSummary(selected)
@@ -326,7 +326,7 @@ export default function PeopleManager() {
 
                                 <div className="space-y-6 p-5">
                                     <section className="space-y-4">
-                                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลส่วนตัว</h3>
+                                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">ข้อมูลส่วนตัว</h3>
                                         <div className="grid gap-4 sm:grid-cols-3">
                                             <Field label="คำนำหน้า">
                                                 <input value={draft.prefix} onChange={e => updateDraft('prefix', e.target.value)} className={inputClass} />
@@ -351,16 +351,16 @@ export default function PeopleManager() {
 
                                     {kind === 'teachers' ? (
                                         <section className="space-y-4">
-                                            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">บทบาทและหน้าที่</h3>
+                                            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">บทบาทและหน้าที่</h3>
                                             <div>
-                                                <p className="text-sm font-extrabold text-slate-800">บทบาทในระบบ</p>
+                                                <p className="text-sm font-bold text-slate-800">บทบาทในระบบ</p>
                                                 <p className="mt-0.5 text-xs text-slate-600">ครู 1 ท่านทำหน้าที่พร้อมกันได้หลายบทบาท บทบาทหลักใช้กำหนดหน้าแรกหลังเข้าสู่ระบบ</p>
                                                 <div className="mt-3 space-y-2">
                                                     {ROLE_CHOICES.map(([value, label]) => {
                                                         const owned = draft.roles.includes(value);
                                                         const primary = draft.role === value;
                                                         return (
-                                                            <div key={value} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${owned ? 'border-indigo-300 surface-selected' : 'border-slate-200'}`}>
+                                                            <div key={value} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${owned ? 'border-indigo-300 surface-selected' : 'border-line'}`}>
                                                                 <label className="flex flex-1 cursor-pointer items-center gap-3 text-sm font-bold text-slate-900">
                                                                     <span className={`flex h-6 w-6 items-center justify-center rounded-lg border-2 ${owned ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
                                                                         <Check className="h-4 w-4" />
@@ -372,7 +372,7 @@ export default function PeopleManager() {
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setDraft({ ...draft, role: value })}
-                                                                        className={`min-h-11 rounded-lg border px-3 text-xs font-extrabold ${primary ? 'action-primary border-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400'}`}
+                                                                        className={`min-h-11 rounded-lg border px-3 text-xs font-bold ${primary ? 'action-primary border-indigo-700' : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400'}`}
                                                                     >
                                                                         {primary ? 'บทบาทหลัก' : 'ตั้งเป็นหลัก'}
                                                                     </button>
@@ -389,7 +389,7 @@ export default function PeopleManager() {
                                         </section>
                                     ) : (
                                         <section className="space-y-4">
-                                            <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">ข้อมูลการเรียน</h3>
+                                            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">ข้อมูลการเรียน</h3>
                                             <div className="grid gap-4 sm:grid-cols-3">
                                                 <Field label="รหัสนักเรียน">
                                                     <input value={draft.student_code} onChange={e => setDraft({ ...draft, student_code: e.target.value })} className={inputClass} />
@@ -405,7 +405,7 @@ export default function PeopleManager() {
                                     )}
 
                                     <section className="space-y-4">
-                                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-600">สถานะบัญชี</h3>
+                                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">สถานะบัญชี</h3>
                                         <Field label="สถานะการใช้งาน" hint="บัญชีที่ระงับจะเข้าสู่ระบบไม่ได้ แต่ผลงานที่บันทึกไว้ยังอยู่ครบ">
                                             <select
                                                 value={kind === 'teachers' ? String(draft.is_active) : draft.student_status}
@@ -424,11 +424,11 @@ export default function PeopleManager() {
                                     </section>
                                 </div>
 
-                                <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-5 sm:flex-row sm:justify-end">
+                                <footer className="flex flex-col-reverse gap-2 border-t border-line p-5 sm:flex-row sm:justify-end">
                                     <button
                                         type="button"
                                         onClick={() => setSelectedId('')}
-                                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 hover:bg-slate-50"
+                                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
                                     >
                                         <X className="h-4 w-4" />ปิด
                                     </button>
@@ -436,7 +436,7 @@ export default function PeopleManager() {
                                         type="button"
                                         onClick={save}
                                         disabled={saving}
-                                        className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-extrabold disabled:opacity-50"
+                                        className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-50"
                                     >
                                         <Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
                                     </button>

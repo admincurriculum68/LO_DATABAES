@@ -233,8 +233,8 @@ export default function YearlyReportAdmin() {
 
                 {/* ─── Control Panel (no-print) ─────────────────────────── */}
                 <div className="no-print space-y-6 mb-8">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <h2 className="font-extrabold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
+                    <div className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
+                        <h2 className="font-bold text-slate-900 mb-5">ข้อมูลที่ใช้จัดทำรายงาน</h2>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                             {/* Student Search */}
                             <div className="md:col-span-1">
@@ -249,14 +249,14 @@ export default function YearlyReportAdmin() {
                                     />
                                 </div>
                                 {searchTerm && (
-                                    <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-md max-h-52 overflow-y-auto z-10 relative">
+                                    <div className="mt-1 bg-white border border-line rounded-xl shadow-md max-h-52 overflow-y-auto z-10 relative">
                                         {filteredStudents.length === 0 ? (
                                             <div className="px-4 py-3 text-sm text-slate-500">ไม่พบนักเรียน</div>
                                         ) : filteredStudents.map(s => (
                                             <button
                                                 key={s.student_id}
                                                 onClick={() => { setSelectedStudent(s); setSearchTerm(''); }}
-                                                className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-slate-100 last:border-0"
+                                                className="w-full text-left px-4 py-2.5 hover:bg-indigo-50 text-sm font-medium transition-colors border-b border-line last:border-0"
                                             >
                                                 {s.prefix}{s.first_name} {s.last_name}
                                                 <span className="ml-2 text-slate-500 text-xs">{s.student_code}</span>
@@ -323,11 +323,11 @@ export default function YearlyReportAdmin() {
                             </div>
                         ) : (
                             <div>
-                                <h2 className="font-extrabold text-slate-700 mb-3 text-sm">กำหนดระดับความสามารถที่นักเรียนได้รับ</h2>
+                                <h2 className="font-bold text-slate-700 mb-3 text-sm">กำหนดระดับความสามารถที่นักเรียนได้รับ</h2>
                                 <div className="space-y-2">
                                     {competencies.map((comp, i) => (
-                                        <div key={comp.competency_id} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-                                            <span className="text-xs font-extrabold text-slate-500 w-6 shrink-0">{i + 1}.</span>
+                                        <div key={comp.competency_id} className="flex items-center gap-3 bg-slate-50 border border-line rounded-xl px-4 py-3">
+                                            <span className="text-xs font-bold text-slate-500 w-6 shrink-0">{i + 1}.</span>
                                             <p className="text-sm text-slate-700 flex-1 leading-snug">{comp.description}</p>
                                             <span className="text-xs text-slate-500 font-bold shrink-0">คาดหวัง: <span className="text-indigo-600">{comp.expected_level}</span></span>
                                             <select
@@ -360,7 +360,7 @@ export default function YearlyReportAdmin() {
                 </div>
 
                 {/* ─── Print Area (ปพ.6 Document) ──────────────────────── */}
-                <div ref={printRef} className="report-document print-area rounded-2xl border border-slate-200 bg-white p-6 shadow-sm font-['Sarabun',sans-serif] sm:p-8">
+                <div ref={printRef} className="report-document print-area rounded-2xl border border-line bg-white p-6 shadow-sm font-['Sarabun',sans-serif] sm:p-8">
                     {!selectedStudent ? (
                         <div className="no-print text-center py-24 text-slate-500 font-medium">
                             พิมพ์ชื่อหรือรหัสในช่อง “ค้นหานักเรียน” แล้วเลือกนักเรียนจากรายการ เพื่อแสดงตัวอย่าง ปพ.๖
@@ -369,7 +369,7 @@ export default function YearlyReportAdmin() {
                         <>
                             {/* ─── Header ─────────────────────────────────── */}
                             <div className="text-center mb-6">
-                                <h1 className="text-xl font-extrabold text-slate-900">
+                                <h1 className="text-xl font-bold text-slate-900">
                                     แบบการรายงานผลการเรียนชั้นประถมศึกษาปีที่ {gradeNames[selectedGrade] || selectedGrade}
                                 </h1>
                                 <div className="flex justify-center gap-8 mt-3 text-base font-medium text-slate-700">
@@ -400,7 +400,7 @@ export default function YearlyReportAdmin() {
                                                 </td>
                                                 <td className="border border-black p-3 text-center font-medium">{comp.expected_level}</td>
                                                 <td className="border border-black p-3 text-center font-bold">{achieved || '—'}</td>
-                                                <td className={`border border-black p-3 text-center font-extrabold ${devColor}`}>
+                                                <td className={`border border-black p-3 text-center font-bold ${devColor}`}>
                                                     {development}
                                                 </td>
                                             </tr>
@@ -408,17 +408,17 @@ export default function YearlyReportAdmin() {
                                     })}
                                     {/* Activities & Desirable Chars rows */}
                                     <tr className="bg-slate-100">
-                                        <td className="border border-black p-3 font-extrabold">กิจกรรมพัฒนาผู้เรียน</td>
+                                        <td className="border border-black p-3 font-bold">กิจกรรมพัฒนาผู้เรียน</td>
                                         <td colSpan={3} className="border border-black p-3 text-center">
-                                            <span className={`font-extrabold text-base ${learnerActivities === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                            <span className={`font-bold text-base ${learnerActivities === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
                                                 {learnerActivities === 'ผ่าน' ? '☑ ผ่าน' : '☑ ไม่ผ่าน'}
                                             </span>
                                         </td>
                                     </tr>
                                     <tr className="bg-slate-100">
-                                        <td className="border border-black p-3 font-extrabold">คุณลักษณะอันพึงประสงค์</td>
+                                        <td className="border border-black p-3 font-bold">คุณลักษณะอันพึงประสงค์</td>
                                         <td colSpan={3} className="border border-black p-3 text-center">
-                                            <span className={`font-extrabold text-base ${desirableChars === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
+                                            <span className={`font-bold text-base ${desirableChars === 'ผ่าน' ? 'text-emerald-700' : 'text-red-600'}`}>
                                                 {desirableChars === 'ผ่าน' ? '☑ ผ่าน' : '☑ ไม่ผ่าน'}
                                             </span>
                                         </td>
@@ -429,7 +429,7 @@ export default function YearlyReportAdmin() {
                             {/* ─── Table 2: Per-Competency Behavior Description ─ */}
                             {behaviorTemplates.length > 0 && (
                                 <>
-                                    <h2 className="text-base font-extrabold text-slate-800 mb-3">คำอธิบายพฤติกรรม</h2>
+                                    <h2 className="text-base font-bold text-slate-800 mb-3">คำอธิบายพฤติกรรม</h2>
                                     <table className="w-full border-collapse text-sm mb-8" style={{ borderColor: '#000' }}>
                                         <thead>
                                             <tr>

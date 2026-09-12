@@ -1199,8 +1199,8 @@ export default function AdminDashboard() {
     return (
         <Layout title={activeWorkspace.label}>
             <div className="academic-workspace mb-10 space-y-5">
-                <header className="border-b border-slate-200 pb-5">
-                    <h1 className="text-2xl font-extrabold text-slate-950">{activeWorkspace.label}</h1>
+                <header className="border-b border-line pb-5">
+                    <h1 className="text-2xl font-bold text-slate-950">{activeWorkspace.label}</h1>
                     <p className="mt-1 text-sm leading-6 text-slate-600">{activeWorkspace.description}</p>
                 </header>
 
@@ -1210,8 +1210,8 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 1: DATA TABLE --- */}
                         {activeTab === 'data' && (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-5"><h2 className="font-extrabold text-slate-900">เลือกชุดข้อมูลที่ต้องการตรวจสอบ</h2><p className="mt-1 text-sm text-slate-600">ชื่อคอลัมน์และข้อมูลทางเทคนิคที่ไม่จำเป็นถูกซ่อนไว้ เพื่อให้อ่านและแก้ไขได้ง่ายขึ้น</p></div>
+                            <div className="rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
+                                <div className="mb-5"><h2 className="font-bold text-slate-900">เลือกชุดข้อมูลที่ต้องการตรวจสอบ</h2><p className="mt-1 text-sm text-slate-600">ชื่อคอลัมน์และข้อมูลทางเทคนิคที่ไม่จำเป็นถูกซ่อนไว้ เพื่อให้อ่านและแก้ไขได้ง่ายขึ้น</p></div>
                                 
                                 <div className="flex flex-col md:flex-row gap-4 mb-6 px-4 sm:px-0">
                                     <select
@@ -1250,27 +1250,27 @@ export default function AdminDashboard() {
                                         <p className="text-slate-500 font-medium">กำลังโหลดข้อมูล...</p>
                                     </div>
                                 ) : !selectedTable ? (
-                                    <div className="text-center py-24 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200 mx-4 sm:mx-0">
+                                    <div className="text-center py-24 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-line mx-4 sm:mx-0">
                                         โปรดเลือกตารางจากเมนูดรอปดาวน์ด้านบน
                                     </div>
                                 ) : filteredTableData.length === 0 ? (
-                                    <div className="text-center py-24 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200 mx-4 sm:mx-0">
+                                    <div className="text-center py-24 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-line mx-4 sm:mx-0">
                                         {searchTerm ? 'ไม่พบข้อมูลที่ค้นหา' : 'ยังไม่มีข้อมูลในตารางนี้'}
                                     </div>
                                 ) : (
                                     <div className="flex flex-col space-y-4">
-                                        <div className="overflow-x-auto rounded-2xl border border-slate-200 h-[600px] overflow-y-auto">
+                                        <div className="overflow-x-auto rounded-2xl border border-line h-[600px] overflow-y-auto">
                                         <table className="w-full text-sm text-left whitespace-nowrap">
                                             <thead className="bg-slate-100 text-slate-600 sticky top-0 z-10 shadow-sm uppercase tracking-wider text-xs">
                                                 <tr>
-                                                    <th className="px-5 py-4 font-extrabold w-12 text-center border-b border-slate-200">#</th>
+                                                    <th className="px-5 py-4 font-bold w-12 text-center border-b border-line">#</th>
                                                     {Object.keys(filteredTableData[0]).filter(k => !hiddenField(k, selectedTable)).map(key => (
-                                                        <th key={key} className="px-5 py-4 font-extrabold border-b border-slate-200">{FIELD_LABELS[key] || key}</th>
+                                                        <th key={key} className="px-5 py-4 font-bold border-b border-line">{FIELD_LABELS[key] || key}</th>
                                                     ))}
-                                                    <th className="px-5 py-4 font-extrabold w-40 text-center border-b border-slate-200 sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">การดำเนินการ</th>
+                                                    <th className="px-5 py-4 font-bold w-40 text-center border-b border-line sticky right-0 bg-slate-100 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">การดำเนินการ</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                            <tbody className="divide-y divide-line bg-white">
                                                 {filteredTableData.map((row, idx) => {
                                                     let idCol, idValue;
                                                     if (selectedTable === 'users_students') {idCol = 'student_id'; idValue = row.student_id; }
@@ -1289,7 +1289,7 @@ export default function AdminDashboard() {
                                                             {isEditing && isReadonlyField(key, selectedTable) ? (
                                                                 <span
                                                                     title="รหัสอ้างอิงของระบบ แก้ไขไม่ได้ เพราะผูกกับผลการประเมินที่บันทึกไว้แล้ว"
-                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 font-mono text-xs text-slate-500"
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-slate-100 px-3 py-1.5 font-mono text-xs text-slate-500"
                                                                 >
                                                                     <Lock className="h-3 w-3 shrink-0" />
                                                                     {String(row[key] ?? '').slice(0, 8)}…
@@ -1369,7 +1369,7 @@ export default function AdminDashboard() {
                                                             )}
                                                         </td>
                                                     ))}
-                                                    <td className="px-5 py-3 text-center sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100 flex justify-center gap-2 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">
+                                                    <td className="px-5 py-3 text-center sticky right-0 bg-white group-hover:bg-slate-50 border-l border-line flex justify-center gap-2 shadow-[-4px_0_10px_rgba(0,0,0,0.02)]">
                                                         {isEditing ? (
                                                             <>
                                                                 <button aria-label="บันทึกการแก้ไข" onClick={() => handleUpdate(idValue, idCol, editingRow.data)} className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-700 text-white shadow-sm transition-colors hover:bg-emerald-800"><Save className="w-4 h-4" /></button>
@@ -1390,7 +1390,7 @@ export default function AdminDashboard() {
                                         </div>
 
                                         {/* Pagination Controls */}
-                                        <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-50 px-6 py-4 rounded-2xl border border-slate-200 gap-4">
+                                        <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-50 px-6 py-4 rounded-2xl border border-line gap-4">
                                             <div className="text-sm text-slate-500 font-medium">
                                                 กำลังแสดงหน้า <span className="font-bold text-slate-800">{currentPage}</span> จากทั้งหมด <span className="font-bold text-slate-800">{totalPages}</span>
                                                 <span className="ml-2">(คำค้นหาอาจค้นพบแค่ในหน้านี้)</span>
@@ -1419,7 +1419,7 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 2: CSV IMPORT --- */}
                         {activeTab === 'import' && (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+                            <div className="rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
                                 {importWizardType ? (
                                     <FlexibleImportWizard
                                         initialType={importWizardType}
@@ -1432,14 +1432,14 @@ export default function AdminDashboard() {
                                 ) : (
                                 <>
                                 <div className="mb-6">
-                                    <h2 className="font-extrabold text-slate-900">เพิ่มข้อมูลจากไฟล์ของโรงเรียน</h2>
+                                    <h2 className="font-bold text-slate-900">เพิ่มข้อมูลจากไฟล์ของโรงเรียน</h2>
                                     <p className="mt-1 text-sm text-slate-600">ใช้ไฟล์ Excel ที่มีอยู่ได้เลย ระบบช่วยจับคู่ชื่อคอลัมน์และให้ตรวจสอบข้อมูลก่อนบันทึก</p>
                                 </div>
 
                                 {importIssues.length > 0 && (
                                     <section aria-labelledby="import-issues-title" className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4">
                                         <div className="flex items-start justify-between gap-3">
-                                            <h3 id="import-issues-title" className="text-sm font-extrabold text-rose-900">สิ่งที่ต้องตรวจจากการนำเข้าครั้งล่าสุด ({importIssues.length} รายการ)</h3>
+                                            <h3 id="import-issues-title" className="text-sm font-bold text-rose-900">สิ่งที่ต้องตรวจจากการนำเข้าครั้งล่าสุด ({importIssues.length} รายการ)</h3>
                                             <button type="button" onClick={() => setImportIssues([])} className="min-h-11 shrink-0 rounded-xl px-3 text-xs font-bold text-rose-800 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700">ปิดรายการ</button>
                                         </div>
                                         <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-6 text-rose-900">
@@ -1449,8 +1449,8 @@ export default function AdminDashboard() {
                                 )}
 
                                 <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-5 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-700 text-white"><FileText className="h-6 w-6" /></div><div><h3 className="font-extrabold text-indigo-950">Excel ของโรงเรียน ไม่ต้องเปลี่ยนหัวคอลัมน์</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-indigo-900">เลือกประเภทข้อมูล อัปโหลดไฟล์ จับคู่คอลัมน์ และแก้รายการที่ผิดได้ในหน้าเดียว</p></div></div>
-                                    <button onClick={() => setImportWizardType('students')} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />เริ่มนำเข้าข้อมูล</button>
+                                    <div className="flex items-start gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-700 text-white"><FileText className="h-6 w-6" /></div><div><h3 className="font-bold text-indigo-950">Excel ของโรงเรียน ไม่ต้องเปลี่ยนหัวคอลัมน์</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-indigo-900">เลือกประเภทข้อมูล อัปโหลดไฟล์ จับคู่คอลัมน์ และแก้รายการที่ผิดได้ในหน้าเดียว</p></div></div>
+                                    <button onClick={() => setImportWizardType('students')} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-bold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />เริ่มนำเข้าข้อมูล</button>
                                 </div>
 
                                 {/* การ์ดนำเข้าไฟล์ DMC */}
@@ -1459,20 +1459,20 @@ export default function AdminDashboard() {
                                         <div className="flex items-start gap-4 flex-1">
                                             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-700 text-white"><School className="h-6 w-6" /></div>
                                             <div>
-                                                <h3 className="font-extrabold text-blue-950">ข้อมูลนักเรียนจาก DMC</h3>
+                                                <h3 className="font-bold text-blue-950">ข้อมูลนักเรียนจาก DMC</h3>
                                                 <p className="mt-1 text-sm leading-6 text-blue-900">รองรับไฟล์ Excel (.xlsx, .xls) จาก DMC ระบบจะนำเข้าชื่อ รหัสนักเรียน ระดับชั้น ห้องเรียน และกำหนดรหัสผ่านเริ่มต้นจากวันเดือนปีเกิด</p>
                                             </div>
                                         </div>
                                         <div className="flex w-full shrink-0 flex-col gap-2 md:w-auto md:self-center">
-                                            <button onClick={() => setImportWizardType('students')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />ตรวจสอบไฟล์ก่อนนำเข้า</button>
+                                            <button onClick={() => setImportWizardType('students')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-bold text-white hover:bg-indigo-800"><Upload className="h-4 w-4" />ตรวจสอบไฟล์ก่อนนำเข้า</button>
                                             <label className="relative flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-100 focus-within:ring-2 focus-within:ring-indigo-600 focus-within:ring-offset-2">นำเข้าไฟล์ DMC รูปแบบมาตรฐานแบบด่วน<input type="file" accept=".xlsx,.xls" className="sr-only" onChange={handleDMCImport} /></label>
                                         </div>
                                     </div>
                                 </div>
 
-                                <details className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                                    <summary className="cursor-pointer bg-slate-50 px-5 py-4 text-sm font-extrabold text-slate-700 hover:bg-slate-100">แม่แบบและตัวเลือกขั้นสูง</summary>
-                                <div className="border-t border-slate-200">
+                                <details className="overflow-hidden rounded-2xl border border-line bg-white">
+                                    <summary className="cursor-pointer bg-slate-50 px-5 py-4 text-sm font-bold text-slate-700 hover:bg-slate-100">แม่แบบและตัวเลือกขั้นสูง</summary>
+                                <div className="border-t border-line">
                                     {[
                                         { id: 'students', title: 'ข้อมูลนักเรียน', desc: 'ข้อมูลนักเรียน ระดับชั้น ห้องเรียน และสถานภาพการศึกษา', template: 'citizen_id,dob,student_code,prefix,first_name,last_name,current_room,current_grade_level\n1234567890123,01012555,66001,ด.ช.,สมชาย,ใจดี,ป.3/2,ป.3' },
                                         { id: 'teachers', title: 'ข้อมูลครูและบุคลากร', desc: 'ข้อมูลครู บุคลากร บทบาท ห้องประจำชั้น และหน้าที่ที่ได้รับมอบหมาย', template: 'citizen_id,dob,prefix,first_name,last_name,role,homeroom\n1234567890123,01012540,นาย,สมชาย,ใจดี,teacher,ป.1/1\n9876543210987,15082535,นาง,สมหญิง,รักเรียน,admin,\n9876543210987,15082535,นาง,สมหญิง,รักเรียน,teacher,', notes: ['ครูคนเดียวมีหลายหน้าที่ เขียนได้สองแบบ คือหลายแถวแถวละบทบาท หรือแถวเดียวคั่นด้วยจุลภาค เช่น admin,teacher บทบาทที่พบก่อนเป็นบทบาทหลัก', 'บทบาทที่ใช้ได้ teacher คือครูผู้สอน admin คือฝ่ายวิชาการ executive คือผู้บริหาร', 'homeroom คือห้องที่เป็นครูประจำชั้น เช่น ป.1/1 เว้นว่างถ้าไม่ได้เป็นครูประจำชั้น', 'วันเกิดใส่ 8 หลัก วันเดือนปี พ.ศ. เช่น 23042517 ใช้เป็นรหัสผ่านเข้าระบบครั้งแรก'] },
@@ -1486,10 +1486,10 @@ export default function AdminDashboard() {
                                         { id: 'yearly_competencies', title: 'ความคาดหวังรายชั้นปี (ปพ.๖)', desc: 'กำหนดด้านความสามารถและระดับที่คาดหวังในแต่ละชั้น เพื่อดึงผลรับรองมาใช้ได้ตรงด้าน', template: 'grade_level,competency_no,competency_area,description,expected_level\nป.1,1,ความสามารถด้านการอ่าน,เข้าใจความหมายของคำและข้อความสั้น ๆ,พัฒนา\nป.1,2,ความสามารถด้านการเขียน,เขียนประโยคง่าย ๆ เพื่อสื่อความหมาย,พัฒนา' },
                                         { id: 'yearly_behavior_templates', title: 'คำบรรยายรายชั้นปี (ปพ.๖)', desc: 'คำบรรยายพฤติกรรมในแต่ละระดับ แยกตามข้อและชั้นปี', template: 'grade_level,competency_no,competency_level,behavior_text\nป.1,1,เริ่มต้น,เด็กชายสนใจ เข้าใจความหมาย...\nป.1,1,ชำนาญ,เด็กชายสนใจ เขียนประโยค...' }
                                     ].map(card => (
-                                        <div key={card.id} className="flex flex-col gap-4 border-b border-slate-200 bg-white p-5 last:border-b-0 sm:flex-row sm:items-center">
+                                        <div key={card.id} className="flex flex-col gap-4 border-b border-line bg-white p-5 last:border-b-0 sm:flex-row sm:items-center">
                                             <div className="min-w-0 flex-1">
                                                 <div>
-                                                    <h3 className="font-extrabold text-lg text-slate-800">{card.title}</h3>
+                                                    <h3 className="font-bold text-lg text-slate-800">{card.title}</h3>
                                                     <p className="text-sm text-slate-500 font-medium mt-1">{card.desc}</p>
                                                 </div>
                                             </div>
@@ -1555,17 +1555,17 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 3: SUBJECT - LO MAPPING --- */}
                         {activeTab === 'mapping' && (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
+                                <div className="mb-6 border-b border-line pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h2 className="flex items-center text-lg font-extrabold text-slate-900"><LinkIcon className="mr-2 h-5 w-5 text-indigo-600" />เลือกวิชาและ LO ที่ใช้ประเมิน</h2>
+                                        <h2 className="flex items-center text-lg font-bold text-slate-900"><LinkIcon className="mr-2 h-5 w-5 text-indigo-600" />เลือกวิชาและ LO ที่ใช้ประเมิน</h2>
                                         <p className="text-slate-600 mt-1 text-sm">เลือกวิชา แล้วทำเครื่องหมาย LO ที่ครูผู้สอนต้องประเมิน</p>
                                     </div>
                                     <div className="w-full md:w-1/3">
                                         <select
  aria-label="เลือกวิชาที่จะกำหนด LO"                                            value={mappingSubject}
                                             onChange={(e) => loadMappingData(e.target.value)}
-                                            className="w-full bg-slate-50 border border-field text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-extrabold outline-none"
+                                            className="w-full bg-slate-50 border border-field text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-bold outline-none"
                                         >
                                             <option value="" disabled>เลือกวิชา</option>
                                             {subjects.filter(s => s.academic_year === academicYear && s.semester === semester).map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} · {s.grade_level || 'ไม่ระบุชั้น'}</option>)}
@@ -1577,7 +1577,7 @@ export default function AdminDashboard() {
                                     {loadingMapping ? (
                                         <div className="py-20 flex justify-center"><div className="loader scale-125"></div></div>
                                     ) : !mappingSubject ? (
-                                        <div className="text-center py-24 text-slate-500 font-medium flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                        <div className="text-center py-24 text-slate-500 font-medium flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-line">
                                             <FileText className="w-16 h-16 text-slate-200 mb-4" />
                                             เลือกวิชาจากช่องด้านบนเพื่อแสดงรายการ LO
                                         </div>
@@ -1600,7 +1600,7 @@ export default function AdminDashboard() {
                                                 </button>
                                             </div>
 
-                                            <div className="divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200">
+                                            <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
                                                 {gradeCompatibleLOs.map(lo => {
                                                     const isChecked = mappedLOs.includes(lo.lo_id);
                                                     return (
@@ -1617,8 +1617,8 @@ export default function AdminDashboard() {
                                                                 </div>
                                                             </div>
                                                             <div className="flex-1">
-                                                                <span className={`block font-extrabold text-sm mb-1.5 ${isChecked ? 'text-indigo-900' : 'text-slate-800'}`}>
-                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-xs mr-2 border border-slate-200">ข้อ {lo.ability_no}</span>
+                                                                <span className={`block font-bold text-sm mb-1.5 ${isChecked ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-xs mr-2 border border-line">ข้อ {lo.ability_no}</span>
                                                                     {lo.lo_code ? `${lo.lo_code} ` : ''} 
                                                                     <span className="text-indigo-600">[{lo.competency_area || 'ทั่วไป'}]</span>
                                                                     {lo.grade_level && <span className="ml-2 rounded-lg bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{lo.grade_level}</span>}
@@ -1638,13 +1638,13 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 4: ENROLLMENT MANAGEMENT --- */}
                         {activeTab === 'enrollment' && (
-                            <div className="min-h-[500px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 border-b border-slate-100 pb-6">
-                                    <h2 className="mb-2 flex items-center text-lg font-extrabold text-slate-900"><Users className="mr-2 h-5 w-5 text-indigo-600" />เลือกรายวิชาและจัดรายชื่อนักเรียน</h2>
+                            <div className="min-h-[500px] rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
+                                <div className="mb-6 border-b border-line pb-6">
+                                    <h2 className="mb-2 flex items-center text-lg font-bold text-slate-900"><Users className="mr-2 h-5 w-5 text-indigo-600" />เลือกรายวิชาและจัดรายชื่อนักเรียน</h2>
                                     <p className="text-sm text-slate-600">เพิ่มนักเรียนรายบุคคลหรือทั้งห้อง โดยไม่เปลี่ยนห้องประจำชั้น</p>
                                 </div>
 
-                                <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <div className="flex flex-col gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-line">
                                     <div className="flex flex-col lg:flex-row gap-4 w-full">
                                         <select
  aria-label="เลือกวิชาที่จะจัดนักเรียนเข้า"                                        value={enrollSubject}
@@ -1658,7 +1658,7 @@ export default function AdminDashboard() {
                                             setSubjectEnrollments(data || []);
                                             setLoadingEnrollments(false);
                                         }}
-                                        className="flex-1 bg-white border border-field text-slate-800 py-3.5 px-4 rounded-xl font-extrabold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm"
+                                        className="flex-1 bg-white border border-field text-slate-800 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm"
                                     >
                                         <option value="" disabled>เลือกวิชา</option>
                                         {subjects.filter(s => s.academic_year === academicYear && s.semester === semester).map(s => (
@@ -1666,7 +1666,7 @@ export default function AdminDashboard() {
                                         ))}
                                     </select>
 
-                                    <div className="flex flex-1 gap-2 border-l-0 lg:border-l border-slate-200 pl-0 lg:pl-4">
+                                    <div className="flex flex-1 gap-2 border-l-0 lg:border-l border-line pl-0 lg:pl-4">
                                         <div className="flex-1 relative" ref={studentSearchRef}>
                                             <input
  aria-label="ค้นหานักเรียนเพื่อเพิ่มเข้าวิชา"                                                type="text"
@@ -1681,7 +1681,7 @@ export default function AdminDashboard() {
                                                 className="w-full bg-white border border-field text-slate-700 py-3.5 px-4 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400 outline-none shadow-sm disabled:bg-slate-100 disabled:opacity-75"
                                             />
                                             {showStudentDropdown && enrollSubject && (
-                                                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                                                <div className="absolute z-50 w-full mt-2 bg-white border border-line rounded-xl shadow-2xl max-h-60 overflow-y-auto">
                                                     {filteredEnrollStudents.length > 0 ? (
                                                         filteredEnrollStudents.map(st => (
                                                             <div 
@@ -1737,7 +1737,7 @@ export default function AdminDashboard() {
                                                 <UsersRound className="w-5 h-5 text-emerald-700" />
                                             </div>
                                             <div>
-                                                <p className="font-extrabold text-sm text-emerald-900">เพิ่มนักเรียนพร้อมกันทั้งห้อง</p>
+                                                <p className="font-bold text-sm text-emerald-900">เพิ่มนักเรียนพร้อมกันทั้งห้อง</p>
                                                 <p className="text-xs text-emerald-800">เลือกห้อง แล้วเพิ่มนักเรียนทุกคนเข้าวิชาที่เลือก</p>
                                             </div>
                                         </div>
@@ -1794,7 +1794,7 @@ export default function AdminDashboard() {
                                                         toast.success(`นำนักเรียน ${newStudents.length} คนออกจากวิชาแล้ว`);
                                                     });
                                                 }}
-                                                className="inline-flex min-h-11 items-center whitespace-nowrap rounded-xl bg-emerald-700 px-5 text-sm font-extrabold text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
+                                                className="inline-flex min-h-11 items-center whitespace-nowrap rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
                                             >
                                                 เพิ่มทั้งห้อง
                                             </button>
@@ -1805,25 +1805,25 @@ export default function AdminDashboard() {
                                 {loadingEnrollments ? (
                                     <div className="py-24 flex justify-center"><div className="loader scale-150"></div></div>
                                 ) : enrollSubject ? (
-                                    <div className="overflow-x-auto rounded-2xl border border-slate-200 overflow-hidden">
+                                    <div className="overflow-x-auto rounded-2xl border border-line overflow-hidden">
                                         <table className="w-full text-sm text-left whitespace-nowrap">
                                             <thead className="bg-slate-800 text-white sticky top-0 z-10">
                                                 <tr>
-                                                    <th className="px-5 py-4 font-extrabold w-16 text-center">ลำดับ</th>
-                                                    <th className="px-5 py-4 font-extrabold">รหัสนักเรียน</th>
-                                                    <th className="px-5 py-4 font-extrabold">ชื่อ - นามสกุล</th>
-                                                    <th className="px-5 py-4 font-extrabold text-center">ห้องประจำชั้น</th>
-                                                    <th className="px-5 py-4 font-extrabold w-32 text-center">จัดการ</th>
+                                                    <th className="px-5 py-4 font-bold w-16 text-center">ลำดับ</th>
+                                                    <th className="px-5 py-4 font-bold">รหัสนักเรียน</th>
+                                                    <th className="px-5 py-4 font-bold">ชื่อ - นามสกุล</th>
+                                                    <th className="px-5 py-4 font-bold text-center">ห้องประจำชั้น</th>
+                                                    <th className="px-5 py-4 font-bold w-32 text-center">จัดการ</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                            <tbody className="divide-y divide-line bg-white">
                                                 {subjectEnrollments.length === 0 ? (
                                                     <tr><td colSpan="5" className="text-center py-12 text-slate-500 font-medium">ยังไม่มีนักเรียนลงทะเบียนในวิชานี้</td></tr>
                                                 ) : subjectEnrollments.map((en, idx) => (
                                                     <tr key={en.enrollment_id} className="hover:bg-slate-50 transition-colors">
                                                         <td className="px-5 py-3 text-center text-slate-500 font-medium">{idx + 1}</td>
                                                         <td className="px-5 py-3 font-mono text-slate-600 bg-slate-50 text-center rounded-lg">{en.users_students?.student_code}</td>
-                                                        <td className="px-5 py-3 font-extrabold text-slate-800">{en.users_students?.prefix || ''}{en.users_students?.first_name} {en.users_students?.last_name}</td>
+                                                        <td className="px-5 py-3 font-bold text-slate-800">{en.users_students?.prefix || ''}{en.users_students?.first_name} {en.users_students?.last_name}</td>
                                                         <td className="px-5 py-3 text-center font-bold text-indigo-600 bg-indigo-50/50 rounded-lg">{en.room}</td>
                                                         <td className="px-5 py-3 text-center">
                                                             <button onClick={() => withdrawEnrollment(en)} aria-label={`นำออก: ${en.users_students?.first_name || ''} ${en.users_students?.last_name || ''}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-300 px-4 font-bold text-red-700 shadow-sm transition-colors hover:border-red-700 hover:bg-red-700 hover:text-white">
@@ -1836,7 +1836,7 @@ export default function AdminDashboard() {
                                         </table>
                                     </div>
                                 ) : (
-                                    <div className="text-center py-32 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                    <div className="text-center py-32 text-slate-500 font-medium bg-slate-50 rounded-2xl border border-dashed border-line">
                                         โปรดเลือกรายวิชาที่ช่องตัวเลือกด้านบนซ้ายก่อน
                                     </div>
                                 )}

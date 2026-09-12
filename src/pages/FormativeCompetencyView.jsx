@@ -210,11 +210,11 @@ export default function FormativeCompetencyView() {
     return (
         <Layout title="สรุประดับรายด้านความสามารถ">
             <div className="mx-auto max-w-[1680px] space-y-5 pb-28">
-                <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
                         <button onClick={() => navigate(-1)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100" aria-label="กลับ"><ArrowLeft className="h-5 w-5" /></button>
                         <div>
-                            <h1 className="text-lg font-extrabold text-slate-950">{subject?.subject_name || 'รายวิชา'}{roomParam ? ` · ห้อง ${roomParam}` : ''}</h1>
+                            <h1 className="text-lg font-bold text-slate-950">{subject?.subject_name || 'รายวิชา'}{roomParam ? ` · ห้อง ${roomParam}` : ''}</h1>
                             <p className="mt-1 text-sm text-slate-600">ขั้นที่ 2: ระบบนำข้อความจากแต่ละ LO มาให้แล้ว ครูเลือกเพียงระดับรายด้านและตรวจข้อความสรุป</p>
                         </div>
                     </div>
@@ -232,13 +232,13 @@ export default function FormativeCompetencyView() {
                         {enrollments.map((enrollment, index) => {
                             const student = enrollment.users_students;
                             return (
-                                <details key={enrollment.enrollment_id} open={index === 0} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                <details key={enrollment.enrollment_id} open={index === 0} className="overflow-hidden rounded-2xl border border-line bg-white">
                                     <summary className="flex min-h-16 cursor-pointer items-center gap-3 bg-slate-50 px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600">
-                                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 font-extrabold text-indigo-700">{student?.first_name?.[0] || '?'}</span>
-                                        <span><strong className="block font-extrabold text-slate-950">{student?.prefix || ''}{student?.first_name} {student?.last_name}</strong><span className="text-xs text-slate-600">รหัส {student?.student_code || '-'} · {enrollment.room || 'ไม่ระบุห้อง'}</span></span>
+                                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-700">{student?.first_name?.[0] || '?'}</span>
+                                        <span><strong className="block font-bold text-slate-950">{student?.prefix || ''}{student?.first_name} {student?.last_name}</strong><span className="text-xs text-slate-600">รหัส {student?.student_code || '-'} · {enrollment.room || 'ไม่ระบุห้อง'}</span></span>
                                     </summary>
                                     <h2 className="sr-only">ผลรายด้านของ {student?.prefix || ''}{student?.first_name} {student?.last_name}</h2>
-                                    <div className="divide-y divide-slate-100 border-t border-slate-200">
+                                    <div className="divide-y divide-line border-t border-line">
                                         {areas.map(area => {
                                             const areaLos = los.filter(lo => (lo.competency_area || 'ไม่ระบุด้านความสามารถ') === area);
                                             const notes = evidence.filter(item => item.enrollment_id === enrollment.enrollment_id && areaLos.some(lo => lo.lo_id === item.lo_id) && item.evidence_note?.trim());
@@ -247,14 +247,14 @@ export default function FormativeCompetencyView() {
                                             return (
                                                 <div key={area} className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
                                                     <div>
-                                                        <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-900"><BookOpen className="h-4 w-4 text-indigo-600" />{area}</h3>
+                                                        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><BookOpen className="h-4 w-4 text-indigo-600" />{area}</h3>
                                                         <div className="mt-3 space-y-2">
-                                                            {notes.length ? notes.map(note => <div key={note.lo_id} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-700">{loById.get(note.lo_id)?.lo_code || `LO ${loById.get(note.lo_id)?.ability_no || ''}`}</p><p className="mt-1 text-sm leading-6 text-slate-700">{note.evidence_note}</p></div>) : <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">ยังไม่มีข้อความพฤติกรรมในด้านนี้</p>}
+                                                            {notes.length ? notes.map(note => <div key={note.lo_id} className="rounded-xl border border-line bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-700">{loById.get(note.lo_id)?.lo_code || `LO ${loById.get(note.lo_id)?.ability_no || ''}`}</p><p className="mt-1 text-sm leading-6 text-slate-700">{note.evidence_note}</p></div>) : <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">ยังไม่มีข้อความพฤติกรรมในด้านนี้</p>}
                                                         </div>
                                                     </div>
-                                                    <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-                                                        <label className="block"><span className="mb-1.5 block text-xs font-extrabold text-slate-700">ระดับสรุปของด้านนี้<span className="sr-only"> · {area} · {student?.first_name} {student?.last_name}</span></span><select value={decision.level} onChange={event => updateDecision(enrollment.enrollment_id, area, 'level', event.target.value)} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="">ยังไม่ตัดสิน</option>{LEVELS.map(level => <option key={level} value={level}>{level}</option>)}</select></label>
-                                                        <label className="block"><span className="mb-1.5 block text-xs font-extrabold text-slate-700">ข้อความสรุปจาก LO (ระบบเติมให้ แก้ได้)<span className="sr-only"> · {area} · {student?.first_name} {student?.last_name}</span></span><textarea rows="4" value={decision.summary} onChange={event => updateDecision(enrollment.enrollment_id, area, 'summary', event.target.value)} placeholder="ระบบจะนำข้อความพฤติกรรมราย LO มาเป็นข้อความตั้งต้น" className="w-full rounded-xl border border-field p-3 text-sm leading-6 placeholder:text-slate-600" /></label>
+                                                    <div className="space-y-3 rounded-xl border border-line p-4">
+                                                        <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-700">ระดับสรุปของด้านนี้<span className="sr-only"> · {area} · {student?.first_name} {student?.last_name}</span></span><select value={decision.level} onChange={event => updateDecision(enrollment.enrollment_id, area, 'level', event.target.value)} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="">ยังไม่ตัดสิน</option>{LEVELS.map(level => <option key={level} value={level}>{level}</option>)}</select></label>
+                                                        <label className="block"><span className="mb-1.5 block text-xs font-bold text-slate-700">ข้อความสรุปจาก LO (ระบบเติมให้ แก้ได้)<span className="sr-only"> · {area} · {student?.first_name} {student?.last_name}</span></span><textarea rows="4" value={decision.summary} onChange={event => updateDecision(enrollment.enrollment_id, area, 'summary', event.target.value)} placeholder="ระบบจะนำข้อความพฤติกรรมราย LO มาเป็นข้อความตั้งต้น" className="w-full rounded-xl border border-field p-3 text-sm leading-6 placeholder:text-slate-600" /></label>
                                                         {decision.level && <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />กำหนดระดับแล้ว</p>}
                                                     </div>
                                                 </div>
@@ -268,10 +268,10 @@ export default function FormativeCompetencyView() {
                 )}
             </div>
             {!loading && enrollments.length > 0 && (
-                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white/95 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] backdrop-blur print:hidden">
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] print:hidden">
                     <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-sm text-slate-700"><strong className="text-slate-950">กำหนดระดับแล้ว {totalDecisionCount - missingDecisionCount}/{totalDecisionCount}</strong><span className="ml-2">เหลือ {missingDecisionCount} รายการ{dirty ? ' · มีการแก้ไขที่ยังไม่บันทึก' : ''}</span></div>
-                        <div className="flex gap-2"><button onClick={() => saveAll(false)} disabled={!dirty || saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-5 text-sm font-extrabold text-indigo-800 disabled:opacity-40 sm:flex-none"><Save className="h-4 w-4" />บันทึกฉบับร่าง</button><button onClick={() => saveAll(true)} disabled={saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-extrabold text-white disabled:opacity-40 sm:flex-none"><Send className="h-4 w-4" />{saving ? 'กำลังส่ง...' : 'บันทึกและส่งฝ่ายวิชาการ'}</button></div>
+                        <div className="flex gap-2"><button onClick={() => saveAll(false)} disabled={!dirty || saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-5 text-sm font-bold text-indigo-800 disabled:opacity-40 sm:flex-none"><Save className="h-4 w-4" />บันทึกฉบับร่าง</button><button onClick={() => saveAll(true)} disabled={saving} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 text-sm font-bold text-white disabled:opacity-40 sm:flex-none"><Send className="h-4 w-4" />{saving ? 'กำลังส่ง...' : 'บันทึกและส่งฝ่ายวิชาการ'}</button></div>
                     </div>
                 </div>
             )}
