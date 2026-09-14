@@ -127,7 +127,7 @@ export default function SummaryView() {
                 if (subjectError) throw subjectError;
                 if (mustCheckAssignment && subjectData.teacher_id !== currentUser.teacher_id) {
                     const { data: assignment, error: assignmentError } = await supabase.from('subject_teachers')
-                        .select('assignment_id').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id).limit(1).maybeSingle();
+                        .select('id').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id).limit(1).maybeSingle();
                     if (assignmentError) throw assignmentError;
                     if (!assignment) throw new Error('คุณไม่ได้รับมอบหมายให้ดูรายงานของรายวิชานี้');
                 }

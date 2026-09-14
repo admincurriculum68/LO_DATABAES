@@ -109,15 +109,13 @@ export default function SubjectTeacherManager() {
                     .eq('teacher_id', teacherId).eq('room_name', roomName);
                 if (deleteError) throw deleteError;
             }
-            if (payload.length) {
+            // แตะ subjects.teacher_id เฉพาะเมื่อการมอบหมายครูเปลี่ยนจริง
+            // วิชาเก่าที่มีแค่ teacher_id ไม่มีการมอบหมายรายห้อง ถ้ากดบันทึกเพื่อแก้ชั่วโมงอย่างเดียว ครูเดิมต้องไม่หาย
+            if (additions.length || removals.length) {
                 const currentPrimary = subjects.find(subject => subject.subject_id === subjectId)?.teacher_id;
                 const teacherIds = [...new Set(payload.map(item => item.teacher_id))].sort();
-                const primaryTeacherId = teacherIds.includes(currentPrimary) ? currentPrimary : teacherIds[0];
+                const primaryTeacherId = teacherIds.length ? (teacherIds.includes(currentPrimary) ? currentPrimary : teacherIds[0]) : null;
                 const { error: legacyError } = await supabase.from('subjects').update({ teacher_id: primaryTeacherId })
-                    .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
-                if (legacyError) throw legacyError;
-            } else {
-                const { error: legacyError } = await supabase.from('subjects').update({ teacher_id: null })
                     .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
                 if (legacyError) throw legacyError;
             }
@@ -132,7 +130,8 @@ export default function SubjectTeacherManager() {
                 setHoursEdits(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${subjectId}::`))));
             }
             setSavedPairs(new Set(selectedPairs));
-            toast.success(`บันทึกครูผู้สอน ${new Set(payload.map(item => item.teacher_id)).size} คน ครอบคลุม ${new Set(payload.map(item => item.room_name)).size} ห้องแล้ว`);
+            const hoursSaved = roomHoursEnabled && selectedSubject && rooms.length;
+            toast.success(`บันทึกครูผู้สอน ${new Set(payload.map(item => item.teacher_id)).size} คน ครอบคลุม ${new Set(payload.map(item => item.room_name)).size} ห้อง${hoursSaved ? ' และชั่วโมงเรียน' : ''}แล้ว`);
         } catch (error) {
             toast.error('บันทึกไม่สำเร็จ: ' + error.message);
         } finally {
