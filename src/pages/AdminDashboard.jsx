@@ -5,12 +5,13 @@ import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { buildRoomEnrollmentRows, buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
 import { mergeTeacherImportRows } from '../lib/people';
-import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw, UsersRound, AlertTriangle } from 'lucide-react';
+import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { loadXLSX } from '../lib/xlsx';
 import { useDialog } from '../lib/dialogContext';
-import { excelSerialToThaiDob } from '../lib/importSanitizers';
+import { citizenIdFormatError, excelSerialToThaiDob, isCitizenIdFormat, LOSSY_SCIENTIFIC, sanitizeCitizenId } from '../lib/importSanitizers';
+import { roomHoursSupported } from '../lib/roomHoursApi';
 import { hashPassword } from '../lib/auth';
 import { useAcademic } from '../AcademicContext';
 import AcademicDashboardHome from '../components/AcademicDashboardHome';
@@ -45,10 +46,10 @@ const FIELD_LABELS = {
     is_active: 'สถานะใช้งาน', academic_year: 'ปีการศึกษา', semester: 'ภาคเรียน', subject_name: 'ชื่อวิชา', grade_level: 'ระดับชั้น',
     subject_group: 'กลุ่มวิชา', teacher_id: 'ครูผู้สอน', lo_code: 'รหัส LO', ability_no: 'ข้อที่', level_group: 'ช่วงชั้น',
     competency_area: 'ด้านความสามารถ', lo_description: 'รายละเอียดผลลัพธ์การเรียนรู้', competency_level: 'ระดับความสามารถ', behavior_text: 'คำบรรยายพฤติกรรม',
-    new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด', teaching_hours: 'จำนวนชั่วโมงเรียน', is_custom_competency: 'สมรรถนะเพิ่มเติม',
+    new_password: 'กำหนดรหัสผ่านใหม่', dob: 'วันเดือนปีเกิด', teaching_hours: 'จำนวนชั่วโมง (ค่าเริ่มต้น)', is_custom_competency: 'สมรรถนะเพิ่มเติม',
 };
 
-const hiddenField = (key, table) => ['teacher_roles', 'password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'teacher_id', 'subject_id', 'lo_id', 'id'].includes(key)
+const hiddenField = (key, table) => ['teacher_roles', 'password_hash', 'plain_password', 'school_id', 'created_at', 'updated_at', 'student_id', 'teacher_id', 'subject_id', 'lo_id', 'id', 'room_hours'].includes(key)
     || (table === 'subjects' && key === 'subject_code');
 
 const VALUE_LABELS = {
@@ -119,8 +120,8 @@ async function syncTeacherRoles(teacherId, roles, primaryRole) {
 function validateRowEdit(table, data) {
     const errors = [];
     if (['users_teachers', 'users_students'].includes(table)) {
-        const id = String(data.citizen_id ?? '').replace(/\D/g, '');
-        if (id.length !== 13) errors.push(`เลขประจำตัวประชาชนต้องมี 13 หลัก (ขณะนี้ ${id.length} หลัก) หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`);
+        const id = sanitizeCitizenId(data.citizen_id);
+        if (!isCitizenIdFormat(id)) errors.push(`${citizenIdFormatError(id)} หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`);
         if (!String(data.first_name ?? '').trim()) errors.push('ต้องมีชื่อ');
     }
     if (data.new_password !== undefined && data.new_password !== null && String(data.new_password).trim() !== '') {
@@ -336,7 +337,7 @@ export default function AdminDashboard() {
             if (payload.is_active !== undefined) payload.is_active = payload.is_active === true || payload.is_active === 'true';
             if (payload.is_custom_competency !== undefined) payload.is_custom_competency = payload.is_custom_competency === true || payload.is_custom_competency === 'true';
             if (payload.teaching_hours !== undefined) payload.teaching_hours = payload.teaching_hours === '' ? null : Number(payload.teaching_hours);
-            if (payload.citizen_id !== undefined) payload.citizen_id = String(payload.citizen_id).replace(/\D/g, '');
+            if (payload.citizen_id !== undefined) payload.citizen_id = sanitizeCitizenId(payload.citizen_id);
             if (payload.new_password) {
                 payload.password_hash = await hashPassword(payload.new_password.toString().trim());
                 delete payload.new_password;
@@ -385,7 +386,6 @@ export default function AdminDashboard() {
     // Fix Excel scientific notation: 1.4299001272800E+12 → "1429900127280"
     // Fix decimal suffix: 1234567890123.00 → "1234567890123"
     // ค่าที่ Excel ย่อจนเลขหายไปแล้ว เช่น 1.43E+12 กู้คืนไม่ได้ ต้องให้ผู้ใช้แก้ไฟล์
-    const LOSSY_SCIENTIFIC = '__EXCEL_LOSSY__';
     // ข้อความนี้จะขึ้นเฉพาะกรณีที่ตัวเลขหายไปจากไฟล์จริงแล้ว
     // ถ้าเซลล์ยังเป็นชนิดตัวเลข ระบบอ่านค่าเต็มได้เองและไม่แจ้งเตือน
     const LOSSY_HELP = 'เลขประจำตัวประชาชนในไฟล์เหลือแค่ตัวเลขย่อ (เช่น 1.23457E+12) ไม่ใช่แค่การแสดงผล แต่ตัวเลขหายจากไฟล์แล้วและกู้คืนไม่ได้ วิธีแก้: ส่งออกจาก DMC เป็น .xlsx โดยตรง หรือถ้าเป็นไฟล์ CSV ให้เปิด Excel เปล่าแล้วใช้ Data › From Text/CSV และตั้งคอลัมน์เลขบัตรเป็น Text ก่อนกด Load ห้ามดับเบิลคลิกเปิดไฟล์ CSV แล้วกดบันทึก';
@@ -401,26 +401,6 @@ export default function AdminDashboard() {
         const raw = String(rawValue ?? '').trim();
         if (raw) return raw;
         return String(formattedValue ?? '').trim();
-    };
-
-    const sanitizeCitizenId = (raw) => {
-        if (!raw && raw !== 0) return '';
-        let s = String(raw).trim();
-        // Handle scientific notation (e.g. 1.43E+12)
-        if (/[eE]/.test(s)) {
-            const n = parseFloat(s);
-            if (isNaN(n)) return '';
-            // เลขที่ Excel เก็บไว้ต้องมีจำนวนหลักไม่น้อยกว่าเลขที่แปลงกลับได้ มิฉะนั้นแปลว่าหลักท้ายหายไปแล้ว
-            const mantissaDigits = s.split(/[eE]/)[0].replace(/\D/g, '').length;
-            const restored = Math.round(n).toString();
-            if (mantissaDigits < restored.length) return LOSSY_SCIENTIFIC;
-            s = restored;
-        }
-        // Strip trailing .0, .00, etc. (Excel decimal)
-        s = s.replace(/\.0+$/, '');
-        // Strip any non-digit characters (spaces, dashes)
-        s = s.replace(/\D/g, '');
-        return s;
     };
 
     const sanitizeDOB = (raw) => {
@@ -443,7 +423,7 @@ export default function AdminDashboard() {
         const errors = [];
         if (!cleanId) errors.push(`แถว ${rowNum}: citizen_id ว่างเปล่า`);
         else if (cleanId === LOSSY_SCIENTIFIC) errors.push(`แถว ${rowNum}: ${LOSSY_HELP}`);
-        else if (cleanId.length !== 13) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ต้องมี 13 หลัก (มี ${cleanId.length} หลัก)`);
+        else if (!isCitizenIdFormat(cleanId)) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ${citizenIdFormatError(cleanId)}`);
         else if (/^(1{13}|2{13}|3{13}|0{13})$/.test(cleanId)) errors.push(`แถว ${rowNum}: citizen_id "${cleanId}" ดูเหมือนเป็นข้อมูลทดสอบ`);
         if (!cleanDob) errors.push(`แถว ${rowNum}: dob ว่างเปล่า`);
         else if (cleanDob.length !== 8) errors.push(`แถว ${rowNum}: dob "${cleanDob}" ต้องมี 8 หลัก DDMMYYYY`);
@@ -668,7 +648,7 @@ export default function AdminDashboard() {
                 const currentGradeLevel = gradeRaw || null; // เช่น "ป.3" แยกเก็บสำหรับฟีเจอร์เลื่อนชั้น
                 const errs = [];
                 if (cleanId === LOSSY_SCIENTIFIC) errs.push(LOSSY_HELP);
-                else if (cleanId.length !== 13) errs.push(`citizen_id "${row[COL.CITIZEN]}" ไม่ใช่ 13 หลัก (${cleanId.length})`);
+                else if (!isCitizenIdFormat(cleanId)) errs.push(`citizen_id "${row[COL.CITIZEN]}" ${citizenIdFormatError(cleanId)}`);
                 if (!dobStr) errs.push(`วันเกิด "${row[COL.DOB]}" ไม่ถูกต้อง`);
                 if (!fname) errs.push('ไม่มีชื่อ');
                 if (errs.length > 0) invalidRows.push({ row: i + 3, name: `${fname} ${lname}`, errors: errs });
@@ -864,27 +844,49 @@ export default function AdminDashboard() {
                             reportIssue(`ไม่พบครู ${plan.unknownTeachers.length} รายการในระบบ วิชาเหล่านี้จะยังไม่มีครูผู้สอน\n${detail}${plan.unknownTeachers.length > 5 ? '\n...' : ''}`, { duration: 25000 });
                         }
 
-                        if (plan.hoursConflicts.length > 0) {
-                            const detail = plan.hoursConflicts.slice(0, 5).map(item => `${item.subjectName} ${item.gradeLevel}: ${item.hours.join(' / ')} ชม. → บันทึก ${item.keptHours}`).join('\n');
-                            const hoursMessage = `${plan.hoursConflicts.length} วิชามีจำนวนชั่วโมงไม่เท่ากันระหว่างห้อง ระบบเก็บได้วิชาละค่าเดียว จึงใช้ค่าจากแถวแรก\n${detail}${plan.hoursConflicts.length > 5 ? '\n...' : ''}`;
-                            setImportIssues(previous => [...previous, hoursMessage]);
-                            toast(hoursMessage, { icon: <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />, duration: 20000 });
+                        // ชั่วโมงเรียนแยกตามห้องต้องมีคอลัมน์ room_hours ในฐานข้อมูลก่อน ถ้ายังไม่มี ระบบบันทึกค่าเริ่มต้นไปก่อน
+                        // และบอกผู้ดูแลให้รัน SQL แทนการปล่อยให้การนำเข้าล้มทั้งไฟล์
+                        const roomHoursEnabled = await roomHoursSupported();
+                        const withRoomHours = record => {
+                            if (roomHoursEnabled) return record;
+                            const { room_hours: _roomHours, ...rest } = record;
+                            return rest;
+                        };
+                        if (plan.roomHoursConflicts.length > 0) {
+                            const detail = plan.roomHoursConflicts.slice(0, 5).map(item => `${item.subjectName} ${item.gradeLevel} ห้อง ${item.room}: ${item.hours.join(' / ')} ชม. → ใช้ ${item.hours[0]} ชม.`).join('\n');
+                            reportIssue(`${plan.roomHoursConflicts.length} ห้องกรอกชั่วโมงไม่ตรงกันในหลายแถวของวิชาเดียวกัน ระบบใช้ค่าจากแถวแรกของห้องนั้น\n${detail}${plan.roomHoursConflicts.length > 5 ? '\n...' : ''}`, { duration: 20000 });
+                        }
+                        if (!roomHoursEnabled && plan.roomHoursSubjects > 0) {
+                            reportIssue(`${plan.roomHoursSubjects} วิชามีชั่วโมงเรียนต่างกันตามห้อง แต่ฐานข้อมูลยังไม่เปิดใช้ชั่วโมงแยกห้อง ระบบจึงบันทึกเฉพาะชั่วโมงที่ใช้มากที่สุดของแต่ละวิชา ให้ผู้ดูแลระบบรัน update_schema_room_hours.sql ใน Supabase แล้วนำเข้าไฟล์นี้ซ้ำ`, { duration: 20000 });
                         }
 
                         const wantsEnrollment = Boolean(options.autoEnroll) && plan.enrollmentRooms.length > 0;
-                        if (plan.newSubjects.length === 0 && plan.assignments.length === 0 && !wantsEnrollment) {
+                        const hoursUpdates = plan.matchedSubjects.filter(item => item.hoursChanged);
+                        if (plan.newSubjects.length === 0 && plan.assignments.length === 0 && !wantsEnrollment && hoursUpdates.length === 0) {
                             reportIssue('ข้อมูลวิชาซ้ำกับที่มีอยู่ในระบบทั้งหมด', { id: 'csv' });
                             return;
                         }
 
                         const subjectIdByKey = new Map(plan.matchedSubjects.map(item => [item.key, item.subjectId]));
-                        payload = plan.newSubjects.map(item => item.record);
+                        payload = plan.newSubjects.map(item => withRoomHours(item.record));
                         if (payload.length > 0) {
                             const { data: inserted, error } = await supabase.from('subjects')
                                 .insert(payload)
                                 .select('subject_id, subject_name, grade_level, academic_year, semester');
                             if (error) throw error;
                             (inserted || []).forEach(subject => subjectIdByKey.set(subjectKey(subject), subject.subject_id));
+                        }
+
+                        // วิชาที่มีอยู่แล้วใช้ชั่วโมงตามไฟล์ล่าสุด โรงเรียนที่นำเข้าไปก่อนหน้าจึงแก้ชั่วโมงได้ด้วยการนำเข้าซ้ำ
+                        // แก้เฉพาะชั่วโมง ไม่แตะครู นักเรียน หรือผลการประเมิน
+                        let hoursUpdated = 0;
+                        for (const item of hoursUpdates) {
+                            const { error: hoursError } = await supabase.from('subjects')
+                                .update(withRoomHours({ teaching_hours: item.teaching_hours, room_hours: item.room_hours }))
+                                .eq('school_id', currentUser.school_id)
+                                .eq('subject_id', item.subjectId);
+                            if (hoursError) throw hoursError;
+                            hoursUpdated += 1;
                         }
 
                         const assignmentRows = buildTeacherAssignmentRows(plan.assignments, subjectIdByKey, currentUser.school_id);
@@ -918,6 +920,8 @@ export default function AdminDashboard() {
 
                         const summary = [];
                         if (payload.length > 0) summary.push(`เพิ่มรายวิชา ${payload.length} วิชา`);
+                        if (hoursUpdated > 0) summary.push(`อัปเดตชั่วโมงเรียน ${hoursUpdated} วิชา`);
+                        if (roomHoursEnabled && plan.roomHoursSubjects > 0) summary.push(`${plan.roomHoursSubjects} วิชามีชั่วโมงแยกตามห้อง`);
                         if (assignmentRows.length > 0) summary.push(`กำหนดครูผู้สอนรายห้อง ${assignmentRows.length} รายการ`);
                         if (enrolledCount > 0) summary.push(`จัดนักเรียนเข้าวิชา ${enrolledCount.toLocaleString()} รายการ`);
                         successMessage = summary.join(' · ') || 'ข้อมูลในไฟล์มีอยู่ในระบบครบแล้ว ไม่มีรายการใหม่';
@@ -929,7 +933,7 @@ export default function AdminDashboard() {
                         );
                         const teacherMap = Object.fromEntries(teachers.map(teacher => [teacher.citizen_id, teacher.teacher_id]));
                         payload = data.filter(row => row.context_name?.trim()).map(row => {
-                            const citizenId = row.teacher_citizen_id ? String(row.teacher_citizen_id).replace(/\D/g, '') : '';
+                            const citizenId = row.teacher_citizen_id ? sanitizeCitizenId(row.teacher_citizen_id) : '';
                             return {
                                 school_id: currentUser.school_id,
                                 context_type: contextType,
@@ -957,7 +961,7 @@ export default function AdminDashboard() {
                         let ambiguousData = 0;
 
                         data.forEach(e => {
-                            const cId = e.student_citizen_id ? String(e.student_citizen_id).replace(/\D/g, '') : null;
+                            const cId = e.student_citizen_id ? sanitizeCitizenId(e.student_citizen_id) : null;
                             const sName = e.subject_name?.trim();
                             const stId = studentMap[cId];
                             const room = e.room?.trim() || '';

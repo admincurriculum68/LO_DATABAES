@@ -188,16 +188,46 @@ test('normalizeRoomName ไม่เดาเมื่อไม่รู้ช�
     assert.equal(normalizeRoomName('', 'ป.1'), '');
 });
 
-test('ชั่วโมงไม่เท่ากันระหว่างห้องถูกรายงาน และใช้ค่าจากแถวแรก', () => {
+test('ชั่วโมงต่างกันตามห้อง: ค่าเริ่มต้นเป็นค่าที่พบบ่อยที่สุด และเก็บเฉพาะห้องที่ต่าง', () => {
     const plan = planSubjectImport([
         row({ teaching_hours: 80, teacher_citizen_id: '1111111111111', room: 1 }),
         row({ teaching_hours: 100, teacher_citizen_id: '2222222222222', room: 4 }),
+        row({ teaching_hours: 100, teacher_citizen_id: '2222222222222', room: 5 }),
         row({ subject_name: 'การคิดคำนวณ 3', teaching_hours: 200, teacher_citizen_id: '1111111111111', room: 1 }),
     ], base);
 
-    assert.equal(plan.hoursConflicts.length, 1);
-    assert.deepEqual(plan.hoursConflicts[0], { subjectName: 'การอ่านการเขียนภาษาไทย 3', gradeLevel: 'ป.3', hours: [80, 100], keptHours: 80 });
+    const thai = plan.newSubjects.find(item => item.record.subject_name === 'การอ่านการเขียนภาษาไทย 3').record;
+    assert.equal(thai.teaching_hours, 100);
+    assert.deepEqual(thai.room_hours, { 'ป.3/1': 80 });
+    assert.equal(plan.newSubjects.find(item => item.record.subject_name === 'การคิดคำนวณ 3').record.room_hours, null);
+    assert.equal(plan.roomHoursSubjects, 1);
+    assert.deepEqual(plan.roomHoursConflicts, []);
+});
+
+test('ห้องเดียวกันกรอกชั่วโมงไม่ตรงกันหลายแถว ถูกรายงานและใช้ค่าแรกของห้องนั้น', () => {
+    const plan = planSubjectImport([
+        row({ teaching_hours: 80, teacher_citizen_id: '1111111111111', room: 1 }),
+        row({ teaching_hours: 60, teacher_citizen_id: '2222222222222', room: 1 }),
+    ], base);
+
+    assert.deepEqual(plan.roomHoursConflicts, [{ subjectName: 'การอ่านการเขียนภาษาไทย 3', gradeLevel: 'ป.3', room: 'ป.3/1', hours: [80, 60] }]);
     assert.equal(plan.newSubjects[0].record.teaching_hours, 80);
+    assert.equal(plan.newSubjects[0].record.room_hours, null);
+});
+
+test('นำเข้าซ้ำ: วิชาเดิมที่ชั่วโมงเปลี่ยนถูกทำเครื่องหมายให้อัปเดต ส่วนที่เท่าเดิมไม่แตะ', () => {
+    const existing = { subject_id: 'subject-1', subject_name: 'การอ่านการเขียนภาษาไทย 3', grade_level: 'ป.3', academic_year: 2568, semester: 1, teaching_hours: 80, room_hours: null };
+    const changed = planSubjectImport([
+        row({ teaching_hours: 80, teacher_citizen_id: '1111111111111', room: 1 }),
+        row({ teaching_hours: 100, teacher_citizen_id: '2222222222222', room: 4 }),
+        row({ teaching_hours: 100, teacher_citizen_id: '2222222222222', room: 5 }),
+    ], { ...base, existingSubjects: [existing] });
+    assert.equal(changed.matchedSubjects[0].hoursChanged, true);
+    assert.equal(changed.matchedSubjects[0].teaching_hours, 100);
+    assert.deepEqual(changed.matchedSubjects[0].room_hours, { 'ป.3/1': 80 });
+
+    const same = planSubjectImport([row({ teaching_hours: 80, teacher_citizen_id: '1111111111111', room: 1 })], { ...base, existingSubjects: [existing] });
+    assert.equal(same.matchedSubjects[0].hoursChanged, false);
 });
 
 test('ห้องสำหรับจัดนักเรียนมาจากทุกแถวที่ระบุห้อง แม้หาครูไม่เจอ', () => {

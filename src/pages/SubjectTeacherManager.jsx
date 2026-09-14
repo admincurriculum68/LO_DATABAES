@@ -6,6 +6,8 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { roleLabelsFor } from '../lib/roles';
 import { supabase } from '../lib/supabase';
+import { buildRoomHours } from '../lib/roomHours';
+import { roomHoursSupported } from '../lib/roomHoursApi';
 
 const pairKey = (teacherId, room) => `${teacherId}::${room}`;
 
@@ -16,6 +18,9 @@ export default function SubjectTeacherManager() {
     const [teachers, setTeachers] = useState([]);
     const [subjectId, setSubjectId] = useState('');
     const [rooms, setRooms] = useState([]);
+    // ชั่วโมงที่แก้แต่ยังไม่บันทึก เก็บแยกตามวิชาและห้อง เปลี่ยนวิชาไปมาค่าที่พิมพ์ไว้ไม่หาย
+    const [hoursEdits, setHoursEdits] = useState({});
+    const [roomHoursEnabled, setRoomHoursEnabled] = useState(false);
     const [selectedPairs, setSelectedPairs] = useState(new Set());
     const [savedPairs, setSavedPairs] = useState(new Set());
     const [query, setQuery] = useState('');
@@ -43,6 +48,7 @@ export default function SubjectTeacherManager() {
     }, [academicYear, currentUser?.school_id, semester]);
 
     useEffect(() => { loadBaseData(); }, [loadBaseData]);
+    useEffect(() => { roomHoursSupported().then(setRoomHoursEnabled); }, []);
 
     useEffect(() => {
         async function loadAssignments() {
@@ -76,6 +82,10 @@ export default function SubjectTeacherManager() {
             return next;
         });
     };
+
+    const selectedSubject = subjects.find(subject => subject.subject_id === subjectId);
+    const hoursKey = room => `${subjectId}::${room}`;
+    const roomHoursValue = room => hoursEdits[hoursKey(room)] ?? String(selectedSubject?.room_hours?.[room] ?? '');
 
     const saveAssignments = async () => {
         if (!subjectId) return;
@@ -111,6 +121,16 @@ export default function SubjectTeacherManager() {
                     .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
                 if (legacyError) throw legacyError;
             }
+            if (roomHoursEnabled && selectedSubject && rooms.length) {
+                // ช่องว่างใช้ค่าเริ่มต้นของวิชา ชั่วโมงที่ใช้มากที่สุดเป็นค่าเริ่มต้นใหม่ และเก็บเฉพาะห้องที่ต่าง
+                const hoursByRoom = new Map(rooms.map(room => [room, roomHoursValue(room) === '' ? selectedSubject.teaching_hours : roomHoursValue(room)]));
+                const nextHours = buildRoomHours(hoursByRoom, selectedSubject.teaching_hours);
+                const { error: hoursError } = await supabase.from('subjects').update(nextHours)
+                    .eq('school_id', currentUser.school_id).eq('subject_id', subjectId);
+                if (hoursError) throw hoursError;
+                setSubjects(previous => previous.map(subject => (subject.subject_id === subjectId ? { ...subject, ...nextHours } : subject)));
+                setHoursEdits(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${subjectId}::`))));
+            }
             setSavedPairs(new Set(selectedPairs));
             toast.success(`บันทึกครูผู้สอน ${new Set(payload.map(item => item.teacher_id)).size} คน ครอบคลุม ${new Set(payload.map(item => item.room_name)).size} ห้องแล้ว`);
         } catch (error) {
@@ -125,7 +145,7 @@ export default function SubjectTeacherManager() {
             <div className="mx-auto max-w-6xl space-y-5 pb-12">
                 <header className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between">
                     <div><h1 className="text-2xl font-bold text-slate-950">กำหนดครูผู้สอนและห้องเรียน</h1><p className="mt-1 text-sm leading-6 text-slate-600">หนึ่งรายวิชามีครูได้มากกว่า 1 คน และกำหนดขอบเขตห้องของครูแต่ละคนได้</p></div>
-                    <button onClick={saveAssignments} disabled={!subjectId || saving} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-40"><Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกการมอบหมาย'}</button>
+                    <button onClick={saveAssignments} disabled={!subjectId || saving} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-40"><Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกครูและชั่วโมงเรียน'}</button>
                 </header>
 
                 <section className="rounded-2xl border border-line bg-white p-5 shadow-sm">
@@ -135,7 +155,7 @@ export default function SubjectTeacherManager() {
                 {loading ? <div className="h-64 animate-pulse rounded-2xl bg-slate-200" /> : rooms.length === 0 ? <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><Users className="mx-auto h-9 w-9 text-slate-500" /><h2 className="mt-3 font-bold text-slate-800">รายวิชานี้ยังไม่มีกลุ่มเรียน</h2><p className="mt-1 text-sm text-slate-600">จัดนักเรียนเข้ากลุ่มเรียนและระบุห้องก่อน จึงจะกำหนดขอบเขตห้องให้ครูได้</p></section> : (
                     <section className="overflow-hidden rounded-2xl border border-line bg-white">
                         <div className="flex flex-col gap-3 border-b border-line p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-slate-950">เลือกครูในแต่ละห้อง</h2><p className="mt-1 text-xs text-slate-500">ทำเครื่องหมายได้หลายครูต่อห้องและหลายห้องต่อครู</p></div><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" /><input aria-label="ค้นหาชื่อครู" value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อครู" className="min-h-11 rounded-xl border border-field pl-9 pr-3 text-sm" /></div></div>
-                        <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="sticky left-0 bg-slate-50 px-5 py-3 text-left font-bold">ครูและบุคลากร</th>{rooms.map(room => <th key={room} className="px-4 py-3 text-center font-bold">{room}</th>)}</tr></thead><tbody className="divide-y divide-line">{visibleTeachers.map(teacher => <tr key={teacher.teacher_id}><td className="sticky left-0 bg-white px-5 py-4 font-bold text-slate-900">{teacher.prefix || ''}{teacher.first_name} {teacher.last_name}<span className="ml-2 text-xs font-normal text-slate-500">{roleLabelsFor(teacher).join(' · ')}</span></td>{rooms.map(room => { const checked = selectedPairs.has(pairKey(teacher.teacher_id, room)); return <td key={room} className="px-4 py-3 text-center"><button type="button" onClick={() => togglePair(teacher.teacher_id, room)} aria-pressed={checked} aria-label={`${checked ? 'ยกเลิก' : 'กำหนด'} ${teacher.first_name} ห้อง ${room}`} className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-2 ${checked ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-transparent hover:border-indigo-400'}`}><Check className="h-5 w-5" /></button></td>; })}</tr>)}</tbody></table></div>
+                        <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="sticky left-0 bg-slate-50 px-5 py-3 text-left font-bold">ครูและบุคลากร</th>{rooms.map(room => <th key={room} scope="col" className="px-4 py-3 text-center font-bold">{room}</th>)}</tr>{roomHoursEnabled && <tr className="border-t border-line bg-white"><th scope="row" className="sticky left-0 bg-white px-5 py-2 text-left text-xs font-semibold text-slate-700">ชั่วโมงเรียนของห้อง<span className="block font-normal text-slate-600">ช่องว่างใช้ค่าเริ่มต้น {selectedSubject?.teaching_hours ?? '-'} ชม.</span></th>{rooms.map(room => <td key={room} className="px-2 py-2 text-center"><input type="number" min="0" step="1" inputMode="numeric" aria-label={`ชั่วโมงเรียนของห้อง ${room}`} value={roomHoursValue(room)} placeholder={selectedSubject?.teaching_hours == null ? '' : String(selectedSubject.teaching_hours)} onChange={event => setHoursEdits(previous => ({ ...previous, [hoursKey(room)]: event.target.value }))} className="min-h-11 w-20 rounded-lg border border-field px-2 text-center text-sm font-semibold placeholder:font-normal placeholder:text-slate-600" /></td>)}</tr>}</thead><tbody className="divide-y divide-line">{visibleTeachers.map(teacher => <tr key={teacher.teacher_id}><td className="sticky left-0 bg-white px-5 py-4 font-bold text-slate-900">{teacher.prefix || ''}{teacher.first_name} {teacher.last_name}<span className="ml-2 text-xs font-normal text-slate-500">{roleLabelsFor(teacher).join(' · ')}</span></td>{rooms.map(room => { const checked = selectedPairs.has(pairKey(teacher.teacher_id, room)); return <td key={room} className="px-4 py-3 text-center"><button type="button" onClick={() => togglePair(teacher.teacher_id, room)} aria-pressed={checked} aria-label={`${checked ? 'ยกเลิก' : 'กำหนด'} ${teacher.first_name} ห้อง ${room}`} className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-2 ${checked ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-transparent hover:border-indigo-400'}`}><Check className="h-5 w-5" /></button></td>; })}</tr>)}</tbody></table></div>
                     </section>
                 )}
             </div>

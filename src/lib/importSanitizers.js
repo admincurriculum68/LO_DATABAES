@@ -1,8 +1,32 @@
 export const LOSSY_SCIENTIFIC = '__EXCEL_LOSSY__';
 
+// เลขประจำตัวที่ใช้เข้าสู่ระบบมี 2 แบบ: เลขประจำตัวประชาชน 13 หลัก
+// และเลข G (G ตามด้วยตัวเลข 12 หลัก) ที่ออกให้นักเรียนที่ไม่มีเลขประจำตัวประชาชน
+export const CITIZEN_ID_PATTERN = /^(?:\d{13}|G\d{12})$/;
+
+export function isCitizenIdFormat(value) {
+    return CITIZEN_ID_PATTERN.test(String(value ?? ''));
+}
+
+export function citizenIdFormatError(value) {
+    const id = String(value ?? '');
+    if (!id) return 'ยังไม่ได้กรอกเลขประจำตัว';
+    if (id.startsWith('G')) return `เลข G ต้องมีตัวเลข 12 หลักต่อจาก G (ขณะนี้ ${id.length - 1} หลัก)`;
+    return `เลขประจำตัวต้องเป็นตัวเลข 13 หลัก หรือ G ตามด้วยตัวเลข 12 หลัก (ขณะนี้ ${id.length} หลัก)`;
+}
+
+// ใช้กับช่องพิมพ์เลขประจำตัว: คงตัว G นำหน้าได้ ตัวอื่นที่ไม่ใช่ตัวเลขถูกตัดทิ้ง และยาวไม่เกิน 13 ตัว
+export function normalizeCitizenInput(value) {
+    const text = String(value ?? '').trimStart();
+    const lead = /^[gG]/.test(text) ? 'G' : '';
+    return `${lead}${text.slice(lead.length).replace(/\D/g, '')}`.slice(0, 13);
+}
+
 export function sanitizeCitizenId(value) {
     if (value === null || value === undefined || value === '') return '';
     let text = String(value).trim();
+    // คงตัว G นำหน้าไว้ ไม่อย่างนั้นเลข G จะเหลือ 12 หลัก นำเข้าไม่ผ่านและเข้าสู่ระบบไม่ได้
+    if (/^[gG]/.test(text)) return `G${text.slice(1).replace(/\D/g, '')}`;
     if (/[eE]/.test(text)) {
         const numeric = Number(text);
         if (!Number.isFinite(numeric)) return '';

@@ -40,6 +40,10 @@ test('เลขบัตรที่มีขีดหรือช่องว�
     assert.deepEqual(errs, []);
 });
 
+test('นักเรียนที่ใช้เลข G ผ่านการตรวจเลขประจำตัว', () => {
+    assert.deepEqual(validatePersonDraft('students', { citizen_id: 'G693000002418', first_name: 'ลู๊บนา', last_name: 'ลาติฟา' }), []);
+});
+
 test('ต้องกรอกทั้งชื่อและนามสกุล', () => {
     const errs = validatePersonDraft('students', { citizen_id: '1429900127280', first_name: '  ', last_name: '' });
     assert.deepEqual(errs, ['ต้องกรอกชื่อ', 'ต้องกรอกนามสกุล']);
@@ -91,6 +95,6 @@ test('personFieldErrors บอกข้อผิดพลาดแยกรา�
     const errors = personFieldErrors('teachers', { citizen_id: '123', first_name: ' ', last_name: 'ใจดี', roles: [] });
 
     assert.deepEqual(Object.keys(errors), ['citizen_id', 'first_name', 'roles']);
-    assert.match(errors.citizen_id, /13 หลัก \(ขณะนี้ 3 หลัก\)/);
+    assert.match(errors.citizen_id, /ขณะนี้ 3 หลัก/);
     assert.deepEqual(personFieldErrors('students', { citizen_id: '1234567890123', first_name: 'ก', last_name: 'ข' }), {});
 });

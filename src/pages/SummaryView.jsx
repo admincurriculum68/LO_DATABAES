@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loadXLSX } from '../lib/xlsx';
+import { hoursForRoom, summarizeRoomHours } from '../lib/roomHours';
 import Layout from '../components/Layout';
 import SchoolReportHeader from '../components/SchoolReportHeader';
 import { useAuth } from '../AuthContext';
@@ -31,7 +32,11 @@ const levelMeta = {
 
 const studentName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
-function SubjectCover({ school, subject, teacherNames }) {
+function SubjectCover({ school, subject, teacherNames, rooms, roomFilter }) {
+    // วิชาเดียวกันเรียนไม่เท่ากันได้ตามห้อง พิมพ์เฉพาะห้องใช้ชั่วโมงของห้องนั้น พิมพ์ทุกห้องสรุปทุกช่วงห้อง
+    const singleRoom = roomFilter && roomFilter !== 'all';
+    const roomHours = singleRoom ? hoursForRoom(subject, roomFilter) : null;
+    const hoursText = singleRoom ? (roomHours === null ? '' : `${roomHours} ชั่วโมง`) : summarizeRoomHours(subject, rooms);
     return (
         <article className="summary-print-only hidden min-h-[270mm] font-sarabun-new text-black">
             <SchoolReportHeader
@@ -46,7 +51,7 @@ function SubjectCover({ school, subject, teacherNames }) {
                 <dl className="mt-12 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-4 border-y border-black py-6 text-left text-xl">
                     <dt className="font-bold">ระดับชั้น</dt><dd>{subject?.grade_level || '-'}</dd>
                     <dt className="font-bold">ภาคเรียน/ปีการศึกษา</dt><dd>{subject?.semester || '-'} / {subject?.academic_year || '-'}</dd>
-                    <dt className="font-bold">จำนวนชั่วโมงเรียน</dt><dd>{subject?.teaching_hours ? `${subject.teaching_hours} ชั่วโมง` : '-'}</dd>
+                    <dt className="font-bold">จำนวนชั่วโมงเรียน</dt><dd>{hoursText || '-'}</dd>
                     <dt className="font-bold">ครูผู้สอน</dt><dd>{teacherNames.length ? teacherNames.join(', ') : '-'}</dd>
                 </dl>
             </div>
@@ -274,7 +279,7 @@ export default function SummaryView() {
                     <div className="space-y-5"><div className="h-24 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>
                 ) : (
                     <>
-                        {printMode === 'cover' && <SubjectCover school={school} subject={subject} teacherNames={teacherNames} />}
+                        {printMode === 'cover' && <SubjectCover school={school} subject={subject} teacherNames={teacherNames} rooms={rooms} roomFilter={roomFilter} />}
                         {printMode === 'evidence' && <SubjectEvidenceReport school={school} subject={subject} teacherNames={teacherNames} enrollments={printableEnrollments} learningOutcomes={data.learningOutcomes} evaluationMap={evaluationMap} roomLabel={printableRoomLabel} />}
                         <div className="summary-screen-only">
                         <div className="hidden print:block mb-5"><h1 className="text-base font-bold">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</h1><p className="mt-1 text-sm">รายวิชา {subject?.subject_name} · ชั้น {subject?.grade_level} · ภาคเรียนที่ {subject?.semester}/{subject?.academic_year}</p></div>

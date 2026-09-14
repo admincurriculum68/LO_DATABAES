@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { loginWithCitizenId } from '../lib/auth';
+import { isCitizenIdFormat, normalizeCitizenInput } from '../lib/importSanitizers';
 import { defaultRouteFor } from '../lib/roles';
 import {
     BookOpen,
@@ -32,8 +33,8 @@ export default function Login() {
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        if (citizenId.length < 13) {
-            toast.error('กรุณากรอกเลขประจำตัวประชาชน 13 หลักให้ครบถ้วน');
+        if (!isCitizenIdFormat(citizenId)) {
+            toast.error('กรุณากรอกเลขประจำตัวให้ครบ: ตัวเลข 13 หลัก หรือ G ตามด้วยตัวเลข 12 หลัก');
             return;
         }
         if (dob.length < 4) {
@@ -57,7 +58,9 @@ export default function Login() {
         }
     };
 
-    const idComplete = citizenId.length === 13;
+    const idComplete = isCitizenIdFormat(citizenId);
+    // นักเรียนที่ไม่มีเลขประจำตัวประชาชนใช้เลข G แป้นตัวเลขบนมือถือพิมพ์ G ไม่ได้ จึงมีปุ่มเติมให้
+    const usesG = citizenId.startsWith('G');
     const dobComplete = dob.length === 8;
 
     return (
@@ -164,7 +167,7 @@ export default function Login() {
                                         maxLength={13}
                                         required
                                         value={citizenId}
-                                        onChange={(e) => setCitizenId(e.target.value.replace(/\D/g, ''))}
+                                        onChange={(e) => setCitizenId(normalizeCitizenInput(e.target.value))}
                                         placeholder="เช่น 1111111111111"
                                         className="min-h-12 w-full rounded-2xl border border-field bg-slate-50/50 pl-10 pr-10 py-3 text-sm font-bold tracking-wider text-slate-900 placeholder:text-slate-600 transition focus:border-indigo-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
                                     />
@@ -172,6 +175,17 @@ export default function Login() {
                                         <CheckCircle2 className="pointer-events-none absolute right-3.5 top-3.5 h-4 w-4 text-emerald-500" />
                                     )}
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCitizenId(previous => (previous.startsWith('G') ? previous.slice(1) : normalizeCitizenInput(`G${previous}`)));
+                                        document.getElementById('citizen-id')?.focus();
+                                    }}
+                                    aria-pressed={usesG}
+                                    className="inline-flex min-h-11 items-center text-xs font-semibold text-indigo-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+                                >
+                                    {usesG ? 'เลขประจำตัวไม่ได้ขึ้นต้นด้วย G กดเพื่อเอา G ออก' : 'นักเรียนที่ใช้เลข G กดที่นี่เพื่อเติม G'}
+                                </button>
                             </div>
 
                             {/* Input 2: Password (DOB) */}

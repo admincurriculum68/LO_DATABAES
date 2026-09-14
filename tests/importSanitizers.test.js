@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { excelSerialToThaiDob, LOSSY_SCIENTIFIC, normalizeThaiDob, sanitizeCitizenId } from '../src/lib/importSanitizers.js';
+import { citizenIdFormatError, excelSerialToThaiDob, isCitizenIdFormat, LOSSY_SCIENTIFIC, normalizeCitizenInput, normalizeThaiDob, sanitizeCitizenId } from '../src/lib/importSanitizers.js';
 
 test('sanitizeCitizenId preserves text digits and removes Excel decimal suffix', () => {
     assert.equal(sanitizeCitizenId('1-2345-67890-12-3'), '1234567890123');
@@ -9,6 +9,23 @@ test('sanitizeCitizenId preserves text digits and removes Excel decimal suffix',
 
 test('sanitizeCitizenId rejects lossy scientific notation', () => {
     assert.equal(sanitizeCitizenId('1.23457E+12'), LOSSY_SCIENTIFIC);
+});
+
+test('เลข G ของนักเรียนที่ไม่มีเลขประจำตัวประชาชน คงตัว G ไว้', () => {
+    assert.equal(sanitizeCitizenId('G693000002418'), 'G693000002418');
+    assert.equal(sanitizeCitizenId(' g 6930-0000-2418 '), 'G693000002418');
+    assert.equal(sanitizeCitizenId('X1234567890123'), '1234567890123');
+    assert.equal(isCitizenIdFormat('1234567890123'), true);
+    assert.equal(isCitizenIdFormat('G693000002418'), true);
+    assert.equal(isCitizenIdFormat('123456789012'), false);
+    assert.equal(isCitizenIdFormat('G69300000241'), false);
+    assert.match(citizenIdFormatError('G69300000241'), /12 หลักต่อจาก G \(ขณะนี้ 11 หลัก\)/);
+});
+
+test('normalizeCitizenInput ใช้กับช่องพิมพ์ คง G นำหน้าและยาวไม่เกิน 13 ตัว', () => {
+    assert.equal(normalizeCitizenInput('g69300000241899'), 'G693000002418');
+    assert.equal(normalizeCitizenInput('1-2345-67890-12-3'), '1234567890123');
+    assert.equal(normalizeCitizenInput('12G3'), '123');
 });
 
 test('Excel serial and common Thai dates normalize to DDMMBBBB', () => {

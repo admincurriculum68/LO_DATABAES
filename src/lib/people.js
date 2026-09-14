@@ -5,6 +5,7 @@
  * ส่วนที่คุยกับ Supabase อยู่ใน peopleApi.js
  */
 import { ROLE_LABELS, parseRoleList, rolesOf } from './roles.js';
+import { citizenIdFormatError, isCitizenIdFormat, LOSSY_SCIENTIFIC, sanitizeCitizenId } from './importSanitizers.js';
 
 export const ROLE_CHOICES = [
     ['teacher', 'ครูผู้สอน'],
@@ -50,9 +51,9 @@ export function teacherRoleSummary(teacher) {
  */
 export function personFieldErrors(kind, data) {
     const errors = {};
-    const id = String(data.citizen_id ?? '').replace(/\D/g, '');
-    if (id.length !== 13) {
-        errors.citizen_id = `เลขประจำตัวประชาชนต้องมี 13 หลัก (ขณะนี้ ${id.length} หลัก) หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`;
+    const id = sanitizeCitizenId(data.citizen_id);
+    if (!isCitizenIdFormat(id)) {
+        errors.citizen_id = `${citizenIdFormatError(id)} หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้`;
     }
     if (!String(data.first_name ?? '').trim()) errors.first_name = 'ต้องกรอกชื่อ';
     if (!String(data.last_name ?? '').trim()) errors.last_name = 'ต้องกรอกนามสกุล';
@@ -87,8 +88,8 @@ export function personSearchText(person) {
 export function mergeTeacherImportRows(rows) {
     const byCitizen = new Map();
     (rows || []).forEach(row => {
-        const citizenId = String(row.citizen_id ?? '').replace(/\D/g, '');
-        if (!citizenId) return;
+        const citizenId = sanitizeCitizenId(row.citizen_id);
+        if (!citizenId || citizenId === LOSSY_SCIENTIFIC) return;
         const entry = byCitizen.get(citizenId) || { roles: [], homeroom: '' };
         parseRoleList(row.role).forEach(role => {
             if (!entry.roles.includes(role)) entry.roles.push(role);

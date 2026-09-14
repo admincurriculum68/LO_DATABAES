@@ -1,4 +1,5 @@
 import { LOSSY_SCIENTIFIC, sanitizeCitizenId } from './importSanitizers.js';
+import { buildRoomHours } from './roomHours.js';
 
 // โรงเรียนหนึ่งวิชามีครูได้หลายคน และแบ่งกันดูคนละห้อง ไฟล์นำเข้าจึงต้องเขียน
 // วิชาเดิมซ้ำได้หลายแถว แถวละครูหนึ่งคน ตรรกะนี้ยุบแถวที่เป็นวิชาเดียวกันให้เหลือ
@@ -35,8 +36,8 @@ export function planSubjectImport(rows, {
     teacherIdByCitizenId = new Map(),
     existingSubjects = [],
 } = {}) {
-    const existingIdByKey = new Map();
-    existingSubjects.forEach(subject => existingIdByKey.set(subjectKey(subject), subject.subject_id));
+    const existingByKey = new Map();
+    existingSubjects.forEach(subject => existingByKey.set(subjectKey(subject), subject));
 
     const groups = new Map();
     const unknownTeachers = [];
@@ -65,18 +66,26 @@ export function planSubjectImport(rows, {
         };
 
         const key = subjectKey(record);
-        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set(), hours: new Set(), rooms: new Set() });
+        if (!groups.has(key)) groups.set(key, { key, record, primaryTeacherId: null, assignments: [], seen: new Set(), roomHours: new Map(), unroomedHours: [], rooms: new Set() });
         const group = groups.get(key);
-        if (record.teaching_hours !== null) group.hours.add(record.teaching_hours);
 
         // ครูกรอกรายละเอียดวิชาไว้เฉพาะแถวแรกได้ แถวถัดไปเว้นว่างไว้ไม่ถือว่าลบของเดิม
         if (!group.record.subject_group && record.subject_group) group.record.subject_group = record.subject_group;
-        if (group.record.teaching_hours === null && record.teaching_hours !== null) group.record.teaching_hours = record.teaching_hours;
 
         // ห้องที่ใช้จัดนักเรียนเข้าวิชามาจากทุกแถวที่ระบุห้อง ไม่ขึ้นกับว่าหาครูเจอหรือไม่
         // วิชาที่ครูยังไม่มีบัญชีจึงยังได้นักเรียนครบ แล้วค่อยเพิ่มครูภายหลัง
         const enrollmentRoom = normalizeRoomName(row.room, record.grade_level);
         if (enrollmentRoom) group.rooms.add(enrollmentRoom);
+
+        // ชั่วโมงเก็บรายห้องไว้ก่อน แล้วค่อยสรุปเป็นค่าเริ่มต้นกับห้องที่ต่างหลังอ่านครบทุกแถว
+        if (record.teaching_hours !== null) {
+            if (enrollmentRoom) {
+                if (!group.roomHours.has(enrollmentRoom)) group.roomHours.set(enrollmentRoom, []);
+                group.roomHours.get(enrollmentRoom).push(record.teaching_hours);
+            } else {
+                group.unroomedHours.push(record.teaching_hours);
+            }
+        }
 
         const rawTeacher = text(row.teacher_citizen_id);
         if (!rawTeacher) return;
@@ -103,27 +112,45 @@ export function planSubjectImport(rows, {
         group.assignments.push({ subjectKey: key, teacherId, roomName });
     });
 
+    // วิชาเดียวกันเรียนไม่เท่ากันได้ตามห้อง ค่าเริ่มต้นคือชั่วโมงที่พบบ่อยที่สุด ห้องที่ต่างเก็บไว้ใน room_hours
+    // แต่ห้องเดียวกันควรมีชั่วโมงค่าเดียว ถ้าหลายแถวของห้องเดียวกันกรอกไม่ตรงกัน ใช้ค่าแรกและรายงาน
+    const roomHoursConflicts = [];
+    groups.forEach(group => {
+        const hoursByRoom = new Map();
+        group.roomHours.forEach((values, room) => {
+            hoursByRoom.set(room, values[0]);
+            const distinct = [...new Set(values)];
+            if (distinct.length > 1) {
+                roomHoursConflicts.push({ subjectName: group.record.subject_name, gradeLevel: group.record.grade_level, room, hours: distinct });
+            }
+        });
+        const built = buildRoomHours(hoursByRoom, group.unroomedHours[0] ?? null);
+        group.record.teaching_hours = built.teaching_hours;
+        group.record.room_hours = built.room_hours;
+        group.hasHours = hoursByRoom.size > 0 || group.unroomedHours.length > 0;
+    });
+
     const newSubjects = [];
     const matchedSubjects = [];
     groups.forEach(group => {
-        const existingId = existingIdByKey.get(group.key);
-        if (existingId) matchedSubjects.push({ key: group.key, subjectId: existingId });
-        else newSubjects.push({ key: group.key, record: { ...group.record, teacher_id: group.primaryTeacherId } });
+        const existing = existingByKey.get(group.key);
+        if (existing) {
+            const sameHours = existing.teaching_hours === group.record.teaching_hours
+                && JSON.stringify(existing.room_hours ?? null) === JSON.stringify(group.record.room_hours ?? null);
+            matchedSubjects.push({
+                key: group.key,
+                subjectId: existing.subject_id,
+                hoursChanged: group.hasHours && !sameHours,
+                teaching_hours: group.record.teaching_hours,
+                room_hours: group.record.room_hours,
+            });
+        } else {
+            newSubjects.push({ key: group.key, record: { ...group.record, teacher_id: group.primaryTeacherId } });
+        }
     });
 
     const assignments = [...groups.values()].flatMap(group => group.assignments);
     const enrollmentRooms = [...groups.values()].flatMap(group => [...group.rooms].map(roomName => ({ subjectKey: group.key, roomName })));
-
-    // รายวิชาเก็บจำนวนชั่วโมงได้ค่าเดียว ถ้าแต่ละห้องในไฟล์ใส่ไม่เท่ากัน ต้องบอกผู้นำเข้า
-    // ไม่ใช่เลือกค่าแรกไปเงียบ ๆ
-    const hoursConflicts = [...groups.values()]
-        .filter(group => group.hours.size > 1)
-        .map(group => ({
-            subjectName: group.record.subject_name,
-            gradeLevel: group.record.grade_level,
-            hours: [...group.hours],
-            keptHours: group.record.teaching_hours,
-        }));
 
     return {
         newSubjects,
@@ -132,7 +159,8 @@ export function planSubjectImport(rows, {
         unknownTeachers,
         lossyTeacherIds,
         incompleteRows,
-        hoursConflicts,
+        roomHoursConflicts,
+        roomHoursSubjects: [...groups.values()].filter(group => group.record.room_hours).length,
         enrollmentRooms,
         subjectCount: groups.size,
     };

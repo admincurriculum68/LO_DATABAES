@@ -10,6 +10,7 @@ import {
     ROLE_CHOICES, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, personFieldErrors,
 } from '../lib/people';
 import { syncTeacherRoles } from '../lib/peopleApi';
+import { normalizeCitizenInput, sanitizeCitizenId } from '../lib/importSanitizers';
 
 const TEACHER_SELECT = 'teacher_id, citizen_id, prefix, first_name, last_name, role, homeroom, is_active, teacher_roles(role, is_primary)';
 const STUDENT_SELECT = 'student_id, citizen_id, student_code, prefix, first_name, last_name, current_grade_level, current_room, student_status';
@@ -161,7 +162,7 @@ export default function PeopleManager() {
         }
         setSaving(true);
         try {
-            const citizenId = String(draft.citizen_id).replace(/\D/g, '');
+            const citizenId = sanitizeCitizenId(draft.citizen_id);
             if (kind === 'teachers') {
                 const { error } = await supabase.from('users_teachers').update({
                     citizen_id: citizenId, prefix: draft.prefix.trim(),
@@ -338,11 +339,11 @@ export default function PeopleManager() {
                                                 <input {...invalidProps('last_name')} value={draft.last_name} onChange={e => updateDraft('last_name', e.target.value)} className={inputClass} />
                                             </Field>
                                         </div>
-                                        <Field label="เลขประจำตัวประชาชน" hint="ใช้เข้าสู่ระบบ หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้" error={fieldErrors.citizen_id} errorId="person-citizen_id-error">
+                                        <Field label="เลขประจำตัวประชาชน" hint="ใช้เข้าสู่ระบบ หากแก้ผิด เจ้าของบัญชีจะเข้าสู่ระบบไม่ได้ นักเรียนที่ไม่มีเลขประจำตัวประชาชนใช้เลข G ได้" error={fieldErrors.citizen_id} errorId="person-citizen_id-error">
                                             <input
                                                 {...invalidProps('citizen_id')}
                                                 value={draft.citizen_id}
-                                                onChange={e => updateDraft('citizen_id', e.target.value.replace(/\D/g, ''))}
+                                                onChange={e => updateDraft('citizen_id', normalizeCitizenInput(e.target.value))}
                                                 inputMode="numeric" maxLength={13}
                                                 className={`${inputClass} font-mono tracking-wide`}
                                             />
