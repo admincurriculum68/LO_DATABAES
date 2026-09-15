@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
+import { normalizeCompetencyArea } from '../constants/curriculum2568';
 import { Search, Printer, Save, CheckCircle, XCircle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -106,7 +107,8 @@ export default function YearlyReportAdmin() {
 
         const approvedByArea = new Map();
         (approved || []).forEach(item => {
-            if (!approvedByArea.has(item.competency_area) && item.final_level) approvedByArea.set(item.competency_area, item.final_level);
+            const area = normalizeCompetencyArea(item.competency_area);
+            if (!approvedByArea.has(area) && item.final_level) approvedByArea.set(area, item.final_level);
         });
         const levels = {};
 
@@ -127,7 +129,7 @@ export default function YearlyReportAdmin() {
         // ผลรับรองเป็นแหล่งจริง: เขียนทับค่ารายด้านที่เชื่อมไว้ และคงค่าเดิม
         // เฉพาะรายการเก่าที่ยังไม่ได้กำหนด competency_area
         competencies.forEach(comp => {
-            const approvedLevel = approvedByArea.get(comp.competency_area);
+            const approvedLevel = approvedByArea.get(normalizeCompetencyArea(comp.competency_area));
             if (approvedLevel) levels[comp.competency_id] = approvedLevel;
         });
         setAchievedLevels(levels);

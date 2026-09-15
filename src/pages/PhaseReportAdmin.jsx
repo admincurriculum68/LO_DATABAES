@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568 } from '../constants/curriculum2568';
+import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568, normalizeCompetencyArea } from '../constants/curriculum2568';
 
 // ─── Competency levels ──────────────────────────────────────────────────────
 const LEVELS = CBE_LEVELS_2568;
@@ -105,7 +105,7 @@ export default function PhaseReportAdmin() {
         const abilityByName = new Map(ALL_ABILITIES(phase).map(ability => [ability.name, ability.key]));
         const populatedKeys = new Set();
         (approved || []).forEach(item => {
-            const key = abilityByName.get(item.competency_area);
+            const key = abilityByName.get(normalizeCompetencyArea(item.competency_area));
             if (key && item.final_level && !populatedKeys.has(key)) {
                 levels[key] = item.final_level;
                 populatedKeys.add(key);

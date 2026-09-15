@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { ChevronLeft, Printer, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useDocumentTitle from '../lib/useDocumentTitle';
+import { normalizeCompetencyArea } from '../constants/curriculum2568';
 
 export default function ReportView() {
     useDocumentTitle('รายงานผลการเรียนรายบุคคล');
@@ -260,7 +261,7 @@ export default function ReportView() {
                                 const area = lo.competency_area || 'ทั่วไป';
 
                                 let behaviorText = ev.evidence_note?.trim() || '';
-                                const bMatch = behaviors.find(b => b.competency_area === area && b.competency_level === level);
+                                const bMatch = behaviors.find(b => normalizeCompetencyArea(b.competency_area) === normalizeCompetencyArea(area) && b.competency_level === level);
                                 if (!behaviorText && bMatch) {
                                     behaviorText = bMatch.behavior_text;
                                 } else if (!behaviorText) {
