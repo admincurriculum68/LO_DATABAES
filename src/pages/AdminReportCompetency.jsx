@@ -8,6 +8,7 @@ import { useAuth } from '../AuthContext';
 import { fetchAllRows, supabase } from '../lib/supabase';
 import SchoolReportHeader from '../components/SchoolReportHeader';
 import { loadSchoolProfile } from '../lib/schoolProfile';
+import { homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
 const LEVEL_STYLES = {
     เริ่มต้น: 'border-rose-200 bg-rose-50 text-rose-800',
@@ -17,7 +18,7 @@ const LEVEL_STYLES = {
     'N/A': 'border-line bg-slate-50 text-slate-600',
 };
 
-const statusLabel = status => ({ approved: 'รับรองแล้ว', returned: 'ส่งกลับแก้ไข', pending: 'รอรับรอง' }[status] || 'รอรับรอง');
+const statusLabel = status => ({ approved: 'รับรองแล้ว', returned: 'ส่งกลับแก้ไข', submitted: 'รอรับรอง', draft: 'ครูประจำชั้นยังไม่ส่ง', pending: 'รอรับรอง' }[status] || 'ยังไม่มีผลสรุป');
 const studentName = student => `${student.prefix || ''}${student.first_name || ''} ${student.last_name || ''}`.trim();
 
 export default function AdminReportCompetency() {
@@ -39,6 +40,7 @@ export default function AdminReportCompetency() {
             if (!currentUser?.school_id || !academicYear || !semester) return;
             setLoading(true);
             try {
+                const hasSummary = await homeroomSummarySupported();
                 const [studentRows, loRows, decisionRows, schoolProfile] = await Promise.all([
                     fetchAllRows((from, to) => supabase.from('users_students')
                         .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room')
@@ -51,7 +53,7 @@ export default function AdminReportCompetency() {
                         .eq('school_id', currentUser.school_id)
                         .range(from, to)),
                     fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
-                        .select('student_id, competency_area, final_level, decision_status, decision_reason, decided_at')
+                        .select(`student_id, competency_area, final_level, decision_status, decision_reason, decided_at${hasSummary ? ', summary_text' : ''}`)
                         .eq('school_id', currentUser.school_id)
                         .eq('academic_year', academicYear)
                         .eq('semester', semester)
@@ -97,9 +99,9 @@ export default function AdminReportCompetency() {
         const XLSX = await loadXLSX();
         const rows = filteredStudents.map((student, index) => {
             const decision = decisionMap.get(`${student.student_id}:${selectedArea}`);
-            return [index + 1, student.student_code, studentName(student), student.current_grade_level, student.current_room, decision?.final_level || '', statusLabel(decision?.decision_status), decision?.decision_reason || ''];
+            return [index + 1, student.student_code, studentName(student), student.current_grade_level, student.current_room, decision?.final_level || '', statusLabel(decision?.decision_status), decision?.summary_text || decision?.decision_reason || ''];
         });
-        const sheet = XLSX.utils.aoa_to_sheet([['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'ผลรับรองรายด้าน', 'สถานะ', 'เหตุผล/หมายเหตุ'], ...rows]);
+        const sheet = XLSX.utils.aoa_to_sheet([['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'ผลรับรองรายด้าน', 'สถานะ', 'คำบรรยาย/หมายเหตุ'], ...rows]);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, sheet, 'ผลรับรองรายด้าน');
         XLSX.writeFile(workbook, `ผลรับรอง_${selectedArea}_${academicYear}_${semester}.xlsx`);
@@ -126,13 +128,13 @@ export default function AdminReportCompetency() {
             <section className="hidden font-sarabun-new text-black print:block">
                 <SchoolReportHeader school={school} title="แบบรายงานผลด้านความสามารถ" subtitle={`${selectedArea || 'ยังไม่ได้เลือกด้านความสามารถ'} · ภาคเรียนที่ ${semester}/${academicYear}`} compact />
                 <p className="mt-4 text-sm">ผลที่ฝ่ายวิชาการรับรอง จำนวน {filteredStudents.length} คน</p>
-                <table className="mt-3 w-full border-collapse text-[13px] leading-5"><thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">ชั้น/ห้อง</th><th className="w-24 border border-black px-2 py-2">ผลรับรอง</th><th className="w-24 border border-black px-2 py-2">สถานะ</th><th className="border border-black px-2 py-2">เหตุผล/หมายเหตุ</th></tr></thead><tbody>{filteredStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="border border-black px-2 py-2 text-center">{index + 1}</td><td className="border border-black px-2 py-2"><strong>{studentName(student)}</strong><br /><span>{student.student_code || '-'}</span></td><td className="border border-black px-2 py-2 text-center">{student.current_grade_level || '-'}<br />{student.current_room || '-'}</td><td className="border border-black px-2 py-2 text-center">{decision?.final_level || '-'}</td><td className="border border-black px-2 py-2 text-center">{statusLabel(decision?.decision_status)}</td><td className="border border-black px-2 py-2">{decision?.decision_reason || '-'}</td></tr>; })}</tbody></table>
+                <table className="mt-3 w-full border-collapse text-[13px] leading-5"><thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">ชั้น/ห้อง</th><th className="w-24 border border-black px-2 py-2">ผลรับรอง</th><th className="w-24 border border-black px-2 py-2">สถานะ</th><th className="border border-black px-2 py-2">คำบรรยาย/หมายเหตุ</th></tr></thead><tbody>{filteredStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="border border-black px-2 py-2 text-center">{index + 1}</td><td className="border border-black px-2 py-2"><strong>{studentName(student)}</strong><br /><span>{student.student_code || '-'}</span></td><td className="border border-black px-2 py-2 text-center">{student.current_grade_level || '-'}<br />{student.current_room || '-'}</td><td className="border border-black px-2 py-2 text-center">{decision?.final_level || '-'}</td><td className="border border-black px-2 py-2 text-center">{statusLabel(decision?.decision_status)}</td><td className="border border-black px-2 py-2">{decision?.summary_text || decision?.decision_reason || '-'}</td></tr>; })}</tbody></table>
             </section>
 
             <section className="overflow-hidden rounded-2xl border border-line bg-white print:hidden">
                 <div className="border-b border-line p-5"><p className="text-xs font-bold text-indigo-700">ด้านความสามารถ</p><h2 className="mt-1 text-lg font-bold text-slate-950">{selectedArea || 'ยังไม่มีข้อมูล'}</h2><p className="mt-1 text-sm text-slate-600">แสดง {filteredStudents.length} คน · หน่วยรับรองคือผู้เรียน 1 คน ต่อ 1 ด้านความสามารถ ต่อภาคเรียน</p></div>
                 {loading ? <div className="py-20 text-center text-sm font-semibold text-slate-500">กำลังโหลดรายงาน…</div> : (
-                    <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-100 text-xs font-bold text-slate-700"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">ผู้เรียน</th><th className="px-4 py-3">ชั้น/ห้อง</th><th className="px-4 py-3 text-center">ผลรับรองรายด้าน</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">เหตุผล/หมายเหตุ</th></tr></thead><tbody className="divide-y divide-line">{visibleStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="px-4 py-3 text-slate-500">{(page - 1) * pageSize + index + 1}</td><td className="px-4 py-3"><strong className="block text-slate-900">{studentName(student)}</strong><span className="text-xs text-slate-500">{student.student_code}</span></td><td className="px-4 py-3 text-slate-700">{student.current_grade_level || '-'} / {student.current_room || '-'}</td><td className="px-4 py-3 text-center">{decision?.final_level ? <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${LEVEL_STYLES[decision.final_level] || LEVEL_STYLES['N/A']}`}>{decision.final_level}</span> : <span className="text-slate-500">-</span>}</td><td className="px-4 py-3 font-bold text-slate-700">{statusLabel(decision?.decision_status)}</td><td className="max-w-md whitespace-normal px-4 py-3 text-slate-600">{decision?.decision_reason || '-'}</td></tr>; })}{!visibleStudents.length && <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">ไม่พบผู้เรียนตามเงื่อนไข</td></tr>}</tbody></table></div>
+                    <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-100 text-xs font-bold text-slate-700"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">ผู้เรียน</th><th className="px-4 py-3">ชั้น/ห้อง</th><th className="px-4 py-3 text-center">ผลรับรองรายด้าน</th><th className="px-4 py-3">สถานะ</th><th className="px-4 py-3">คำบรรยาย/หมายเหตุ</th></tr></thead><tbody className="divide-y divide-line">{visibleStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="px-4 py-3 text-slate-500">{(page - 1) * pageSize + index + 1}</td><td className="px-4 py-3"><strong className="block text-slate-900">{studentName(student)}</strong><span className="text-xs text-slate-500">{student.student_code}</span></td><td className="px-4 py-3 text-slate-700">{student.current_grade_level || '-'} / {student.current_room || '-'}</td><td className="px-4 py-3 text-center">{decision?.final_level ? <span className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${LEVEL_STYLES[decision.final_level] || LEVEL_STYLES['N/A']}`}>{decision.final_level}</span> : <span className="text-slate-500">-</span>}</td><td className="px-4 py-3 font-bold text-slate-700">{statusLabel(decision?.decision_status)}</td><td className="max-w-md whitespace-normal px-4 py-3 text-slate-600">{decision?.summary_text || decision?.decision_reason || '-'}</td></tr>; })}{!visibleStudents.length && <tr><td colSpan={6} className="px-6 py-16 text-center text-slate-500">ไม่พบผู้เรียนตามเงื่อนไข</td></tr>}</tbody></table></div>
                 )}
             </section>
             {totalPages > 1 && <div className="mt-4 flex items-center justify-between rounded-xl border border-line bg-white p-3 print:hidden"><span className="text-sm font-semibold text-slate-600">หน้า {page} จาก {totalPages}</span><div className="flex gap-2"><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1} className="min-h-11 rounded-lg bg-slate-100 px-4 text-sm font-bold disabled:opacity-40">ก่อนหน้า</button><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page === totalPages} className="min-h-11 rounded-lg bg-indigo-700 px-4 text-sm font-bold text-white disabled:opacity-40">ถัดไป</button></div></div>}

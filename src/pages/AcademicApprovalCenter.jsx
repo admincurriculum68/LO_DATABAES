@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronRight, ClipboardCheck, FileText, Filter, RotateCcw, Save, Search, ShieldCheck, UserRound, Users, ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, FileText, Lock, Printer, RotateCcw, Search, ShieldCheck, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDialog } from '../lib/dialogContext';
 import Layout from '../components/Layout';
@@ -7,9 +8,14 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { formalLevelLabel } from '../lib/terminology';
-import { isReviewableWorkflow } from '../lib/evaluationProgress';
+import { shortAreaName } from '../lib/loMapping';
+import { ROOM_STATUS, SUMMARY_LEVELS, collectRoomEvidence, decisionKey, isLockedDecision, passStatusFor, roomStatus } from '../lib/homeroomSummary';
+import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
-const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ', 'N/A'];
+// ฝ่ายวิชาการรับรองผลสรุปรายด้านเป็นรายห้อง
+// ครูประจำชั้นเป็นคนสรุประดับและเขียนคำบรรยาย ฝ่ายวิชาการไม่ได้รู้จักนักเรียนทุกคน
+// งานหลักจึงเป็นการกด "รับรองทั้งห้อง" และส่งกลับเฉพาะรายการที่มีปัญหาพร้อมเหตุผล
+
 const LEVEL_CLASS = {
     เริ่มต้น: 'border-amber-300 bg-amber-50 text-amber-900',
     พัฒนา: 'border-sky-300 bg-sky-50 text-sky-900',
@@ -17,368 +23,431 @@ const LEVEL_CLASS = {
     เชี่ยวชาญ: 'border-violet-300 bg-violet-50 text-violet-900',
     'N/A': 'border-slate-300 bg-slate-100 text-slate-700',
 };
-const STATUS = {
-    pending: { label: 'รอตรวจรับรอง', className: 'border-amber-200 bg-amber-50 text-amber-800' },
-    approved: { label: 'รับรองแล้ว', className: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
-    returned: { label: 'ส่งกลับแก้ไข', className: 'border-rose-200 bg-rose-50 text-rose-800' },
+const ROW_STATUS = {
+    draft: { label: 'ครูประจำชั้นยังไม่ส่ง', chip: 'chip-neutral' },
+    pending: { label: 'ครูประจำชั้นยังไม่ส่ง', chip: 'chip-neutral' },
+    submitted: { label: 'รอรับรอง', chip: 'chip-warning' },
+    returned: { label: 'ส่งกลับแล้ว', chip: 'chip-danger' },
+    approved: { label: 'รับรองแล้ว', chip: 'chip-success' },
 };
-
-const fullName = student => student
-    ? `${student.prefix || ''}${student.first_name || ''} ${student.last_name || ''}`.trim()
-    : 'ไม่พบข้อมูลผู้เรียน';
-
-const consensusLevel = sources => {
-    const levels = [...new Set(sources.map(source => source.competency_level).filter(Boolean))];
-    return levels.length === 1 ? levels[0] : '';
-};
-const AUTO_APPROVAL_REASON = 'รับรองตามผลสรุปรายด้านของครูผู้สอน';
+const APPROVAL_REASON = 'รับรองตามผลสรุปของครูประจำชั้น';
+const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, is_locked, submitted_at';
+const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim() || 'ไม่ระบุชื่อ';
+const roomOrder = (a, b) => String(a).localeCompare(String(b), 'th', { numeric: true });
+const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
 
 export default function AcademicApprovalCenter() {
-    const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const dialog = useDialog();
-    // หน้านี้เลือกผู้เรียนคนแรกให้เองตอนโหลด บนจอเล็กจึงเปิดรายละเอียดเฉพาะเมื่อกดเลือกเอง
-    const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+    const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
-    const [entries, setEntries] = useState([]);
-    const [selectedStudentId, setSelectedStudentId] = useState('');
-    const [localDecisions, setLocalDecisions] = useState({});
+    const [supported, setSupported] = useState(null);
+    const [students, setStudents] = useState([]);
+    const [homeroomTeachers, setHomeroomTeachers] = useState(new Map());
+    const [decisions, setDecisions] = useState(new Map());
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [gradeFilter, setGradeFilter] = useState('all');
-    const [roomFilter, setRoomFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [query, setQuery] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [savingKey, setSavingKey] = useState('');
-    const [loadError, setLoadError] = useState('');
+    const [selectedRoom, setSelectedRoom] = useState('');
+    const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+    const [evidence, setEvidence] = useState({ room: '', areas: [], notesByKey: new Map(), loading: false });
+    const [openStudentId, setOpenStudentId] = useState('');
+    const [overrides, setOverrides] = useState({});
+    const [busy, setBusy] = useState('');
+    const evidenceRoomRef = useRef('');
 
-    const loadApprovalData = useCallback(async () => {
+    const loadData = useCallback(async () => {
         if (!currentUser?.school_id || !academicYear || !semester) return;
         setLoading(true);
         setLoadError('');
         try {
-            const [students, subjects, contexts, los, decisions] = await Promise.all([
+            const ok = await homeroomSummarySupported();
+            setSupported(ok);
+            if (!ok) return;
+            const [studentRows, teacherRows, decisionRows] = await Promise.all([
                 fetchAllRows((from, to) => supabase.from('users_students')
                     .select('student_id, student_code, prefix, first_name, last_name, current_grade_level, current_room, student_status')
-                    .eq('school_id', currentUser.school_id).range(from, to)),
-                fetchAllRows((from, to) => supabase.from('subjects')
-                    .select('subject_id, subject_name, grade_level, academic_year, semester')
-                    .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
-                fetchAllRows((from, to) => supabase.from('learning_contexts')
-                    .select('context_id, context_name, context_type')
-                    .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
-                fetchAllRows((from, to) => supabase.from('learning_outcomes')
-                    .select('lo_id, lo_code, ability_no, competency_area, lo_description, grade_level')
-                    .eq('school_id', currentUser.school_id).range(from, to)),
+                    .eq('school_id', currentUser.school_id).eq('student_status', 'active').range(from, to)),
+                fetchAllRows((from, to) => supabase.from('users_teachers')
+                    .select('prefix, first_name, last_name, homeroom').eq('school_id', currentUser.school_id).eq('is_active', true)
+                    .not('homeroom', 'is', null).range(from, to)),
                 fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
-                    .select('*').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
+                    .select(DECISION_SELECT).eq('school_id', currentUser.school_id)
+                    .eq('academic_year', Number(academicYear)).eq('semester', Number(semester)).range(from, to)),
             ]);
-
-            const subjectIds = subjects.map(subject => subject.subject_id);
-            const contextIds = contexts.map(context => context.context_id);
-            const enrollments = await fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('student_enrollments')
-                .select('enrollment_id, student_id, subject_id, room').in('subject_id', batch).eq('enrollment_status', 'active').range(from, to));
-            const enrollmentIds = enrollments.map(enrollment => enrollment.enrollment_id);
-            const [areaEvaluations, loEvaluations, contextEvaluations] = await Promise.all([
-                fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('competency_area_evaluations')
-                    .select('id, enrollment_id, competency_area, competency_level, qualitative_summary, workflow_status, submitted_at')
-                    .in('enrollment_id', batch).range(from, to)),
-                fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
-                    .select('evaluation_id, enrollment_id, lo_id, evidence_note, workflow_status, submitted_at')
-                    .in('enrollment_id', batch).range(from, to)),
-                fetchAllByIn(contextIds, (batch, from, to) => supabase.from('learning_context_evaluations')
-                    .select('context_evaluation_id, context_id, student_id, lo_id, evidence_note, workflow_status, submitted_at')
-                    .in('context_id', batch).range(from, to)),
-            ]);
-
-            const studentMap = new Map(students.filter(student => student.student_status === 'active').map(student => [student.student_id, student]));
-            const subjectMap = new Map(subjects.map(subject => [subject.subject_id, subject]));
-            const contextMap = new Map(contexts.map(context => [context.context_id, context]));
-            const enrollmentMap = new Map(enrollments.map(enrollment => [enrollment.enrollment_id, enrollment]));
-            const loMap = new Map(los.map(lo => [lo.lo_id, lo]));
-            const decisionMap = new Map(decisions.map(decision => [`${decision.student_id}:${decision.competency_area}`, decision]));
-            const grouped = new Map();
-
-            const ensureEntry = (studentId, area) => {
-                const student = studentMap.get(studentId);
-                if (!student || !area) return null;
-                const key = `${studentId}:${area}`;
-                if (!grouped.has(key)) grouped.set(key, {
-                    key,
-                    student,
-                    competency_area: area,
-                    formative_sources: [],
-                    evidence: [],
-                    decision: decisionMap.get(key) || null,
-                });
-                return grouped.get(key);
-            };
-
-            areaEvaluations.forEach(evaluation => {
-                if (!isReviewableWorkflow(evaluation.workflow_status)) return;
-                const enrollment = enrollmentMap.get(evaluation.enrollment_id);
-                const subject = enrollment ? subjectMap.get(enrollment.subject_id) : null;
-                const entry = enrollment ? ensureEntry(enrollment.student_id, evaluation.competency_area) : null;
-                if (!entry) return;
-                entry.formative_sources.push({
-                    ...evaluation,
-                    subject_name: subject?.subject_name || 'รายวิชา',
-                    room: enrollment.room,
-                });
+            const teachersByRoom = new Map();
+            teacherRows.forEach(teacher => {
+                if (!teachersByRoom.has(teacher.homeroom)) teachersByRoom.set(teacher.homeroom, []);
+                teachersByRoom.get(teacher.homeroom).push(fullName(teacher));
             });
-
-            loEvaluations.forEach(evaluation => {
-                if (!evaluation.evidence_note?.trim()) return;
-                if (!isReviewableWorkflow(evaluation.workflow_status)) return;
-                const enrollment = enrollmentMap.get(evaluation.enrollment_id);
-                const subject = enrollment ? subjectMap.get(enrollment.subject_id) : null;
-                const lo = loMap.get(evaluation.lo_id);
-                const entry = enrollment && lo ? ensureEntry(enrollment.student_id, lo.competency_area) : null;
-                if (!entry) return;
-                entry.evidence.push({
-                    id: evaluation.evaluation_id,
-                    source_table: 'lo_evaluations',
-                    source_name: subject?.subject_name || 'รายวิชา',
-                    lo,
-                    evidence_note: evaluation.evidence_note,
-                    workflow_status: evaluation.workflow_status || 'draft',
-                });
-            });
-
-            contextEvaluations.forEach(evaluation => {
-                if (!evaluation.evidence_note?.trim()) return;
-                if (!isReviewableWorkflow(evaluation.workflow_status)) return;
-                const lo = loMap.get(evaluation.lo_id);
-                const context = contextMap.get(evaluation.context_id);
-                const entry = lo ? ensureEntry(evaluation.student_id, lo.competency_area) : null;
-                if (!entry) return;
-                entry.evidence.push({
-                    id: evaluation.context_evaluation_id,
-                    source_table: 'learning_context_evaluations',
-                    source_name: context?.context_name || 'รูปแบบการเรียนรู้',
-                    lo,
-                    evidence_note: evaluation.evidence_note,
-                    workflow_status: evaluation.workflow_status || 'draft',
-                });
-            });
-
-            const result = [...grouped.values()].sort((left, right) =>
-                (left.student.current_room || '').localeCompare(right.student.current_room || '', 'th')
-                || (left.student.student_code || '').localeCompare(right.student.student_code || '', 'th')
-                || left.competency_area.localeCompare(right.competency_area, 'th'));
-            const initial = {};
-            result.forEach(entry => {
-                initial[entry.key] = {
-                    level: entry.decision?.final_level || consensusLevel(entry.formative_sources),
-                    reason: entry.decision?.decision_reason || '',
-                };
-            });
-            setEntries(result);
-            setLocalDecisions(initial);
-            setSelectedStudentId(current => result.some(entry => entry.student.student_id === current)
-                ? current
-                : result[0]?.student.student_id || '');
+            setStudents(studentRows.sort((a, b) => roomOrder(a.current_room, b.current_room) || String(a.student_code || '').localeCompare(String(b.student_code || ''), 'th', { numeric: true })));
+            setHomeroomTeachers(teachersByRoom);
+            setDecisions(new Map(decisionRows.map(row => [decisionKey(row.student_id, row.competency_area), row])));
         } catch (error) {
-            setLoadError(error.message?.includes('competency_area_final_decisions')
-                ? 'ยังไม่ได้ติดตั้งตารางรับรองผลรายด้าน กรุณารัน update_schema_formative_pipeline.sql ก่อนเปิดหน้านี้'
-                : (error.message || 'ไม่สามารถโหลดข้อมูลรับรองผลได้'));
+            setLoadError(error.message || 'โหลดข้อมูลรับรองผลไม่สำเร็จ');
         } finally {
             setLoading(false);
         }
     }, [academicYear, currentUser?.school_id, semester]);
 
-    useEffect(() => { loadApprovalData(); }, [loadApprovalData]);
+    useEffect(() => { loadData(); }, [loadData]);
 
-    const students = useMemo(() => {
-        const map = new Map();
-        entries.forEach(entry => {
-            const current = map.get(entry.student.student_id) || { student: entry.student, entries: [] };
-            current.entries.push(entry);
-            map.set(entry.student.student_id, current);
+    // สรุปรายห้องจากแถวผลที่มี จำนวนด้านจริงของห้องรู้ตอนเปิดห้อง รายการห้องจึงนับเป็นรายคน
+    const rooms = useMemo(() => {
+        const rowsByStudent = new Map();
+        decisions.forEach(row => {
+            if (!rowsByStudent.has(row.student_id)) rowsByStudent.set(row.student_id, []);
+            rowsByStudent.get(row.student_id).push(row);
         });
-        return [...map.values()];
-    }, [entries]);
-    const grades = useMemo(() => [...new Set(students.map(item => item.student.current_grade_level).filter(Boolean))].sort(), [students]);
-    const rooms = useMemo(() => [...new Set(students
-        .filter(item => gradeFilter === 'all' || item.student.current_grade_level === gradeFilter)
-        .map(item => item.student.current_room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [gradeFilter, students]);
-    const filteredStudents = useMemo(() => students.filter(item => {
-        const normalized = query.trim().toLowerCase();
-        const statusMatch = statusFilter === 'all' || item.entries.some(entry => (entry.decision?.decision_status || 'pending') === statusFilter);
-        return (gradeFilter === 'all' || item.student.current_grade_level === gradeFilter)
-            && (roomFilter === 'all' || item.student.current_room === roomFilter)
-            && statusMatch
-            && (!normalized || `${item.student.student_code || ''} ${fullName(item.student)}`.toLowerCase().includes(normalized));
-    }), [gradeFilter, query, roomFilter, statusFilter, students]);
-    const selected = students.find(item => item.student.student_id === selectedStudentId) || null;
-    const totalAreas = entries.length;
-    const approvedAreas = entries.filter(entry => entry.decision?.decision_status === 'approved').length;
-    const percent = totalAreas ? Math.round((approvedAreas / totalAreas) * 100) : 0;
+        const map = new Map();
+        students.forEach(student => {
+            const room = student.current_room || 'ไม่ระบุห้อง';
+            if (!map.has(room)) map.set(room, { room, grade: student.current_grade_level || '', students: [], rows: [] });
+            const entry = map.get(room);
+            entry.students.push(student);
+            entry.rows.push(...(rowsByStudent.get(student.student_id) || []));
+        });
+        return [...map.values()].map(entry => {
+            const counts = { draft: 0, submitted: 0, returned: 0, approved: 0 };
+            entry.rows.forEach(row => { counts[row.decision_status === 'pending' ? 'draft' : row.decision_status] = (counts[row.decision_status === 'pending' ? 'draft' : row.decision_status] || 0) + 1; });
+            const summarizedStudents = new Set(entry.rows.map(row => row.student_id)).size;
+            return { ...entry, counts, summarizedStudents, status: roomStatus(entry.rows, entry.rows.length) };
+        }).sort((a, b) => roomOrder(a.room, b.room));
+    }, [decisions, students]);
 
+    const grades = useMemo(() => [...new Set(rooms.map(room => room.grade).filter(Boolean))].sort(roomOrder), [rooms]);
+    const visibleRooms = rooms.filter(room => (gradeFilter === 'all' || room.grade === gradeFilter)
+        && (statusFilter === 'all' || room.status === statusFilter)
+        && (!query.trim() || `${room.room} ${(homeroomTeachers.get(room.room) || []).join(' ')}`.includes(query.trim())));
+    const selected = rooms.find(room => room.room === selectedRoom) || null;
+    const totals = rooms.reduce((sum, room) => ({ approved: sum.approved + room.counts.approved, submitted: sum.submitted + room.counts.submitted, all: sum.all + room.rows.length }), { approved: 0, submitted: 0, all: 0 });
+    const roomsWaiting = rooms.filter(room => room.counts.submitted > 0).length;
+
+    // เปิดห้อง: โหลดข้อความ LO ของนักเรียนในห้องไว้ให้อ่านประกอบ
+    // จำห้องที่กำลังโหลดไว้ใน ref ไม่ใช่ state การตั้ง state ระหว่างโหลดจะทำให้ effect รันใหม่และทิ้งผลที่กำลังโหลด
+    const selectedRoomName = selected?.room || '';
+    const selectedStudentIds = useMemo(() => (selected ? selected.students.map(student => student.student_id) : []), [selected]);
     useEffect(() => {
-        if (!loading && filteredStudents.length && !filteredStudents.some(item => item.student.student_id === selectedStudentId)) {
-            setSelectedStudentId(filteredStudents[0].student.student_id);
-        }
-    }, [filteredStudents, loading, selectedStudentId]);
+        if (!selectedRoomName || evidenceRoomRef.current === selectedRoomName) return;
+        evidenceRoomRef.current = selectedRoomName;
+        let active = true;
+        (async () => {
+            setEvidence({ room: selectedRoomName, areas: [], notesByKey: new Map(), loading: true });
+            try {
+                const enrollments = await fetchAllByIn(selectedStudentIds, (batch, from, to) => supabase.from('student_enrollments')
+                    .select('enrollment_id, student_id, subject_id, subjects!inner(subject_name, academic_year, semester)')
+                    .in('student_id', batch).eq('enrollment_status', 'active')
+                    .eq('subjects.academic_year', Number(academicYear)).eq('subjects.semester', Number(semester)).range(from, to));
+                const subjectIds = [...new Set(enrollments.map(item => item.subject_id))];
+                const [mappings, evaluations] = await Promise.all([
+                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
+                        .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, competency_area)').in('subject_id', batch).range(from, to)),
+                    fetchAllByIn(enrollments.map(item => item.enrollment_id), (batch, from, to) => supabase.from('lo_evaluations')
+                        .select('enrollment_id, lo_id, evidence_note').in('enrollment_id', batch).range(from, to)),
+                ]);
+                if (!active) return;
+                const { areas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations);
+                setEvidence({ room: selectedRoomName, areas, notesByKey, loading: false, enrollmentIds: enrollments.map(item => item.enrollment_id) });
+            } catch (error) {
+                if (active) {
+                    evidenceRoomRef.current = '';
+                    setEvidence({ room: selectedRoomName, areas: [], notesByKey: new Map(), loading: false });
+                    toast.error('โหลดข้อความ LO ของห้องไม่สำเร็จ: ' + error.message);
+                }
+            }
+        })();
+        return () => {
+            // เปลี่ยนห้องระหว่างโหลด ให้ห้องเดิมโหลดใหม่ได้เมื่อกลับมา
+            if (active && evidenceRoomRef.current === selectedRoomName) evidenceRoomRef.current = '';
+            active = false;
+        };
+        // selectedStudentIds เปลี่ยนตามผลที่บันทึก ไม่ต้องโหลดข้อความ LO ใหม่ทุกครั้ง
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [academicYear, selectedRoomName, semester]);
 
-    const updateLocal = (key, field, value) => setLocalDecisions(previous => ({
-        ...previous,
-        [key]: { ...previous[key], [field]: value },
-    }));
+    const applyRows = updatedRows => setDecisions(previous => {
+        const map = new Map(previous);
+        (updatedRows || []).forEach(row => map.set(decisionKey(row.student_id, row.competency_area), row));
+        return map;
+    });
 
-    const saveDecision = async (entry, decisionStatus) => {
-        const local = localDecisions[entry.key] || {};
-        const teacherLevel = consensusLevel(entry.formative_sources);
-        const needsManualReason = decisionStatus === 'returned' || !teacherLevel || local.level !== teacherLevel;
-        if (decisionStatus === 'approved' && !entry.formative_sources.length) return toast.error('ยังรับรองไม่ได้ เพราะครูยังไม่ได้ส่งผลสรุปรายด้านนี้');
-        if (!local.level) return toast.error('กรุณาเลือกระดับความสามารถ');
-        if (needsManualReason && !local.reason?.trim()) return toast.error(decisionStatus === 'returned' ? 'กรุณาระบุสิ่งที่ต้องการให้ครูแก้ไข' : 'กรุณาระบุเหตุผลเมื่อผลที่รับรองต่างจากผลของครู');
-        setSavingKey(entry.key);
-        try {
-            const now = new Date().toISOString();
-            const passed = ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(local.level);
-            const { error } = await supabase.from('competency_area_final_decisions').upsert({
-                school_id: currentUser.school_id,
-                student_id: entry.student.student_id,
-                competency_area: entry.competency_area,
-                academic_year: academicYear,
-                semester,
-                final_level: local.level,
-                pass_status: local.level === 'N/A' ? 'pending' : passed ? 'passed' : 'not_passed',
-                decision_status: decisionStatus,
-                decision_reason: local.reason?.trim() || AUTO_APPROVAL_REASON,
-                decided_by: currentUser.teacher_id || currentUser.id,
-                decided_at: now,
-                is_locked: decisionStatus === 'approved',
-                updated_at: now,
-            }, { onConflict: 'student_id,competency_area,academic_year,semester' });
+    const audit = (action, detail) => supabase.from('audit_logs').insert({
+        school_id: currentUser.school_id,
+        actor_id: currentUser.teacher_id || currentUser.id,
+        actor_role: currentUser.role,
+        action,
+        entity_type: 'competency_area_final_decision',
+        detail: { academic_year: Number(academicYear), semester: Number(semester), ...detail },
+    });
+
+    const updateRoomRows = async (room, fromStatuses, patch) => {
+        const updated = [];
+        for (const batch of chunk(room.students.map(student => student.student_id), 150)) {
+            const { data, error } = await supabase.from('competency_area_final_decisions').update(patch)
+                .eq('school_id', currentUser.school_id).eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+                .in('student_id', batch).in('decision_status', fromStatuses).select(DECISION_SELECT);
             if (error) throw error;
-
-            const nextWorkflow = decisionStatus === 'approved' ? 'approved' : 'returned';
-            const areaIds = entry.formative_sources.map(source => source.id);
-            if (areaIds.length) {
-                const result = await supabase.from('competency_area_evaluations')
-                    .update({ workflow_status: nextWorkflow, reviewed_at: now, updated_at: now }).in('id', areaIds);
-                if (result.error) throw result.error;
-            }
-            for (const table of ['lo_evaluations', 'learning_context_evaluations']) {
-                const idColumn = table === 'lo_evaluations' ? 'evaluation_id' : 'context_evaluation_id';
-                const ids = entry.evidence.filter(item => item.source_table === table).map(item => item.id);
-                if (!ids.length) continue;
-                const result = await supabase.from(table).update({ workflow_status: nextWorkflow, updated_at: now }).in(idColumn, ids);
-                if (result.error) throw result.error;
-            }
-            await supabase.from('audit_logs').insert({
-                school_id: currentUser.school_id,
-                actor_id: currentUser.teacher_id || currentUser.id,
-                actor_role: currentUser.role,
-                action: decisionStatus === 'approved' ? 'approve_competency_area' : 'return_competency_area',
-                entity_type: 'competency_area_final_decision',
-                detail: { student_id: entry.student.student_id, competency_area: entry.competency_area, final_level: local.level, evidence_count: entry.evidence.length },
-            });
-            toast.success(decisionStatus === 'approved' ? 'รับรองผลรายด้านแล้ว' : 'ส่งกลับให้ครูแก้ไขแล้ว');
-            await loadApprovalData();
-        } catch (error) {
-            toast.error('บันทึกการรับรองไม่สำเร็จ: ' + error.message);
-        } finally {
-            setSavingKey('');
+            updated.push(...(data || []));
         }
+        return updated;
     };
 
-    const bulkApprove = async targetEntries => {
-        const eligible = targetEntries.filter(entry =>
-            entry.decision?.decision_status !== 'approved'
-            && entry.formative_sources.length
-            && consensusLevel(entry.formative_sources));
-        if (!eligible.length) return toast.error('ไม่มีรายการที่ผลครูตรงกันและพร้อมรับรอง');
-        if (!(await dialog.confirm({
-            title: `รับรองตามผลครู ${eligible.length} ด้าน?`,
-            message: 'รับรองเฉพาะด้านที่ครูทุกคนให้ระดับตรงกัน ด้านที่ผลต่างกันยังรอให้ตรวจทีละรายการ',
-            confirmLabel: `รับรอง ${eligible.length} ด้าน`,
-        }))) return;
-        setSavingKey('bulk');
+    const approveRoom = async room => {
+        const notSubmitted = room.counts.draft + room.counts.returned;
+        const missingStudents = room.students.length - room.summarizedStudents;
+        const confirmed = await dialog.confirm({
+            title: `รับรองผลสรุปห้อง ${room.room}`,
+            message: [
+                `รับรองรายการที่ครูประจำชั้นส่งมา ${room.counts.submitted} รายการ รับรองแล้วครูแก้ไม่ได้จนกว่าจะส่งกลับ`,
+                notSubmitted ? `ยังมี ${notSubmitted} รายการที่ครูประจำชั้นยังไม่ส่งหรือถูกส่งกลับ รายการเหล่านี้จะยังไม่ถูกรับรอง` : '',
+                missingStudents ? `นักเรียน ${missingStudents} คนยังไม่มีผลสรุปเลย` : '',
+            ].filter(Boolean).join('\n'),
+            confirmLabel: `รับรอง ${room.counts.submitted} รายการ`,
+        });
+        if (!confirmed) return;
+        setBusy(`room:${room.room}`);
         try {
             const now = new Date().toISOString();
-            const actorId = currentUser.teacher_id || currentUser.id;
-            const rows = eligible.map(entry => {
-                const level = consensusLevel(entry.formative_sources);
-                return {
-                    school_id: currentUser.school_id,
-                    student_id: entry.student.student_id,
-                    competency_area: entry.competency_area,
-                    academic_year: academicYear,
-                    semester,
-                    final_level: level,
-                    pass_status: level === 'N/A' ? 'pending' : ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'].includes(level) ? 'passed' : 'not_passed',
-                    decision_status: 'approved',
-                    decision_reason: AUTO_APPROVAL_REASON,
-                    decided_by: actorId,
-                    decided_at: now,
-                    is_locked: true,
-                    updated_at: now,
-                };
+            const actorId = currentUser.teacher_id || null;
+            const updated = await updateRoomRows(room, ['submitted'], {
+                decision_status: 'approved', is_locked: true, decision_reason: APPROVAL_REASON, decided_by: actorId, decided_at: now, updated_at: now,
             });
-            for (let index = 0; index < rows.length; index += 200) {
-                const { error } = await supabase.from('competency_area_final_decisions')
-                    .upsert(rows.slice(index, index + 200), { onConflict: 'student_id,competency_area,academic_year,semester' });
-                if (error) throw error;
-            }
-            const updateIds = async (table, idColumn, ids) => {
-                for (let index = 0; index < ids.length; index += 200) {
-                    const { error } = await supabase.from(table)
-                        .update({ workflow_status: 'approved', reviewed_at: table === 'competency_area_evaluations' ? now : undefined, updated_at: now })
-                        .in(idColumn, ids.slice(index, index + 200));
+            applyRows(updated);
+            // ล็อกข้อความ LO ที่ใช้เป็นหลักฐานของห้องนี้ด้วย ครูผู้สอนจะแก้ย้อนหลังไม่ได้
+            if (evidence.room === room.room && evidence.enrollmentIds?.length) {
+                for (const batch of chunk(evidence.enrollmentIds, 200)) {
+                    const { error } = await supabase.from('lo_evaluations').update({ workflow_status: 'approved', updated_at: now })
+                        .in('enrollment_id', batch).not('evidence_note', 'is', null);
                     if (error) throw error;
                 }
-            };
-            await updateIds('competency_area_evaluations', 'id', eligible.flatMap(entry => entry.formative_sources.map(source => source.id)));
-            await updateIds('lo_evaluations', 'evaluation_id', eligible.flatMap(entry => entry.evidence.filter(item => item.source_table === 'lo_evaluations').map(item => item.id)));
-            await updateIds('learning_context_evaluations', 'context_evaluation_id', eligible.flatMap(entry => entry.evidence.filter(item => item.source_table === 'learning_context_evaluations').map(item => item.id)));
-            await supabase.from('audit_logs').insert({
-                school_id: currentUser.school_id,
-                actor_id: actorId,
-                actor_role: currentUser.role,
-                action: 'bulk_approve_competency_areas',
-                entity_type: 'competency_area_final_decision',
-                detail: { approved_count: eligible.length, reason: AUTO_APPROVAL_REASON },
-            });
-            toast.success(`รับรองตามผลครูแล้ว ${eligible.length} ด้าน`);
-            await loadApprovalData();
+            }
+            await audit('approve_homeroom_room', { room: room.room, approved_count: updated.length });
+            toast.success(`รับรองผลห้อง ${room.room} แล้ว ${updated.length} รายการ`);
         } catch (error) {
-            toast.error('รับรองหลายรายการไม่สำเร็จ: ' + error.message);
+            toast.error('รับรองไม่สำเร็จ: ' + error.message);
         } finally {
-            setSavingKey('');
+            setBusy('');
         }
     };
 
+    const returnRoom = async room => {
+        const reason = await dialog.prompt({
+            title: `ส่งกลับผลสรุปห้อง ${room.room}`,
+            message: 'รายการที่ส่งมาหรือรับรองแล้วทั้งห้องจะกลับไปให้ครูประจำชั้นแก้ และปลดล็อก ระบุสิ่งที่ต้องการให้แก้',
+            inputLabel: 'เหตุผลที่ส่งกลับ',
+            placeholder: 'เช่น คำบรรยายด้านการคิดคำนวณยังสั้นเกินไป',
+            confirmLabel: 'ส่งกลับทั้งห้อง',
+        });
+        if (!reason) return;
+        setBusy(`room:${room.room}`);
+        try {
+            const now = new Date().toISOString();
+            const updated = await updateRoomRows(room, ['submitted', 'approved'], {
+                decision_status: 'returned', is_locked: false, decision_reason: reason, decided_by: currentUser.teacher_id || null, decided_at: now, updated_at: now,
+            });
+            applyRows(updated);
+            await audit('return_homeroom_room', { room: room.room, returned_count: updated.length, reason });
+            toast.success(`ส่งกลับห้อง ${room.room} แล้ว ${updated.length} รายการ`);
+        } catch (error) {
+            toast.error('ส่งกลับไม่สำเร็จ: ' + error.message);
+        } finally {
+            setBusy('');
+        }
+    };
+
+    const decideOne = async (row, nextStatus) => {
+        const key = decisionKey(row.student_id, row.competency_area);
+        const override = overrides[key] || {};
+        const level = override.level || row.final_level;
+        const changedLevel = level !== row.final_level;
+        let reason = override.reason?.trim() || '';
+        if (nextStatus === 'returned' || changedLevel) {
+            if (!reason) {
+                reason = await dialog.prompt({
+                    title: nextStatus === 'returned' ? 'ส่งกลับรายการนี้' : 'เหตุผลที่แก้ระดับ',
+                    message: `${shortAreaName(row.competency_area)} · ระบุให้ครูประจำชั้นเข้าใจว่าต้องแก้อะไร หรือทำไมระดับที่รับรองต่างจากที่ครูเสนอ`,
+                    inputLabel: 'เหตุผล',
+                    confirmLabel: nextStatus === 'returned' ? 'ส่งกลับ' : 'รับรองระดับที่แก้',
+                });
+                if (!reason) return;
+            }
+        }
+        setBusy(key);
+        try {
+            const now = new Date().toISOString();
+            const { data, error } = await supabase.from('competency_area_final_decisions').update({
+                decision_status: nextStatus,
+                is_locked: nextStatus === 'approved',
+                final_level: level,
+                pass_status: passStatusFor(level),
+                decision_reason: reason || APPROVAL_REASON,
+                decided_by: currentUser.teacher_id || null,
+                decided_at: now,
+                updated_at: now,
+            }).eq('decision_id', row.decision_id).select(DECISION_SELECT);
+            if (error) throw error;
+            applyRows(data);
+            setOverrides(previous => { const next = { ...previous }; delete next[key]; return next; });
+            await audit(nextStatus === 'approved' ? 'approve_competency_area' : 'return_competency_area', { student_id: row.student_id, competency_area: row.competency_area, final_level: level, reason });
+            toast.success(nextStatus === 'approved' ? 'รับรองรายการนี้แล้ว' : 'ส่งกลับรายการนี้แล้ว');
+        } catch (error) {
+            toast.error('บันทึกไม่สำเร็จ: ' + error.message);
+        } finally {
+            setBusy('');
+        }
+    };
+
+    if (supported === false) {
+        return (
+            <Layout title="รับรองผลรายด้านความสามารถ">
+                <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6" role="alert">
+                    <p className="font-bold text-amber-950">ยังเปิดหน้ารับรองผลไม่ได้</p>
+                    <p className="mt-1 text-sm text-amber-900">{HOMEROOM_SUMMARY_SQL_HINT}</p>
+                </section>
+            </Layout>
+        );
+    }
+
+    const approvedPercent = totals.all ? Math.round((totals.approved / totals.all) * 100) : 0;
+    const roomAreas = evidence.room === selected?.room ? evidence.areas : [];
+
     return (
-        <Layout title="ศูนย์รับรองผลรายด้านความสามารถ">
+        <Layout title="รับรองผลรายด้านความสามารถ">
             <div className="mx-auto max-w-[1680px] space-y-5 pb-12">
                 <header className="rounded-2xl border border-line bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                        <div><div className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-blue-700" /><h1 className="text-2xl font-bold text-slate-950">รับรองผลเป็นรายด้านความสามารถ</h1></div><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">ระบบเติมผลสรุปของครูให้แล้ว กดรับรองได้ทันทีเมื่อเห็นตรงกัน และระบุเหตุผลเฉพาะเมื่อแก้ผลหรือส่งกลับ</p></div>
-                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col"><div className="min-w-64 rounded-xl bg-slate-100 px-4 py-3"><div className="flex justify-between text-sm font-bold text-slate-700"><span>รับรองผลรายด้านแล้ว</span><span>{approvedAreas}/{totalAreas} ด้าน</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="action-success h-full rounded-full" style={{ width: `${percent}%` }} /></div></div><button type="button" onClick={() => bulkApprove(filteredStudents.flatMap(item => item.entries))} disabled={savingKey === 'bulk' || loading} className="action-success min-h-11 rounded-xl px-4 text-sm font-bold disabled:opacity-50">{savingKey === 'bulk' ? 'กำลังรับรอง...' : 'รับรองผลที่ตรงกับครูทั้งหมด'}</button></div>
+                        <div>
+                            <div className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-indigo-700" aria-hidden="true" /><h1 className="text-2xl font-bold text-slate-950">รับรองผลรายด้านความสามารถ</h1></div>
+                            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">ครูประจำชั้นสรุประดับและเขียนคำบรรยายของนักเรียนในห้องแล้วส่งมา ตรวจแล้วกด “รับรองทั้งห้อง” ถ้าพบปัญหาส่งกลับพร้อมเหตุผลได้ทั้งห้องหรือรายรายการ</p>
+                        </div>
+                        <div className="min-w-64 rounded-xl bg-slate-100 px-4 py-3">
+                            <div className="flex justify-between gap-4 text-sm font-bold text-slate-700"><span>รับรองแล้ว</span><span className="tabular-nums">{totals.approved}/{totals.all} รายการ</span></div>
+                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${approvedPercent}%` }} /></div>
+                            <p className="mt-2 text-xs font-semibold text-slate-600">{roomsWaiting} ห้องมีรายการรอรับรอง</p>
+                        </div>
                     </div>
                 </header>
 
-                {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle className="h-5 w-5 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">เปิดศูนย์รับรองผลไม่ได้</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={loadApprovalData} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-rose-700 px-4 text-sm font-bold text-white"><RotateCcw className="h-4 w-4" />ลองใหม่</button></div></div></section>}
+                {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle className="h-5 w-5 shrink-0 text-rose-700" aria-hidden="true" /><div><h2 className="font-bold text-rose-950">เปิดหน้ารับรองผลไม่ได้</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button type="button" onClick={loadData} className="btn-secondary mt-3"><RotateCcw className="h-4 w-4" aria-hidden="true" />ลองใหม่</button></div></div></section>}
 
-                <section className="flex flex-wrap gap-3 rounded-2xl border border-line bg-white p-4 shadow-sm" aria-label="ตัวกรอง">
-                    <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><Filter className="h-4 w-4 text-indigo-700" />กรองผู้เรียน</span>
-                    <select aria-label="กรองตามระดับชั้น" value={gradeFilter} onChange={event => { setGradeFilter(event.target.value); setRoomFilter('all'); }} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="all">ทุกระดับชั้น</option>{grades.map(grade => <option key={grade}>{grade}</option>)}</select>
-                    <select aria-label="กรองตามห้องเรียน" value={roomFilter} onChange={event => setRoomFilter(event.target.value)} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="all">ทุกห้อง</option>{rooms.map(room => <option key={room}>{room}</option>)}</select>
-                    <select aria-label="กรองตามสถานะการรับรอง" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="all">ทุกสถานะ</option><option value="pending">รอตรวจรับรอง</option><option value="returned">ส่งกลับแก้ไข</option><option value="approved">รับรองแล้ว</option></select>
-                    <label className="relative min-w-60 flex-1"><span className="sr-only">ค้นหาชื่อหรือรหัสนักเรียน</span><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-500" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อหรือรหัสนักเรียน" className="min-h-11 w-full rounded-xl border border-field pl-9 pr-3 text-sm placeholder:text-slate-600" /></label>
-                </section>
+                <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
+                    <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${mobileDetailOpen ? 'hidden lg:block' : ''}`} aria-label="รายการห้องเรียน">
+                        <div className="space-y-2 border-b border-line p-4">
+                            <label className="relative block"><span className="sr-only">ค้นหาห้องหรือครูประจำชั้น</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" aria-hidden="true" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาห้องหรือครูประจำชั้น" className="min-h-11 w-full rounded-xl border border-field pl-10 pr-3 text-sm placeholder:text-slate-500" /></label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <select aria-label="กรองตามชั้น" value={gradeFilter} onChange={event => setGradeFilter(event.target.value)} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="all">ทุกชั้น</option>{grades.map(grade => <option key={grade} value={grade}>{grade}</option>)}</select>
+                                <select aria-label="กรองตามสถานะ" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold"><option value="all">ทุกสถานะ</option>{Object.entries(ROOM_STATUS).map(([value, meta]) => <option key={value} value={value}>{meta.label}</option>)}</select>
+                            </div>
+                        </div>
+                        <ul className="max-h-[46rem] divide-y divide-line overflow-y-auto">
+                            {loading ? <li className="h-64 animate-pulse bg-slate-100" /> : visibleRooms.length ? visibleRooms.map(room => (
+                                <li key={room.room}>
+                                    <button type="button" aria-current={selectedRoom === room.room ? 'true' : undefined} onClick={() => { setSelectedRoom(room.room); setMobileDetailOpen(true); setOpenStudentId(''); }} className={`flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left ${selectedRoom === room.room ? 'surface-selected' : 'hover:bg-slate-50'}`}>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-950">ห้อง {room.room}</strong><span className={`chip ${ROOM_STATUS[room.status].chip}`}>{ROOM_STATUS[room.status].label}</span></span>
+                                            <span className="mt-1 block truncate text-xs text-slate-600">{(homeroomTeachers.get(room.room) || ['ยังไม่มีครูประจำชั้น']).join(', ')}</span>
+                                            <span className="mt-0.5 block text-xs text-slate-600 tabular-nums">สรุปแล้ว {room.summarizedStudents}/{room.students.length} คน · รอรับรอง {room.counts.submitted}</span>
+                                        </span>
+                                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                                    </button>
+                                </li>
+                            )) : <li className="p-8 text-center text-sm text-slate-600">ไม่พบห้องตามตัวกรอง</li>}
+                        </ul>
+                    </aside>
 
-                <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-                    <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${mobileDetailOpen ? 'hidden lg:block' : ''}`}><div className="border-b border-line px-4 py-3"><h2 className="font-bold text-slate-900">ผู้เรียน {filteredStudents.length} คน</h2></div><div className="max-h-[760px] divide-y divide-line overflow-y-auto">{loading ? <div className="h-64 animate-pulse bg-slate-100" /> : filteredStudents.length ? filteredStudents.map(item => { const approved = item.entries.filter(entry => entry.decision?.decision_status === 'approved').length; return <button key={item.student.student_id} onClick={() => { setSelectedStudentId(item.student.student_id); setMobileDetailOpen(true); }} className={`flex w-full items-center gap-3 p-4 text-left ${selectedStudentId === item.student.student_id ? 'surface-selected' : 'hover:bg-slate-50'}`}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600"><UserRound className="h-5 w-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-950">{fullName(item.student)}</strong><span className="mt-1 block text-xs text-slate-600">{item.student.student_code || '-'} · {item.student.current_room || '-'}</span></span><span className="text-xs font-bold text-slate-600">{approved}/{item.entries.length}</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>; }) : <div className="p-10 text-center text-sm text-slate-500"><Users className="mx-auto mb-3 h-8 w-8 text-slate-300" />ไม่พบผลสรุปรายด้านตามตัวกรอง</div>}</div></aside>
+                    <section className={`min-w-0 overflow-hidden rounded-2xl border border-line bg-white ${mobileDetailOpen ? '' : 'hidden lg:block'}`} aria-labelledby="approval-room-title">
+                        {!selected ? (
+                            <div className="p-16 text-center text-slate-600"><ShieldCheck className="mx-auto mb-3 h-10 w-10 text-slate-300" aria-hidden="true" />เลือกห้องจากรายการด้านซ้าย</div>
+                        ) : (
+                            <>
+                                <header className="space-y-3 border-b border-line p-4 sm:p-5">
+                                    <button type="button" onClick={() => setMobileDetailOpen(false)} className="btn-ghost lg:hidden"><ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายการห้อง</button>
+                                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-2"><h2 id="approval-room-title" className="text-lg font-bold text-slate-950">ห้อง {selected.room}</h2><span className={`chip ${ROOM_STATUS[selected.status].chip}`}>{ROOM_STATUS[selected.status].label}</span></div>
+                                            <p className="mt-1 text-sm text-slate-600">ครูประจำชั้น: {(homeroomTeachers.get(selected.room) || ['ยังไม่ได้กำหนด']).join(', ')} · นักเรียน {selected.students.length} คน{roomAreas.length ? ` · ${roomAreas.length} ด้าน` : ''}</p>
+                                            <p className="mt-1 text-xs text-slate-600 tabular-nums">รอรับรอง {selected.counts.submitted} · รับรองแล้ว {selected.counts.approved} · ยังไม่ส่ง {selected.counts.draft} · ส่งกลับ {selected.counts.returned}</p>
+                                        </div>
+                                        <div className="flex flex-col gap-2 sm:flex-row">
+                                            <button type="button" onClick={() => navigate(`/batch-report/${encodeURIComponent(selected.room)}/${academicYear}/${semester}`)} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครอง</button>
+                                            <button type="button" onClick={() => returnRoom(selected)} disabled={Boolean(busy) || !(selected.counts.submitted + selected.counts.approved)} className="btn-secondary"><Undo2 className="h-4 w-4" aria-hidden="true" />ส่งกลับทั้งห้อง</button>
+                                            <button type="button" onClick={() => approveRoom(selected)} disabled={Boolean(busy) || !selected.counts.submitted} className="btn-primary"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{busy === `room:${selected.room}` ? 'กำลังบันทึก...' : `รับรองทั้งห้อง (${selected.counts.submitted})`}</button>
+                                        </div>
+                                    </div>
+                                </header>
 
-                    <section className={`overflow-hidden rounded-2xl border border-line bg-white ${mobileDetailOpen ? '' : 'hidden lg:block'}`}>{!selected ? <div className="p-16 text-center text-slate-500"><ClipboardCheck className="mx-auto mb-3 h-10 w-10 text-slate-300" />เลือกผู้เรียนเพื่อพิจารณาผลรายด้าน</div> : <><div className="border-b border-line px-3 py-2 lg:hidden"><button type="button" onClick={() => setMobileDetailOpen(false)} className="btn-ghost"><ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายชื่อ</button></div><header className="flex flex-col gap-3 border-b border-line p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-bold text-slate-950">{fullName(selected.student)}</h2><p className="mt-1 text-sm text-slate-600">{selected.student.current_grade_level || '-'} · ห้อง {selected.student.current_room || '-'} · {selected.entries.length} ด้านความสามารถ</p></div><button type="button" onClick={() => bulkApprove(selected.entries)} disabled={savingKey === 'bulk'} className="surface-success min-h-11 rounded-xl border border-emerald-300 px-4 text-sm font-bold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50">รับรองตามผลครูทุกด้านของคนนี้</button></header><div className="divide-y divide-line">{selected.entries.map(entry => { const local = localDecisions[entry.key] || {}; const status = STATUS[entry.decision?.decision_status || 'pending']; const sourceLevels = [...new Set(entry.formative_sources.map(source => source.competency_level).filter(Boolean))]; const teacherLevel = consensusLevel(entry.formative_sources); const needsReason = !teacherLevel || local.level !== teacherLevel; return <article key={entry.key} className="space-y-5 p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-bold text-slate-950">{entry.competency_area}</h3><p className="mt-1 text-sm text-slate-600">ผลสรุปรายด้านจากครู {entry.formative_sources.length} รายการ · หลักฐาน LO {entry.evidence.length} ข้อความ</p></div><span className={`w-fit rounded-lg border px-2.5 py-1 text-xs font-bold ${status.className}`}>{status.label}</span></div>
-                        <div className="rounded-xl border border-line bg-slate-50 p-4"><h4 className="text-xs font-bold text-slate-700">ผลสรุปรายด้านที่ครูส่งมา</h4>{entry.formative_sources.length ? <div className="mt-3 space-y-2">{entry.formative_sources.map(source => <div key={source.id} className="flex flex-col gap-1 rounded-lg bg-white px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"><span className="font-bold text-slate-800">{source.subject_name}{source.room ? ` · ${source.room}` : ''}</span><span className={`w-fit rounded-lg border px-2 py-1 text-xs font-bold ${LEVEL_CLASS[source.competency_level] || LEVEL_CLASS['N/A']}`}>{source.competency_level ? formalLevelLabel(source.competency_level) : 'ยังไม่ตัดสินระดับ'}</span>{source.qualitative_summary && <span className="text-xs text-slate-600 sm:max-w-md">{source.qualitative_summary}</span>}</div>)}</div> : <p className="mt-2 text-sm text-amber-800">ยังไม่มีผลสรุปรายด้านจากครู</p>}{sourceLevels.length > 1 && <p className="mt-3 text-xs font-bold text-amber-800">ผลจากแต่ละวิชาแตกต่างกัน ฝ่ายวิชาการต้องอ่านหลักฐานและตัดสินโดยไม่เฉลี่ยอัตโนมัติ</p>}</div>
-                        <details className="rounded-xl border border-line"><summary className="cursor-pointer px-4 py-3 text-sm font-bold text-indigo-800"><FileText className="mr-2 inline h-4 w-4" />เปิดอ่านข้อความพฤติกรรมราย LO ({entry.evidence.length})</summary><div className="divide-y divide-line border-t border-line">{entry.evidence.length ? entry.evidence.map(item => <div key={`${item.source_table}:${item.id}`} className="p-4"><div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{item.lo.lo_code || `LO ${item.lo.ability_no || '-'}`}</span><span className="text-xs font-bold text-slate-500">{item.source_name}</span></div><p className="mt-2 text-sm leading-6 text-slate-800">{item.evidence_note}</p></div>) : <p className="p-4 text-sm text-slate-500">ยังไม่มีข้อความหลักฐาน</p>}</div></details>
-                        <div><h4 className="text-xs font-bold text-slate-700">ผลที่ฝ่ายวิชาการรับรอง *</h4><div className="mt-2 flex flex-wrap gap-2">{LEVELS.map(level => <button key={level} type="button" onClick={() => updateLocal(entry.key, 'level', level)} className={`min-h-11 rounded-xl border px-3 text-sm font-bold ${local.level === level ? `${LEVEL_CLASS[level]} ring-2 ring-indigo-500` : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>{formalLevelLabel(level)}</button>)}</div>{teacherLevel && local.level === teacherLevel && <p className="mt-2 text-xs font-bold text-emerald-800">ตรงกับผลของครู กดรับรองได้ทันที</p>}</div>
-                        <label className="block"><span className="text-xs font-bold text-slate-700">เหตุผลหรือคำแนะนำ {needsReason ? '(ต้องกรอกเมื่อแก้ผลหรือส่งกลับ)' : '(ไม่ต้องกรอกเมื่อรับรองตามครู)'}</span><textarea rows="3" value={local.reason || ''} onChange={event => updateLocal(entry.key, 'reason', event.target.value)} placeholder={needsReason ? 'อธิบายเหตุผลที่แก้ผล หรือสิ่งที่ต้องการให้ครูแก้ไข' : AUTO_APPROVAL_REASON} className="mt-2 w-full rounded-xl border border-field p-3 text-sm leading-6 placeholder:text-slate-600" /></label>
-                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button onClick={() => saveDecision(entry, 'returned')} disabled={savingKey === entry.key} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-sm font-bold text-rose-800 disabled:opacity-50">ส่งกลับแก้ไข</button><button onClick={() => saveDecision(entry, 'approved')} disabled={savingKey === entry.key || !entry.formative_sources.length || !local.level || (needsReason && !local.reason?.trim())} title={!entry.formative_sources.length ? 'รอครูส่งผลสรุปรายด้านก่อน' : undefined} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-40"><Save className="h-4 w-4" />{savingKey === entry.key ? 'กำลังบันทึก...' : 'ยืนยันรับรองผลรายด้าน'}</button></div>
-                    </article>; })}</div></>}</section>
+                                {evidence.loading && <p className="border-b border-line px-5 py-2 text-xs text-slate-600" role="status">กำลังโหลดข้อความ LO ของห้อง...</p>}
+                                <ul className="divide-y divide-line">
+                                    {selected.students.map((student, index) => {
+                                        const areas = roomAreas.length ? roomAreas : [...new Set(selected.rows.filter(row => row.student_id === student.student_id).map(row => row.competency_area))];
+                                        const studentRows = areas.map(area => decisions.get(decisionKey(student.student_id, area))).filter(Boolean);
+                                        const open = openStudentId === student.student_id;
+                                        const waiting = studentRows.filter(row => row.decision_status === 'submitted').length;
+                                        const approved = studentRows.filter(row => row.decision_status === 'approved').length;
+                                        return (
+                                            <li key={student.student_id}>
+                                                <button type="button" aria-expanded={open} onClick={() => setOpenStudentId(open ? '' : student.student_id)} className={`flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left sm:px-5 ${open ? 'bg-slate-50' : 'hover:bg-slate-50'}`}>
+                                                    <ChevronRight className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+                                                    <span className="min-w-0 flex-1 text-sm"><strong className="text-slate-950">{index + 1}. {fullName(student)}</strong><span className="ml-2 text-xs text-slate-600">{student.student_code || ''}</span></span>
+                                                    <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">{studentRows.length ? `รับรอง ${approved}/${areas.length}${waiting ? ` · รอ ${waiting}` : ''}` : 'ยังไม่มีผลสรุป'}</span>
+                                                </button>
+                                                {open && (
+                                                    <div className="space-y-3 bg-slate-50/60 px-4 pb-5 sm:px-5">
+                                                        <div className="flex justify-end"><button type="button" onClick={() => navigate(`/report/${student.student_id}/${academicYear}/${semester}`)} className="btn-ghost"><FileText className="h-4 w-4" aria-hidden="true" />ดูรายงานผู้ปกครอง</button></div>
+                                                        {areas.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">ครูประจำชั้นยังไม่ได้สรุปนักเรียนคนนี้</p>}
+                                                        {areas.map(area => {
+                                                            const key = decisionKey(student.student_id, area);
+                                                            const row = decisions.get(key);
+                                                            const notes = evidence.notesByKey.get(key) || [];
+                                                            const override = overrides[key] || {};
+                                                            const status = ROW_STATUS[row?.decision_status] || ROW_STATUS.draft;
+                                                            return (
+                                                                <article key={area} className="rounded-xl border border-line bg-white p-4">
+                                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                                        <h3 className="text-sm font-bold text-slate-950">{area}</h3>
+                                                                        <span className={`chip ${status.chip} w-fit`}>{row ? status.label : 'ยังไม่มีผลสรุป'}</span>
+                                                                    </div>
+                                                                    {row ? (
+                                                                        <>
+                                                                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                                                <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${LEVEL_CLASS[row.final_level] || LEVEL_CLASS['N/A']}`}>{row.final_level ? formalLevelLabel(row.final_level) : 'ยังไม่เลือกระดับ'}</span>
+                                                                                {isLockedDecision(row) && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Lock className="h-3.5 w-3.5" aria-hidden="true" />ล็อกแล้ว</span>}
+                                                                            </div>
+                                                                            <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-800">{row.summary_text || <span className="text-amber-800">ยังไม่มีคำบรรยาย</span>}</p>
+                                                                            {row.decision_status === 'returned' && row.decision_reason && <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-900"><strong>เหตุผลที่ส่งกลับ:</strong> {row.decision_reason}</p>}
+                                                                            {notes.length > 0 && (
+                                                                                <details className="mt-3 rounded-lg border border-line">
+                                                                                    <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-indigo-800">ข้อความ LO จากครูผู้สอน ({notes.length})</summary>
+                                                                                    <ul className="divide-y divide-line border-t border-line">{notes.map((note, noteIndex) => <li key={noteIndex} className="p-3 text-sm"><span className="text-xs font-bold text-slate-600">{note.subject} · {note.loCode}</span><p className="mt-1 leading-6 text-slate-800">{note.text}</p></li>)}</ul>
+                                                                                </details>
+                                                                            )}
+                                                                            {['submitted', 'approved'].includes(row.decision_status) && (
+                                                                                <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-end">
+                                                                                    {row.decision_status === 'submitted' && (
+                                                                                        <select aria-label={`แก้ระดับ ${shortAreaName(area)} ของ ${fullName(student)}`} value={override.level || row.final_level || ''} onChange={event => setOverrides(previous => ({ ...previous, [key]: { ...previous[key], level: event.target.value } }))} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold">
+                                                                                            {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level === row.final_level ? `${level} (ครูประจำชั้นเสนอ)` : level}</option>)}
+                                                                                        </select>
+                                                                                    )}
+                                                                                    <button type="button" onClick={() => decideOne(row, 'returned')} disabled={busy === key} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-sm font-bold text-rose-800 hover:bg-rose-50 disabled:opacity-50">{row.decision_status === 'approved' ? 'ปลดล็อกและส่งกลับ' : 'ส่งกลับรายการนี้'}</button>
+                                                                                    {row.decision_status === 'submitted' && <button type="button" onClick={() => decideOne(row, 'approved')} disabled={busy === key} className="btn-primary">{(override.level && override.level !== row.final_level) ? 'รับรองระดับที่แก้' : 'รับรองรายการนี้'}</button>}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    ) : <p className="mt-2 text-sm text-slate-600">ครูประจำชั้นยังไม่ได้สรุปด้านนี้</p>}
+                                                                </article>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </>
+                        )}
+                    </section>
                 </div>
             </div>
         </Layout>

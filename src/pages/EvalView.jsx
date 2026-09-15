@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { hasRole } from '../lib/roles';
-import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck } from 'lucide-react';
+import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useDocumentTitle from '../lib/useDocumentTitle';
 import { useDialog } from '../lib/dialogContext';
@@ -296,8 +296,8 @@ export default function EvalView() {
     const submitForReview = async () => {
         if (missingCount > 0 && !(await dialog.confirm({
             title: 'ส่งผลทั้งที่ยังกรอกไม่ครบ?',
-            message: `ยังมี ${missingCount} ช่องที่ไม่มีข้อความพฤติกรรม ฝ่ายวิชาการจะเห็นว่าช่องเหล่านี้ว่าง`,
-            confirmLabel: 'ส่งฝ่ายวิชาการ',
+            message: `ยังมี ${missingCount} ช่องที่ไม่มีข้อความพฤติกรรม ครูประจำชั้นและฝ่ายวิชาการจะเห็นว่าช่องเหล่านี้ว่าง`,
+            confirmLabel: 'ส่งผลรายวิชา',
         }))) {
             return;
         }
@@ -335,14 +335,6 @@ export default function EvalView() {
                     .in('evaluation_id', evaluationIds.slice(index, index + 200));
                 if (statusError) throw statusError;
             }
-            const scopedIds = [...scopedEnrollmentIds];
-            for (let index = 0; index < scopedIds.length; index += 200) {
-                const { error: areaStatusError } = await supabase.from('competency_area_evaluations')
-                    .update({ workflow_status: 'submitted', submitted_at: now, updated_at: now })
-                    .in('enrollment_id', scopedIds.slice(index, index + 200))
-                    .not('competency_level', 'is', null);
-                if (areaStatusError) throw areaStatusError;
-            }
             await supabase.from('audit_logs').insert({
                 school_id: currentUser.school_id,
                 actor_id: currentUser.teacher_id,
@@ -356,7 +348,7 @@ export default function EvalView() {
             setEvaluations(prev => prev.map(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()
                 ? { ...e, workflow_status: 'submitted', submitted_at: now }
                 : e));
-            toast.success('ส่งผลให้ฝ่ายวิชาการตรวจสอบแล้ว');
+            toast.success('ส่งผลรายวิชาแล้ว ครูประจำชั้นนำข้อความไปสรุปความสามารถรายด้านได้');
         } catch (err) {
             toast.error('ส่งผลตรวจสอบไม่สำเร็จ: ' + err.message);
         } finally {
@@ -375,7 +367,7 @@ export default function EvalView() {
     const submissionStatus = submission?.status || 'draft';
     const submissionLabel = {
         draft: 'ฉบับร่าง',
-        submitted: 'ส่งฝ่ายวิชาการแล้ว',
+        submitted: 'ส่งผลแล้ว',
         under_review: 'กำลังตรวจสอบ',
         returned: 'ส่งกลับแก้ไข',
         approved: 'ฝ่ายวิชาการรับรองแล้ว'
@@ -460,6 +452,13 @@ export default function EvalView() {
                             </span>
                         )}
                         <button
+                            type="button"
+                            onClick={() => navigate(`/summary/${subjectId}${selectedRoom !== 'all' ? `?room=${encodeURIComponent(selectedRoom)}` : ''}`, { state: { subject } })}
+                            className="btn-secondary hidden md:inline-flex"
+                        >
+                            <Printer className="h-4 w-4" aria-hidden="true" />พิมพ์ผลรายวิชา
+                        </button>
+                        <button
                             onClick={saveEvaluations}
                             disabled={saving || !isDirty || submissionStatus === 'approved'}
                             className="btn-secondary hidden md:inline-flex"
@@ -471,10 +470,10 @@ export default function EvalView() {
                             onClick={submitForReview}
                             disabled={submitting || loading || submissionStatus === 'approved'}
                             className="btn-primary hidden md:inline-flex"
-                            title={missingCount > 0 ? `ส่งได้ โดยระบบจะถามยืนยัน ${missingCount} รายการที่ยังไม่ครบ` : 'ส่งผลการประเมินให้ฝ่ายวิชาการตรวจสอบ'}
+                            title={missingCount > 0 ? `ส่งได้ โดยระบบจะถามยืนยัน ${missingCount} รายการที่ยังไม่ครบ` : 'ส่งผลรายวิชาให้ครูประจำชั้นและฝ่ายวิชาการ'}
                         >
                             {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-                            ส่งให้ฝ่ายวิชาการตรวจสอบ
+                            ส่งผลรายวิชา
                         </button>
                     </div>
                 </div>
@@ -631,7 +630,7 @@ export default function EvalView() {
                             <Save className="h-4 w-4" aria-hidden="true" />บันทึก
                         </button>
                         <button onClick={submitForReview} disabled={submitting || loading || submissionStatus === 'approved'} className="btn-primary">
-                            <Send className="h-4 w-4" aria-hidden="true" />{submitting ? 'กำลังส่ง...' : 'ส่งฝ่ายวิชาการ'}
+                            <Send className="h-4 w-4" aria-hidden="true" />{submitting ? 'กำลังส่ง...' : 'ส่งผลรายวิชา'}
                         </button>
                     </div>
                 </div>

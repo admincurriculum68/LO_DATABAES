@@ -11,6 +11,7 @@ import {
     BookOpen,
     CheckCircle2,
     ClipboardCheck,
+    Printer,
     Search,
     UsersRound,
 } from 'lucide-react';
@@ -180,7 +181,7 @@ export default function TeacherDashboard() {
                                 สวัสดีครับ/ค่ะ, {currentUser?.full_name || 'คุณครู'}
                             </h1>
                             <p className="text-sm leading-relaxed text-indigo-100">
-                                ทำตาม 2 ขั้น: บันทึกข้อความพฤติกรรมราย LO ให้ครบ แล้วสรุประดับเป็นรายด้านความสามารถ
+                                บันทึกข้อความพฤติกรรมราย LO ให้ครบแล้วกดส่งผล ครูประจำชั้นจะนำข้อความของทุกวิชาไปสรุปความสามารถรายด้าน
                             </p>
                         </div>
                         <div className="shrink-0 rounded-lg border border-white/25 bg-white/10 px-4 py-3 text-xs">
@@ -344,15 +345,13 @@ export default function TeacherDashboard() {
                                                     onClick={() => navigate(`/eval/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
                                                     className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                                                 >
-                                                    ขั้นที่ 1 · บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
+                                                    บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
                                                 </button>
                                                 <button
-                                                    onClick={() => navigate(`/formative/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
-                                                    disabled={!isComplete}
-                                                    title={!isComplete ? 'บันทึกข้อความ LO ให้ครบก่อนสรุประดับรายด้าน' : undefined}
-                                                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-indigo-300 bg-indigo-50 px-4 py-2.5 text-xs font-bold text-indigo-900 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+                                                    onClick={() => navigate(`/summary/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
+                                                    className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                                                 >
-                                                    ขั้นที่ 2 · สรุประดับรายด้าน
+                                                    <Printer className="h-3.5 w-3.5" aria-hidden="true" /> พิมพ์ผลรายวิชา
                                                 </button>
                                             </div>
                                         </div>

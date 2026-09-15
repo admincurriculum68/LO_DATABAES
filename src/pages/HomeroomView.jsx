@@ -6,6 +6,7 @@ import {
     CheckCircle2,
     ClipboardCheck,
     LayoutDashboard,
+    PenLine,
     Printer,
     RefreshCw,
     Save,
@@ -18,6 +19,7 @@ import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { hasAnyRole } from '../lib/roles';
+import HomeroomCompetencyTab from '../components/homeroom/HomeroomCompetencyTab';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
@@ -42,7 +44,7 @@ export default function HomeroomView() {
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState('');
     const [data, setData] = useState(null);
-    const [activeTab, setActiveTab] = useState('academic');
+    const [activeTab, setActiveTab] = useState('summary');
     const [selectedLo, setSelectedLo] = useState('');
     const [activityData, setActivityData] = useState({});
     const [activityDirty, setActivityDirty] = useState(false);
@@ -288,7 +290,7 @@ export default function HomeroomView() {
         <Layout title="งานประเมินผลสำหรับครูประจำชั้น">
             <div className="mx-auto w-full max-w-[1600px]">
                 <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div><div className="flex items-center gap-2 text-sm font-bold text-blue-700"><LayoutDashboard className="h-4 w-4" /> งานครูประจำชั้น</div><h1 className="mt-1 text-2xl font-bold text-slate-950">งานประเมินประจำชั้นเรียน</h1><p className="mt-1 text-sm text-slate-600">ตรวจสอบผลราย LO และประเมินกิจกรรมกับคุณลักษณะของผู้เรียนในห้องประจำชั้น</p></div>
+                    <div><div className="flex items-center gap-2 text-sm font-bold text-blue-700"><LayoutDashboard className="h-4 w-4" /> งานครูประจำชั้น</div><h1 className="mt-1 text-2xl font-bold text-slate-950">งานประเมินประจำชั้นเรียน</h1><p className="mt-1 text-sm text-slate-600">สรุปความสามารถรายด้านจากข้อความ LO ของทุกวิชา ประเมินกิจกรรมกับคุณลักษณะ และพิมพ์รายงานผู้ปกครอง</p></div>
                     <div className="rounded-xl border border-line bg-white px-4 py-3 text-sm shadow-sm"><span className="block text-xs font-semibold text-slate-500">รอบการประเมิน</span><strong className="text-slate-900">ภาคเรียนที่ {semester}/{academicYear}</strong></div>
                 </header>
 
@@ -312,8 +314,8 @@ export default function HomeroomView() {
                                     ].map((metric, index) => <div key={metric.label} className={`flex items-center gap-3 border-b border-line p-4 sm:p-5 ${index % 2 === 0 ? 'sm:border-r' : ''} ${index < 2 ? 'xl:border-b-0' : 'sm:border-b-0'} ${index < 3 ? 'xl:border-r' : ''}`}><span className={`flex h-11 w-11 items-center justify-center rounded-xl ${metric.tone}`}><metric.icon className="h-5 w-5" /></span><div><p className="text-sm font-semibold text-slate-600">{metric.label}</p><p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-950">{metric.value} <span className="text-sm font-semibold text-slate-500">{metric.unit}</span></p></div></div>)}
                                 </section>
 
-                                <nav className="mb-5 overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกงานประจำชั้น"><div className="flex min-w-max gap-1"><button onClick={() => setActiveTab('academic')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'academic' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><BookOpen className="mr-2 inline h-4 w-4" />ผลราย LO จากรายวิชา</button><button onClick={() => setActiveTab('activity')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'activity' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><Star className="mr-2 inline h-4 w-4" />กิจกรรมและคุณลักษณะ {savedActivityStudents < students.length && <span className={`ml-1 rounded-lg px-1.5 py-0.5 text-xs ${activeTab === 'activity' ? 'bg-white/20 text-white' : 'surface-warning text-amber-800'}`}>{students.length - savedActivityStudents} ค้าง</span>}</button></div></nav>
-                                {activeTab === 'academic' ? renderAcademicTable() : renderActivityTable()}
+                                <nav className="mb-5 overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกงานประจำชั้น"><div className="flex min-w-max gap-1"><button onClick={() => setActiveTab('summary')} aria-pressed={activeTab === 'summary'} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'summary' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><PenLine className="mr-2 inline h-4 w-4" />สรุปความสามารถรายด้าน</button><button onClick={() => setActiveTab('academic')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'academic' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><BookOpen className="mr-2 inline h-4 w-4" />ผลราย LO จากรายวิชา</button><button onClick={() => setActiveTab('activity')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'activity' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><Star className="mr-2 inline h-4 w-4" />กิจกรรมและคุณลักษณะ {savedActivityStudents < students.length && <span className={`ml-1 rounded-lg px-1.5 py-0.5 text-xs ${activeTab === 'activity' ? 'bg-white/20 text-white' : 'surface-warning text-amber-800'}`}>{students.length - savedActivityStudents} ค้าง</span>}</button></div></nav>
+                                {activeTab === 'summary' ? <HomeroomCompetencyTab room={room} students={students} data={data} academicYear={academicYear} semester={semester} /> : activeTab === 'academic' ? renderAcademicTable() : renderActivityTable()}
                             </>
                         )}
                     </>

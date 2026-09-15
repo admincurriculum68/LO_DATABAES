@@ -103,13 +103,11 @@ export default function ExecutiveDashboard() {
                 ]);
                 const enrollmentIds = enrollments.map(item => item.enrollment_id);
 
-                const [evaluations, contextEvaluations, areaEvaluations] = await Promise.all([
+                const [evaluations, contextEvaluations] = await Promise.all([
                     fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations').select('enrollment_id, lo_id, evidence_note, workflow_status')
                         .in('enrollment_id', batch).range(from, to)),
                     fetchAllByIn(contextIds, (batch, from, to) => supabase.from('learning_context_evaluations').select('student_id, lo_id, evidence_note, workflow_status')
                         .in('context_id', batch).range(from, to)),
-                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('competency_area_evaluations').select('enrollment_id, competency_area, competency_level, workflow_status')
-                        .in('enrollment_id', batch).range(from, to)),
                 ]);
 
                 setData({
@@ -124,7 +122,6 @@ export default function ExecutiveDashboard() {
                     submissions,
                     evaluations,
                     contextEvaluations,
-                    areaEvaluations,
                 });
             } catch (err) {
                 toast.error('ไม่สามารถโหลดข้อมูลสารสนเทศสำหรับผู้บริหารได้: ' + err.message);
@@ -178,11 +175,8 @@ export default function ExecutiveDashboard() {
 
         // 2. คอขวดการรับรองผล นับเป็นคู่ ผู้เรียน x ด้านความสามารถ
         const pairKeys = new Set();
-        data.areaEvaluations.forEach(item => {
-            if (!isReviewableWorkflow(item.workflow_status)) return;
-            const enrollment = enrollmentById.get(item.enrollment_id);
-            if (enrollment) pairKeys.add(`${enrollment.student_id}:${item.competency_area}`);
-        });
+        // ผลที่ครูประจำชั้นสรุปแล้วทุกสถานะนับเป็นงานที่รอหรือผ่านการรับรอง
+        data.decisions.forEach(item => pairKeys.add(`${item.student_id}:${item.competency_area}`));
         validEvaluations.forEach(item => {
             if (!isReviewableWorkflow(item.workflow_status)) return;
             const enrollment = enrollmentById.get(item.enrollment_id);
@@ -259,15 +253,15 @@ export default function ExecutiveDashboard() {
             }))
             .sort((a, b) => a.room.localeCompare(b.room, 'th'));
 
-        // 5. การกระจายระดับ Formative รายด้าน แยกผลที่ส่งแล้วออกจากฉบับร่าง
+        // 5. การกระจายระดับรายด้านที่ครูประจำชั้นส่งแล้ว แยกจากที่ยังเป็นฉบับร่าง
         const confirmedCounts = { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 };
         let confirmedTotal = 0;
         let draftTotal = 0;
-        data.areaEvaluations.forEach(item => {
-            if (!item.competency_level) return;
-            if (['submitted', 'approved'].includes(item.workflow_status)) {
-                if (confirmedCounts[item.competency_level] !== undefined) {
-                    confirmedCounts[item.competency_level] += 1;
+        data.decisions.forEach(item => {
+            if (!item.final_level) return;
+            if (['submitted', 'approved'].includes(item.decision_status)) {
+                if (confirmedCounts[item.final_level] !== undefined) {
+                    confirmedCounts[item.final_level] += 1;
                     confirmedTotal += 1;
                 }
             } else {
@@ -562,7 +556,7 @@ export default function ExecutiveDashboard() {
                                 {view.draftTotal > 0 && (
                                     <p className="flex items-start gap-2 rounded-xl border border-line bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-600">
                                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                                        มีอีก {view.draftTotal.toLocaleString()} รายการที่ครูยังบันทึกเป็นฉบับร่าง ยังไม่นับรวมในสัดส่วนด้านบน
+                                        มีอีก {view.draftTotal.toLocaleString()} รายการที่ครูประจำชั้นยังไม่ส่ง ยังไม่นับรวมในสัดส่วนด้านบน
                                     </p>
                                 )}
                             </div>

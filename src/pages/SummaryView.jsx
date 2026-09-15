@@ -105,7 +105,8 @@ export default function SummaryView() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
     const [query, setQuery] = useState('');
-    const [roomFilter, setRoomFilter] = useState('all');
+    // เปิดจากปุ่มพิมพ์ของห้องใดห้องหนึ่ง ให้กรองห้องนั้นไว้ก่อน
+    const [roomFilter, setRoomFilter] = useState(() => new URLSearchParams(location.search).get('room') || 'all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [distributionLo, setDistributionLo] = useState('');
     const [school, setSchool] = useState({ school_name: currentUser?.school_name || '', logo_data_url: '' });

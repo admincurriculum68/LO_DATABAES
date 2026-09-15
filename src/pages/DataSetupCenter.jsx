@@ -14,20 +14,22 @@ export default function DataSetupCenter() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
-    const [summary, setSummary] = useState({ teachers: 0, students: 0, missingRooms: 0, formats: 0, groups: 0, emptyGroups: 0, teacherlessGroups: 0, los: 0, mappedSubjects: 0, subjects: 0 });
+    const [summary, setSummary] = useState({ teachers: 0, students: 0, missingRooms: 0, formats: 0, groups: 0, emptyGroups: 0, teacherlessGroups: 0, los: 0, mappedSubjects: 0, subjects: 0, roomsWithoutHomeroom: [] });
 
     const loadSummary = useCallback(async () => {
         if (!currentUser?.school_id || !academicYear || !semester) return;
         setLoading(true);
         setLoadError('');
         try {
-            const [students, teacherResult, subjectResult, contextResult, loResult, groupResult] = await Promise.all([
+            const [students, teacherResult, subjectResult, contextResult, loResult, groupResult, homeroomRows] = await Promise.all([
                 fetchAllRows((from, to) => supabase.from('users_students').select('student_id, current_grade_level, current_room, student_status').eq('school_id', currentUser.school_id).range(from, to)),
                 supabase.from('users_teachers').select('teacher_id', { count: 'exact', head: true }).eq('school_id', currentUser.school_id).eq('is_active', true),
                 supabase.from('subjects').select('subject_id, teacher_id').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester),
                 supabase.from('learning_contexts').select('context_id', { count: 'exact', head: true }).eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester),
                 supabase.from('learning_outcomes').select('lo_id', { count: 'exact', head: true }).eq('school_id', currentUser.school_id),
                 supabase.from('learning_groups').select('group_id').eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester).eq('is_active', true),
+                // ครูประจำชั้นเป็นคนสรุปความสามารถรายด้าน ห้องที่ไม่มีครูประจำชั้นจะไม่มีใครสรุป
+                fetchAllRows((from, to) => supabase.from('users_teachers').select('homeroom').eq('school_id', currentUser.school_id).eq('is_active', true).not('homeroom', 'is', null).range(from, to)),
             ]);
             const baseError = [teacherResult, subjectResult, contextResult, loResult, groupResult].find(result => result.error)?.error;
             if (baseError) throw baseError;
@@ -54,6 +56,12 @@ export default function DataSetupCenter() {
                 teacherlessGroups: groups.filter(group => !groupsWithTeachers.has(group.group_id)).length,
                 los: loResult.count || 0,
                 mappedSubjects: new Set(mappings.map(item => item.subject_id)).size,
+                roomsWithoutHomeroom: (() => {
+                    const assigned = new Set(homeroomRows.map(item => item.homeroom));
+                    return [...new Set(activeStudents.map(student => student.current_room).filter(Boolean))]
+                        .filter(room => !assigned.has(room))
+                        .sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
+                })(),
             });
         } catch (error) {
             setLoadError(error.message || 'โหลดสถานะการตั้งค่าไม่สำเร็จ');
@@ -70,7 +78,7 @@ export default function DataSetupCenter() {
         { title: 'กำหนดวิชา หน่วย โครงงาน และกิจกรรม', description: 'รูปแบบการเรียนรู้ในภาคเรียนปัจจุบัน', value: summary.formats, unit: 'รายการ', ready: summary.formats > 0, icon: BookOpenCheck, action: () => navigate('/admin/learning-contexts') },
         { title: 'จัดกลุ่มเรียน', description: summary.emptyGroups ? `มี ${summary.emptyGroups} กลุ่มที่ยังไม่มีนักเรียน` : 'รองรับรวมหลายห้องและแบ่งกลุ่มย่อย', value: summary.groups, unit: 'กลุ่ม', ready: summary.groups > 0 && summary.emptyGroups === 0, icon: Users, action: () => navigate('/admin/learning-groups') },
         { title: 'กำหนดครูผู้รับผิดชอบ', description: summary.teacherlessGroups ? `มี ${summary.teacherlessGroups} กลุ่มที่ยังไม่มีครู` : 'กำหนดครูหลักและครูร่วมแล้ว', value: Math.max(0, summary.groups - summary.teacherlessGroups), unit: `จาก ${summary.groups}`, ready: summary.groups > 0 && summary.teacherlessGroups === 0, icon: ClipboardCheck, action: () => navigate('/admin/learning-groups') },
-        { title: 'เพิ่มและเชื่อมโยง LO', description: `วิชาที่เชื่อม LO แล้ว ${summary.mappedSubjects} จาก ${summary.subjects}`, value: summary.los, unit: 'LO', ready: summary.los > 0 && summary.subjects > 0 && summary.mappedSubjects === summary.subjects, icon: Database, action: () => navigate('/admin?tab=mapping') },
+        { title: 'กำหนด LO ของวิชา', description: `กำหนด LO แล้ว ${summary.mappedSubjects} จาก ${summary.subjects} วิชา`, value: summary.los, unit: 'LO', ready: summary.los > 0 && summary.subjects > 0 && summary.mappedSubjects === summary.subjects, icon: Database, action: () => navigate('/admin?tab=mapping') },
     ];
     const readiness = calculateSetupReadiness(summary);
     const readyCount = readiness.completed;
@@ -84,7 +92,7 @@ export default function DataSetupCenter() {
 
                 {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4" role="alert"><div className="flex gap-3"><AlertTriangle className="h-5 w-5 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดสถานะการตั้งค่าไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={loadSummary} className="mt-3 min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-bold text-white">ลองโหลดอีกครั้ง</button></div></div></section>}
 
-                {(summary.missingRooms > 0 || summary.emptyGroups > 0 || summary.teacherlessGroups > 0) && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">มีข้อมูลที่ต้องจัดการก่อนเริ่มประเมิน</h2><ul className="mt-2 space-y-1 text-sm text-amber-900">{summary.missingRooms > 0 && <li>• นักเรียนไม่มีชั้นหรือห้องประจำชั้น {summary.missingRooms} คน</li>}{summary.emptyGroups > 0 && <li>• กลุ่มเรียนยังไม่มีสมาชิก {summary.emptyGroups} กลุ่ม</li>}{summary.teacherlessGroups > 0 && <li>• กลุ่มเรียนยังไม่มีครูรับผิดชอบ {summary.teacherlessGroups} กลุ่ม</li>}</ul></div></div></section>}
+                {(summary.missingRooms > 0 || summary.emptyGroups > 0 || summary.teacherlessGroups > 0 || summary.roomsWithoutHomeroom.length > 0) && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">มีข้อมูลที่ต้องจัดการก่อนเริ่มประเมิน</h2><ul className="mt-2 space-y-1 text-sm text-amber-900">{summary.missingRooms > 0 && <li>• นักเรียนไม่มีชั้นหรือห้องประจำชั้น {summary.missingRooms} คน</li>}{summary.emptyGroups > 0 && <li>• กลุ่มเรียนยังไม่มีสมาชิก {summary.emptyGroups} กลุ่ม</li>}{summary.teacherlessGroups > 0 && <li>• กลุ่มเรียนยังไม่มีครูรับผิดชอบ {summary.teacherlessGroups} กลุ่ม</li>}{summary.roomsWithoutHomeroom.length > 0 && <li>• ห้องที่ยังไม่มีครูประจำชั้น {summary.roomsWithoutHomeroom.length} ห้อง ({summary.roomsWithoutHomeroom.slice(0, 8).join(', ')}{summary.roomsWithoutHomeroom.length > 8 ? ' …' : ''}) ครูประจำชั้นเป็นผู้สรุปความสามารถรายด้าน กำหนดได้ในเมนูครูและนักเรียน</li>}</ul></div></div></section>}
 
                 <section className="overflow-hidden rounded-2xl border border-line bg-white">{steps.map((step, index) => <button key={step.title} onClick={step.action} className="group grid min-h-20 w-full gap-4 border-b border-line p-5 text-left last:border-b-0 hover:bg-slate-50 sm:grid-cols-[44px_minmax(0,1fr)_140px_36px] sm:items-center"><span className={`flex h-11 w-11 items-center justify-center rounded-xl font-bold ${step.ready ? 'surface-success text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{step.ready ? <CheckCircle2 className="h-5 w-5" /> : index + 1}</span><div><h2 className="font-bold text-slate-950">{step.title}</h2><p className={`mt-1 text-sm ${step.ready ? 'text-slate-600' : 'text-amber-800'}`}>{step.description}</p></div><div className="sm:text-right"><strong className="text-xl font-bold text-slate-900">{loading ? '–' : step.value.toLocaleString()}</strong><span className="ml-1 text-sm font-bold text-slate-500">{step.unit}</span><p className={`mt-1 text-xs font-bold ${step.ready ? 'text-emerald-700' : 'text-amber-700'}`}>{step.ready ? 'พร้อมแล้ว' : 'รอดำเนินการ'}</p></div><ArrowRight className="hidden h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-blue-700 sm:block" /></button>)}</section>
             </div>

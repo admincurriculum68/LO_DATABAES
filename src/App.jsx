@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import Login from './pages/Login';
 import ProtectedRoute from './ProtectedRoute';
@@ -21,12 +21,19 @@ const PhaseReportAdmin = lazy(() => import('./pages/PhaseReportAdmin'));
 const BatchReportView = lazy(() => import('./pages/BatchReportView'));
 const AcademicApprovalCenter = lazy(() => import('./pages/AcademicApprovalCenter'));
 const LearningContextManager = lazy(() => import('./pages/LearningContextManager'));
-const FormativeCompetencyView = lazy(() => import('./pages/FormativeCompetencyView'));
 const SubjectTeacherManager = lazy(() => import('./pages/SubjectTeacherManager'));
 const CurriculumEquivalency = lazy(() => import('./pages/CurriculumEquivalency'));
 const LearningGroupManager = lazy(() => import('./pages/LearningGroupManager'));
 const DataSetupCenter = lazy(() => import('./pages/DataSetupCenter'));
 const PeopleManager = lazy(() => import('./pages/PeopleManager'));
+
+// ขั้นสรุประดับรายด้านของครูผู้สอนย้ายไปเป็นงานของครูประจำชั้นแล้ว
+// ลิงก์เก่าที่ครูบันทึกไว้ให้พากลับไปหน้าบันทึกข้อความ LO ของวิชาเดิม
+function FormativeRedirect() {
+  const { subjectId } = useParams();
+  const location = useLocation();
+  return <Navigate to={`/eval/${subjectId}${location.search}`} replace />;
+}
 
 export default function App() {
   const { currentUser } = useAuth();
@@ -51,11 +58,11 @@ export default function App() {
         } />
         <Route path="/formative/:subjectId" element={
           <ProtectedRoute allowedRoles={['teacher']}>
-            <FormativeCompetencyView />
+            <FormativeRedirect />
           </ProtectedRoute>
         } />
         <Route path="/report/:studentId/:academicYear/:semester" element={
-          <ProtectedRoute allowedRoles={['teacher']}>
+          <ProtectedRoute allowedRoles={['teacher', 'admin']}>
             <ReportView />
           </ProtectedRoute>
         } />
@@ -70,7 +77,7 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/batch-report/:room/:academicYear/:semester" element={
-          <ProtectedRoute allowedRoles={['teacher']}>
+          <ProtectedRoute allowedRoles={['teacher', 'admin']}>
             <BatchReportView />
           </ProtectedRoute>
         } />

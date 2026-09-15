@@ -6,13 +6,13 @@ import Layout from '../components/Layout';
 import { GraduationCap, BookOpen, UserCheck, Compass, Bookmark, BookMarked, UserCircle2, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formalLevelLabel } from '../lib/terminology';
+import { homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
 export default function StudentDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
     const [data, setData] = useState([]);
     const [finalResults, setFinalResults] = useState([]);
-    const [formativeResults, setFormativeResults] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -33,7 +33,6 @@ export default function StudentDashboard() {
                 if (currentEnrollments.length === 0) {
                     setData([]);
                     setFinalResults([]);
-                    setFormativeResults([]);
                     setLoading(false);
                     return;
                 }
@@ -41,22 +40,20 @@ export default function StudentDashboard() {
                 const subjectIds = currentEnrollments.map(e => e.subjects?.subject_id).filter(Boolean);
                 const enrollmentIds = currentEnrollments.map(e => e.enrollment_id);
 
-                const [loData, evalData, areaData, finalData] = await Promise.all([
+                // ผลรายด้านมาจากครูประจำชั้นที่ฝ่ายวิชาการรับรองแล้วเท่านั้น
+                const hasSummary = await homeroomSummarySupported();
+                const [loData, evalData, finalData] = await Promise.all([
                     fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
                         .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, lo_description)')
                         .in('subject_id', batch).range(from, to)),
                     fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
                         .select('enrollment_id, lo_id, evidence_note')
                         .in('enrollment_id', batch).range(from, to)),
-                    fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('competency_area_evaluations')
-                        .select('enrollment_id, competency_area, competency_level, qualitative_summary')
-                        .in('enrollment_id', batch).range(from, to)),
                     fetchAllRows((from, to) => supabase.from('competency_area_final_decisions')
-                        .select('decision_id, competency_area, final_level, pass_status, decision_reason, academic_year, semester, decided_at')
+                        .select(`decision_id, competency_area, final_level, pass_status, decision_reason, academic_year, semester, decided_at${hasSummary ? ', summary_text' : ''}`)
                         .eq('school_id', currentUser.school_id).eq('student_id', currentUser.student_id)
                         .eq('academic_year', academicYear).eq('semester', semester).eq('decision_status', 'approved').range(from, to)),
                 ]);
-                setFormativeResults(areaData);
                 setFinalResults(finalData);
 
                 const dashboardData = currentEnrollments.map(enroll => {
@@ -112,7 +109,7 @@ export default function StudentDashboard() {
     });
 
     const totalEvals = evaluatedLoIds.size;
-    const passedEvals = new Set(formativeResults.filter(result => result.competency_level).map(result => result.competency_area)).size;
+    const passedEvals = new Set(finalResults.filter(result => result.final_level).map(result => result.competency_area)).size;
 
     return (
         <Layout title="ข้อมูลผลการเรียนรู้ของผู้เรียน">
@@ -168,7 +165,7 @@ export default function StudentDashboard() {
                         <UserCheck className="w-7 h-7" />
                     </div>
                     <div className="z-10">
-                        <p className="font-bold text-slate-600 text-sm mb-1">ด้านความสามารถที่ครูสรุปแล้ว</p>
+                        <p className="font-bold text-slate-600 text-sm mb-1">ด้านความสามารถที่รับรองแล้ว</p>
                         <p className="text-3xl font-bold text-ink leading-none">{loading ? '-' : passedEvals} <span className="text-base font-medium text-slate-600 ml-1">ด้าน</span></p>
                     </div>
                 </div>
@@ -187,7 +184,7 @@ export default function StudentDashboard() {
                         {finalResults.map(result => (
                                 <article key={result.decision_id} className="grid gap-3 px-6 py-5 md:grid-cols-[150px_minmax(0,1fr)_140px] md:items-center">
                                     <div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">ผลรับรองรายด้าน</span><p className="mt-2 text-xs font-semibold text-slate-500">ภาคเรียนที่ {result.semester}/{result.academic_year}</p></div>
-                                    <div><p className="font-bold leading-6 text-slate-900">{result.competency_area}</p>{result.decision_reason && <p className="mt-1 text-sm leading-6 text-slate-600">{result.decision_reason}</p>}</div>
+                                    <div><p className="font-bold leading-6 text-slate-900">{result.competency_area}</p>{(result.summary_text || result.decision_reason) && <p className="mt-1 text-sm leading-6 text-slate-600">{result.summary_text || result.decision_reason}</p>}</div>
                                     <div className="md:text-right"><span className={`inline-flex rounded-xl border px-3 py-2 text-sm font-bold ${result.pass_status === 'passed' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{formalLevelLabel(result.final_level)}</span></div>
                                 </article>
                             ))}
