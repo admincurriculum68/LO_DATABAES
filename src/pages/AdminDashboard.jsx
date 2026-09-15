@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import Layout from '../components/Layout';
 import { buildRoomEnrollmentRows, buildTeacherAssignmentRows, planSubjectImport, subjectKey } from '../lib/subjectImport';
 import { mergeTeacherImportRows } from '../lib/people';
-import { Users, Upload, Link as LinkIcon, Download, Trash2, Edit, Save, Plus, X, Search, FileText, CheckCircle, ArrowUpCircle, School, Lock, RefreshCw, UsersRound } from 'lucide-react';
+import { Users, Upload, Download, Trash2, Edit, Save, Plus, X, Search, FileText, ArrowUpCircle, School, Lock, RefreshCw, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Papa from 'papaparse';
 import { loadXLSX } from '../lib/xlsx';
@@ -21,6 +21,7 @@ import FlexibleImportWizard from '../components/FlexibleImportWizard';
 // แท็บที่ใช้เป็นครั้งคราว แยกไฟล์และโหลดเฉพาะตอนเปิดแท็บ
 const ProgressTab = lazy(() => import('../components/admin/ProgressTab'));
 const PromotionTab = lazy(() => import('../components/admin/PromotionTab'));
+const LoMappingTab = lazy(() => import('../components/admin/LoMappingTab'));
 
 const WORKSPACE_TABS = [
     { id: 'overview', label: 'หน้าหลักฝ่ายวิชาการ', description: 'ภาพรวมและงานที่ควรดำเนินการต่อ' },
@@ -176,11 +177,6 @@ export default function AdminDashboard() {
 
     // Mapping Tab States
     const [subjects, setSubjects] = useState([]);
-    const [mappingSubject, setMappingSubject] = useState('');
-    const [allLOs, setAllLOs] = useState([]);
-    const [mappedLOs, setMappedLOs] = useState([]);
-    const [loadingMapping, setLoadingMapping] = useState(false);
-    const [savingMapping, setSavingMapping] = useState(false);
 
     // Enrollment UI States
     const [allStudents, setAllStudents] = useState([]);
@@ -1097,9 +1093,6 @@ export default function AdminDashboard() {
                     } else if (importType === 'teachers') {
                         const { count } = await supabase.from('users_teachers').select('teacher_id', { count: 'exact', head: true }).eq('school_id', currentUser.school_id);
                         setStats(prev => ({ ...prev, teachers: count || 0 }));
-                    } else if (importType === 'learning_outcomes' && mappingSubject) {
-                        // refresh mapping data if a subject is already selected
-                        loadMappingData(mappingSubject);
                     }
 
                     // อัปเดตตารางข้อมูลดิบถ้ากำลังเปิดดูตารางนั้นอยู่
@@ -1136,57 +1129,12 @@ export default function AdminDashboard() {
         }
     };
 
-    // --- LO MAPPING ---
-    const loadMappingData = async (subjectId) => {
-        setMappingSubject(subjectId);
-        if (!subjectId) return;
-
-        setLoadingMapping(true);
-        try {
-            const [{ data: los }, { data: mapped }] = await Promise.all([
-                supabase.from('learning_outcomes').select('*')
-                    .eq('school_id', currentUser.school_id)
-                    .order('ability_no', { ascending: true }),
-                supabase.from('subject_lo_mapping').select('lo_id').eq('subject_id', subjectId)
-            ]);
-            setAllLOs(los || []);
-            setMappedLOs((mapped || []).map(m => m.lo_id));
-        } catch (err) {
-            toast.error('ไม่สามารถโหลดข้อมูลผลลัพธ์การเรียนรู้ได้: ' + err.message);
-        } finally {
-            setLoadingMapping(false);
-        }
-    };
-
-    const toggleMapping = (loId) => {
-        setMappedLOs(prev => prev.includes(loId) ? prev.filter(id => id !== loId) : [...prev, loId]);
-    };
-
-    const saveMapping = async () => {
-        setSavingMapping(true);
-        try {
-            await supabase.from('subject_lo_mapping').delete().eq('subject_id', mappingSubject);
-            if (mappedLOs.length > 0) {
-                const payload = mappedLOs.map(loId => ({ subject_id: mappingSubject, lo_id: loId }));
-                const { error } = await supabase.from('subject_lo_mapping').insert(payload);
-                if (error) throw error;
-            }
-            toast.success('บันทึกการเชื่อมโยงผลลัพธ์การเรียนรู้แล้ว');
-        } catch (err) {
-            toast.error('บันทึกไม่สำเร็จ: ' + err.message);
-        } finally {
-            setSavingMapping(false);
-        }
-    };
-
     const openWorkspaceTab = tabId => {
         setActiveTab(tabId);
         setSearchParams(tabId === 'overview' ? {} : { tab: tabId });
         if (tabId === 'data' && !selectedTable) loadTableData('subjects');
     };
     const activeWorkspace = WORKSPACE_TABS.find(tab => tab.id === activeTab) || WORKSPACE_TABS[1];
-    const mappingGradeLevel = subjects.find(subject => subject.subject_id === mappingSubject)?.grade_level || '';
-    const gradeCompatibleLOs = allLOs.filter(lo => !mappingGradeLevel || !lo.grade_level || lo.grade_level === mappingGradeLevel);
 
     if (activeTab === 'overview') {
         return (
@@ -1559,85 +1507,9 @@ export default function AdminDashboard() {
 
                         {/* --- TAB 3: SUBJECT - LO MAPPING --- */}
                         {activeTab === 'mapping' && (
-                            <div className="rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-6">
-                                <div className="mb-6 border-b border-line pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div>
-                                        <h2 className="flex items-center text-lg font-bold text-slate-900"><LinkIcon className="mr-2 h-5 w-5 text-indigo-600" />เลือกวิชาและ LO ที่ใช้ประเมิน</h2>
-                                        <p className="text-slate-600 mt-1 text-sm">เลือกวิชา แล้วทำเครื่องหมาย LO ที่ครูผู้สอนต้องประเมิน</p>
-                                    </div>
-                                    <div className="w-full md:w-1/3">
-                                        <select
- aria-label="เลือกวิชาที่จะกำหนด LO"                                            value={mappingSubject}
-                                            onChange={(e) => loadMappingData(e.target.value)}
-                                            className="w-full bg-slate-50 border border-field text-slate-800 py-3 px-4 rounded-xl focus:ring-2 focus:ring-indigo-400 font-bold outline-none"
-                                        >
-                                            <option value="" disabled>เลือกวิชา</option>
-                                            {subjects.filter(s => s.academic_year === academicYear && s.semester === semester).map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} · {s.grade_level || 'ไม่ระบุชั้น'}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div className="min-h-[400px]">
-                                    {loadingMapping ? (
-                                        <div className="py-20 flex justify-center"><div className="loader scale-125"></div></div>
-                                    ) : !mappingSubject ? (
-                                        <div className="text-center py-24 text-slate-500 font-medium flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-line">
-                                            <FileText className="w-16 h-16 text-slate-200 mb-4" />
-                                            เลือกวิชาจากช่องด้านบนเพื่อแสดงรายการ LO
-                                        </div>
-                                    ) : gradeCompatibleLOs.length === 0 ? (
-                                        <div className="text-center py-10 text-red-700 bg-red-50 rounded-2xl border border-red-100 font-bold">ยังไม่มีข้อมูลผลลัพธ์การเรียนรู้ กรุณานำเข้าข้อมูล LO ก่อนดำเนินการ</div>
-                                    ) : (
-                                        <>
-                                            <div className="flex justify-between items-center mb-6 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
-                                                <div className="flex items-center text-indigo-800 font-bold">
-                                                    <CheckCircle className="w-5 h-5 mr-2 text-indigo-600" /> 
-                                                    เลือกแล้ว {mappedLOs.length} ข้อ
-                                                </div>
-                                                <button
-                                                    onClick={saveMapping}
-                                                    disabled={savingMapping}
-                                                    className="bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 flex items-center transition-all"
-                                                >
-                                                    {savingMapping ? <div className="loader w-4 h-4 !border-2 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                                    บันทึก LO ของวิชานี้
-                                                </button>
-                                            </div>
-
-                                            <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
-                                                {gradeCompatibleLOs.map(lo => {
-                                                    const isChecked = mappedLOs.includes(lo.lo_id);
-                                                    return (
-                                                        <label key={lo.lo_id} className={`flex cursor-pointer items-start p-4 transition-colors ${isChecked ? 'bg-indigo-50' : 'bg-white hover:bg-slate-50'}`}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                onChange={() => toggleMapping(lo.lo_id)}
-                                                                className="sr-only"
-                                                            />
-                                                            <div className="flex items-center h-full mr-4">
-                                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${isChecked ? 'border-indigo-600 bg-indigo-700' : 'border-slate-300'}`}>
-                                                                    {isChecked && <CheckCircle className="w-4 h-4 text-white" />}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <span className={`block font-bold text-sm mb-1.5 ${isChecked ? 'text-indigo-900' : 'text-slate-800'}`}>
-                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-xs mr-2 border border-line">ข้อ {lo.ability_no}</span>
-                                                                    {lo.lo_code ? `${lo.lo_code} ` : ''} 
-                                                                    <span className="text-indigo-600">[{lo.competency_area || 'ทั่วไป'}]</span>
-                                                                    {lo.grade_level && <span className="ml-2 rounded-lg bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{lo.grade_level}</span>}
-                                                                    {lo.is_custom_competency && <span className="ml-2 rounded-lg bg-amber-100 px-2 py-0.5 text-xs text-amber-800">เพิ่มเติมจากหลักสูตร</span>}
-                                                                </span>
-                                                                <span className={`block text-sm leading-relaxed ${isChecked ? 'text-slate-700 font-medium' : 'text-slate-500'}`}>{lo.lo_description}</span>
-                                                            </div>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
+                            <Suspense fallback={<div className="flex min-h-72 items-center justify-center" role="status"><div className="loader" aria-label="กำลังเปิดแท็บ" /></div>}>
+                                <LoMappingTab />
+                            </Suspense>
                         )}
 
                         {/* --- TAB 4: ENROLLMENT MANAGEMENT --- */}
