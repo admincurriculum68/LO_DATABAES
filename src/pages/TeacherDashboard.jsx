@@ -11,12 +11,15 @@ import {
     BookOpen,
     CheckCircle2,
     ClipboardCheck,
+    ListChecks,
     Printer,
     Search,
     UsersRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { calculateCompletion, calculateEvidenceProgress } from '../lib/evaluationProgress';
+import { PROPOSAL_STATUS, statusOf } from '../lib/loProposals';
+import { loadProposals } from '../lib/loProposalsApi';
 
 export default function TeacherDashboard() {
     const { currentUser } = useAuth();
@@ -24,6 +27,8 @@ export default function TeacherDashboard() {
     const [allSubjects, setAllSubjects] = useState([]);
     const [subjectRooms, setSubjectRooms] = useState([]);
     const [progressMap, setProgressMap] = useState({});
+    // สถานะ LO ของแต่ละวิชา ครูต้องเลือก LO และรอฝ่ายวิชาการอนุมัติก่อนจึงบันทึกข้อความ LO ได้
+    const [loStatus, setLoStatus] = useState(new Map());
     const [loading, setLoading] = useState(true);
     const [subjectQuery, setSubjectQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -90,6 +95,7 @@ export default function TeacherDashboard() {
         if (subjects.length === 0) {
             setSubjectRooms([]);
             setProgressMap({});
+            setLoStatus(new Map());
             return;
         }
 
@@ -102,6 +108,12 @@ export default function TeacherDashboard() {
                 fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
                     .select('subject_id, lo_id').in('subject_id', batch).range(from, to)),
             ]);
+
+            const proposals = await loadProposals(subjectIds);
+            setLoStatus(new Map(subjects.map(sub => [
+                sub.subject_id,
+                statusOf(proposals.get(sub.subject_id), loMappings.filter(m => m.subject_id === sub.subject_id).map(m => m.lo_id)),
+            ])));
 
             const enrollIds = (enrollments || []).map(e => e.enrollment_id);
             let evals = [];
@@ -151,6 +163,9 @@ export default function TeacherDashboard() {
         loadProgress();
     }, [subjects]);
 
+    // วิชาที่ยังไม่ผ่านการอนุมัติ LO ครูต้องเลือก LO ก่อน ยังบันทึกข้อความไม่ได้
+    const loPendingSubjects = subjects.filter(sub => loStatus.get(sub.subject_id) && loStatus.get(sub.subject_id) !== 'approved');
+    const loReturnedSubjects = loPendingSubjects.filter(sub => loStatus.get(sub.subject_id) === 'returned');
     const totalSubjects = subjectRooms.length;
     const completedSubjects = subjectRooms.filter(sr => progressMap[sr.key]?.percent === 100).length;
     const pendingSubjects = totalSubjects - completedSubjects;
@@ -181,7 +196,7 @@ export default function TeacherDashboard() {
                                 สวัสดีครับ/ค่ะ, {currentUser?.full_name || 'คุณครู'}
                             </h1>
                             <p className="text-sm leading-relaxed text-indigo-100">
-                                บันทึกข้อความพฤติกรรมราย LO ให้ครบแล้วกดส่งผล ครูประจำชั้นจะนำข้อความของทุกวิชาไปสรุปความสามารถรายด้าน
+                                เลือก LO ของวิชาที่สอนให้ฝ่ายวิชาการอนุมัติก่อน แล้วบันทึกข้อความพฤติกรรมราย LO ครูประจำชั้นจะนำข้อความของทุกวิชาไปสรุปความสามารถรายด้าน
                             </p>
                         </div>
                         <div className="shrink-0 rounded-lg border border-white/25 bg-white/10 px-4 py-3 text-xs">
@@ -190,6 +205,30 @@ export default function TeacherDashboard() {
                         </div>
                     </div>
                 </header>
+
+                {/* ต้องเลือก LO ของวิชาและรอฝ่ายวิชาการอนุมัติก่อน จึงจะบันทึกข้อความ LO ได้ */}
+                {!loading && loPendingSubjects.length > 0 && (
+                    <section className="flex flex-col gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-start gap-3.5">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-800 shadow-sm">
+                                <ListChecks className="h-6 w-6" aria-hidden="true" />
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-bold text-indigo-950">มี {loPendingSubjects.length} วิชาที่ต้องเลือก LO ก่อนเริ่มบันทึกข้อความ</h2>
+                                <p className="mt-0.5 text-xs text-indigo-900/80">
+                                    เลือกว่าวิชาของคุณประเมิน LO ข้อไหน แล้วส่งให้ฝ่ายวิชาการอนุมัติ
+                                    {loReturnedSubjects.length > 0 && ` · มี ${loReturnedSubjects.length} วิชาที่ฝ่ายวิชาการส่งกลับให้แก้`}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => navigate(`/lo-setup/${loPendingSubjects[0].subject_id}`)}
+                            className="min-h-11 shrink-0 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        >
+                            เริ่มที่วิชา {loPendingSubjects[0].subject_name}
+                        </button>
+                    </section>
+                )}
 
                 {/* Warning Notification Banner for Pending Subjects */}
                 {!loading && pendingSubjects > 0 && subjects.length > 0 && (
@@ -299,6 +338,8 @@ export default function TeacherDashboard() {
                                     const progress = progressMap[sub.key] || { studentCount: 0, loCount: 0, percent: 0 };
                                     const isComplete = progress.percent === 100;
                                     const hasStudents = progress.studentCount > 0;
+                                    const subjectLoStatus = loStatus.get(sub.subject_id) || 'none';
+                                    const loApproved = subjectLoStatus === 'approved';
 
                                     return (
                                         <div
@@ -312,10 +353,11 @@ export default function TeacherDashboard() {
                                                         ชั้น {sub.grade_level || 'ไม่ระบุ'} {sub.room ? `ห้อง ${sub.room}` : ''}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                                     <span>นักเรียน <strong className="text-slate-800 font-bold">{progress.studentCount}</strong> คน</span>
                                                     <span>·</span>
                                                     <span>จำนวน <strong className="text-slate-800 font-bold">{progress.loCount}</strong> LO</span>
+                                                    {!loApproved && <span className={`chip ${PROPOSAL_STATUS[subjectLoStatus].chip}`}>LO · {PROPOSAL_STATUS[subjectLoStatus].short}</span>}
                                                 </div>
                                             </div>
 
@@ -341,12 +383,32 @@ export default function TeacherDashboard() {
 
                                             {/* Action Buttons */}
                                             <div className="flex shrink-0 flex-wrap gap-2">
-                                                <button
-                                                    onClick={() => navigate(`/eval/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
-                                                    className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-                                                >
-                                                    บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
-                                                </button>
+                                                {loApproved ? (
+                                                    <button
+                                                        onClick={() => navigate(`/eval/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
+                                                        className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                                    >
+                                                        บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => navigate(`/lo-setup/${sub.subject_id}`)}
+                                                            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                                        >
+                                                            <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+                                                            {subjectLoStatus === 'submitted' ? 'ดู LO ที่ส่งไป' : 'เลือก LO ของวิชา'}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled
+                                                            title={subjectLoStatus === 'submitted' ? 'รอฝ่ายวิชาการอนุมัติ LO ของวิชานี้ก่อน' : 'ต้องเลือก LO ของวิชาและให้ฝ่ายวิชาการอนุมัติก่อน'}
+                                                            className="inline-flex min-h-11 cursor-not-allowed items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-500"
+                                                        >
+                                                            บันทึกข้อความ LO
+                                                        </button>
+                                                    </>
+                                                )}
                                                 <button
                                                     onClick={() => navigate(`/summary/${sub.subject_id}${sub.room ? `?room=${encodeURIComponent(sub.room)}` : ''}`, { state: { subject: sub } })}
                                                     className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"

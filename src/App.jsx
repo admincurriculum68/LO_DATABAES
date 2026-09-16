@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast';
 
 const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
 const EvalView = lazy(() => import('./pages/EvalView'));
+const SubjectLoSetup = lazy(() => import('./pages/SubjectLoSetup'));
 const ReportView = lazy(() => import('./pages/ReportView'));
 const SummaryView = lazy(() => import('./pages/SummaryView'));
 const HomeroomView = lazy(() => import('./pages/HomeroomView'));
@@ -54,6 +55,11 @@ export default function App() {
         <Route path="/eval/:subjectId" element={
           <ProtectedRoute allowedRoles={['teacher']}>
             <EvalView />
+          </ProtectedRoute>
+        } />
+        <Route path="/lo-setup/:subjectId" element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <SubjectLoSetup />
           </ProtectedRoute>
         } />
         <Route path="/formative/:subjectId" element={

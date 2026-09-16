@@ -482,6 +482,18 @@ export default function EvalView() {
             <main className="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 pt-8 pb-40 md:pb-8">
                 {loading ? (
                     <div className="py-20 flex justify-center"><div className="loader"></div></div>
+                ) : learningOutcomes.length === 0 ? (
+                    // LO ของวิชาต้องผ่านการอนุมัติของฝ่ายวิชาการก่อน ครูจึงจะบันทึกข้อความได้
+                    <div className="text-center bg-white rounded-2xl p-12 border border-line mt-10 shadow-sm max-w-2xl mx-auto">
+                        <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <ClipboardCheck className="w-8 h-8 text-indigo-700" aria-hidden="true" />
+                        </div>
+                        <p className="text-xl font-bold text-slate-800">วิชานี้ยังไม่มี LO ที่อนุมัติแล้ว</p>
+                        <p className="text-slate-600 mt-2">เลือก LO ของวิชาแล้วส่งให้ฝ่ายวิชาการอนุมัติ อนุมัติแล้วจึงบันทึกข้อความพฤติกรรมราย LO ได้</p>
+                        <button type="button" onClick={() => navigate(`/lo-setup/${subjectId}`)} className="btn-primary mt-5">
+                            <ClipboardCheck className="h-4 w-4" aria-hidden="true" />เลือก LO ของวิชานี้
+                        </button>
+                    </div>
                 ) : enrollments.length === 0 ? (
                     <div className="text-center bg-white rounded-2xl p-16 border border-line mt-10 shadow-sm max-w-2xl mx-auto">
                         <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
