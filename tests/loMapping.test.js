@@ -46,8 +46,12 @@ test('suggestAreasForSubject เดาจากชื่อวิชา แล�
     assert.deepEqual(suggestAreasForSubject('Smart Math', upperPrimary), ['ความสามารถด้านการคิดคำนวณ']);
     assert.deepEqual(suggestAreasForSubject('ทักษะการว่ายน้ำ', lowerPrimary), ['ความสามารถด้านสุขภาพกายและสุขภาวะจิต']);
     assert.deepEqual(suggestAreasForSubject('ศิลปะเสียงเพียงออ', upperPrimary), ['ความสามารถด้านศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ']);
-    // ชั้นที่ไม่มี LO ภาษาอังกฤษ เดาไม่ได้ ต้องเลือกเอง
-    assert.deepEqual(suggestAreasForSubject('ภาษาอังกฤษ', upperPrimary), []);
+    // ช่วงชั้นต้นมีด้านภาษาอังกฤษแยก ช่วงชั้นปลายไม่มี จึงตกมาที่ด้านภาษาและการสื่อสาร
+    assert.deepEqual(suggestAreasForSubject('ภาษาอังกฤษ', lowerPrimary), ['ความสามารถด้านภาษาอังกฤษ']);
+    assert.deepEqual(suggestAreasForSubject('ภาษาอังกฤษ', upperPrimary), ['ความสามารถด้านภาษาและการสื่อสาร']);
+    assert.deepEqual(suggestAreasForSubject('English for Real Life', upperPrimary), ['ความสามารถด้านภาษาและการสื่อสาร']);
+    assert.deepEqual(suggestAreasForSubject('ภาษาจีน', upperPrimary), ['ความสามารถด้านภาษาและการสื่อสาร']);
+    // ชื่อวิชาที่ไม่มีคำบอกด้าน ต้องเลือกเอง
     assert.deepEqual(suggestAreasForSubject('Pen Power', upperPrimary), []);
 });
 
