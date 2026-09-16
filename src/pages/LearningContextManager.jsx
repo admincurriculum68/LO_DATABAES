@@ -23,6 +23,8 @@ import {
     ShieldCheck,
     User,
     Users,
+    Trash2,
+    Pencil,
     X, ArrowLeft} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDialog } from '../lib/dialogContext';
@@ -30,7 +32,8 @@ import { scrollBehavior } from '../lib/motion';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
-import { fetchAllByIn, supabase } from '../lib/supabase';
+import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
 import { ACTIVITY_CATEGORIES_51, CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
@@ -107,6 +110,7 @@ function LoadingRows() {
 
 export default function LearningContextManager() {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const dialog = useDialog();
     const { academicYear, semester } = useAcademic();
     const detailRef = useRef(null);
@@ -382,6 +386,10 @@ export default function LearningContextManager() {
         }
         setSaving(true);
         try {
+            if (viewMode === 'edit') {
+                await saveEdit();
+                return;
+            }
             let createdItem;
             if (form.context_type === 'subject') {
                 const payload = {
@@ -434,7 +442,131 @@ export default function LearningContextManager() {
             const message = error.code === '23502' && error.message?.includes('grade_level')
                 ? 'กรุณาเลือกระดับชั้น ป.1–ป.6'
                 : error.message;
-            toast.error('ไม่สามารถเพิ่มรูปแบบการจัดการเรียนรู้ได้: ' + message);
+            toast.error(`ไม่สามารถ${viewMode === 'edit' ? 'แก้ไขรายการนี้' : 'เพิ่มรูปแบบการจัดการเรียนรู้'}ได้: ` + message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // แก้ไขข้อมูลของรายการที่เลือก ใช้ฟอร์มเดียวกับตอนเพิ่มใหม่
+    const openEdit = async item => {
+        if (!(await confirmDiscardMapping())) return;
+        setFormErrors({});
+        setMobileDetailOpen(true);
+        setForm({
+            context_type: item.context_type,
+            context_name: item.context_name || '',
+            description: item.description || '',
+            subject_group: item.subject_group || '',
+            grade_level: item.grade_level || '',
+            responsible_teacher_id: item.responsible_teacher_id || '',
+            teaching_hours: item.teaching_hours == null ? '' : String(item.teaching_hours),
+            activity_category: item.activity_category || '',
+        });
+        setCustomGroupInput(false);
+        setViewMode('edit');
+        showDetail();
+    };
+
+    const saveEdit = async () => {
+        const isSubject = selectedItem.source === 'subject';
+        const payload = isSubject
+            ? {
+                subject_name: form.context_name.trim(),
+                grade_level: form.grade_level,
+                subject_group: form.subject_group.trim() || null,
+                teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
+            }
+            : {
+                context_name: form.context_name.trim(),
+                description: form.description.trim() || null,
+                subject_group: form.subject_group.trim() || null,
+                grade_level: form.grade_level,
+                responsible_teacher_id: form.responsible_teacher_id || null,
+                teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
+                activity_category: form.context_type === 'activity' ? (form.activity_category || null) : null,
+                updated_at: new Date().toISOString(),
+            };
+        const { error } = await supabase.from(isSubject ? 'subjects' : 'learning_contexts')
+            .update(payload).eq(isSubject ? 'subject_id' : 'context_id', selectedItem.recordId);
+        if (error) throw error;
+        await supabase.from('audit_logs').insert({
+            school_id: currentUser.school_id,
+            actor_id: currentUser.teacher_id || currentUser.id,
+            actor_role: currentUser.role,
+            action: 'update_learning_format',
+            entity_type: isSubject ? 'subject' : 'learning_context',
+            entity_id: selectedItem.recordId,
+            detail: { name: form.context_name.trim(), grade_level: form.grade_level },
+        });
+        await loadData();
+        setViewMode('manage');
+        toast.success(`แก้ไข${learningFormatLabel(selectedItem.context_type)}เรียบร้อยแล้ว`);
+    };
+
+    // ลบวิชาหรือรูปแบบการเรียนรู้ที่โรงเรียนไม่ได้เปิดสอน
+    // วิชาที่ครูบันทึกข้อความ LO ไปแล้วจะลบไม่ได้ ต้องเอาผลออกก่อน กันข้อมูลของนักเรียนหายโดยไม่ตั้งใจ
+    const deleteLearningFormat = async item => {
+        const isSubject = item.source === 'subject';
+        setSaving(true);
+        try {
+            let enrollmentIds = [];
+            if (isSubject) {
+                const enrollments = await fetchAllRows((from, to) => supabase.from('student_enrollments')
+                    .select('enrollment_id').eq('subject_id', item.recordId).range(from, to));
+                enrollmentIds = enrollments.map(row => row.enrollment_id);
+                const evaluations = await fetchAllByIn(enrollmentIds, (batch, from, to) => supabase
+                    .from('lo_evaluations').select('evaluation_id').in('enrollment_id', batch).range(from, to));
+                if (evaluations.length) {
+                    await dialog.confirm({
+                        title: 'ลบวิชานี้ไม่ได้',
+                        message: `วิชา ${item.context_name} มีผลการประเมินของครูแล้ว ${evaluations.length.toLocaleString()} รายการ\nถ้าต้องการลบจริง ให้แจ้งผู้ดูแลระบบ`,
+                        confirmLabel: 'เข้าใจแล้ว',
+                        cancelLabel: 'ปิด',
+                    });
+                    return;
+                }
+            }
+            const confirmed = await dialog.confirm({
+                title: `ลบ${learningFormatLabel(item.context_type)} ${item.context_name}`,
+                message: isSubject
+                    ? `ระบบจะลบวิชานี้ออกพร้อมรายชื่อนักเรียนในวิชา ${enrollmentIds.length.toLocaleString()} รายการ การมอบหมายครู และ LO ที่ผูกไว้\nลบแล้วกู้คืนไม่ได้`
+                    : 'ระบบจะลบรายการนี้และ LO ที่ผูกไว้ ลบแล้วกู้คืนไม่ได้',
+                confirmLabel: 'ลบออกจากระบบ',
+                cancelLabel: 'ยกเลิก',
+                tone: 'danger',
+            });
+            if (!confirmed) return;
+
+            if (isSubject) {
+                for (const [table, column] of [['subject_lo_mapping', 'subject_id'], ['subject_teachers', 'subject_id'], ['assessment_submissions', 'subject_id'], ['subject_lo_proposals', 'subject_id'], ['student_enrollments', 'subject_id']]) {
+                    const { error } = await supabase.from(table).delete().eq(column, item.recordId);
+                    // ตารางที่โรงเรียนยังไม่ได้รัน SQL ให้ข้ามไป ไม่ใช่ลบไม่สำเร็จทั้งหมด
+                    if (error && error.code !== '42P01') throw error;
+                }
+                const { error } = await supabase.from('subjects').delete().eq('subject_id', item.recordId).eq('school_id', currentUser.school_id);
+                if (error) throw error;
+            } else {
+                const { error: mappingError } = await supabase.from('learning_context_lo_mappings').delete().eq('context_id', item.recordId);
+                if (mappingError) throw mappingError;
+                const { error } = await supabase.from('learning_contexts').delete().eq('context_id', item.recordId).eq('school_id', currentUser.school_id);
+                if (error) throw error;
+            }
+            await supabase.from('audit_logs').insert({
+                school_id: currentUser.school_id,
+                actor_id: currentUser.teacher_id || currentUser.id,
+                actor_role: currentUser.role,
+                action: 'delete_learning_format',
+                entity_type: isSubject ? 'subject' : 'learning_context',
+                entity_id: item.recordId,
+                detail: { name: item.context_name, grade_level: item.grade_level, enrollments: enrollmentIds.length },
+            });
+            setSelectedItemKey('');
+            setViewMode('manage');
+            await loadData();
+            toast.success(`ลบ ${item.context_name} ออกจากระบบแล้ว`);
+        } catch (error) {
+            toast.error('ลบไม่สำเร็จ: ' + error.message);
         } finally {
             setSaving(false);
         }
@@ -815,12 +947,12 @@ export default function LearningContextManager() {
                                         <ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายการ
                                     </button>
                                 </div>
-                                {viewMode === 'create' ? (
+                                {viewMode === 'create' || viewMode === 'edit' ? (
                                     <form onSubmit={createLearningFormat} noValidate className="space-y-6">
                                         <div className="flex items-center justify-between border-b border-line p-6">
                                             <div>
-                                                <h2 className="text-lg font-bold text-slate-900">เพิ่มรูปแบบการจัดการเรียนรู้ใหม่</h2>
-                                                <p className="mt-0.5 text-xs text-slate-500">กรอกข้อมูลพื้นฐานและเลือกกลุ่มวิชาตามหลักสูตร 2568 แล้วระบบจะพาไปเลือก LO ต่อทันที</p>
+                                                <h2 className="text-lg font-bold text-slate-900">{viewMode === 'edit' ? `แก้ไข${learningFormatLabel(form.context_type)}` : 'เพิ่มรูปแบบการจัดการเรียนรู้ใหม่'}</h2>
+                                                <p className="mt-0.5 text-xs text-slate-500">{viewMode === 'edit' ? 'แก้ชื่อ ระดับชั้น กลุ่มวิชา และชั่วโมงเรียน แล้วกดบันทึก' : 'กรอกข้อมูลพื้นฐานและเลือกกลุ่มวิชาตามหลักสูตร 2568 แล้วระบบจะพาไปเลือก LO ต่อทันที'}</p>
                                             </div>
                                             <button
                                                 type="button"
@@ -1037,8 +1169,8 @@ export default function LearningContextManager() {
                                                 disabled={saving}
                                                 className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-700 px-6 text-xs font-bold text-white shadow-md hover:bg-indigo-800 disabled:opacity-50"
                                             >
-                                                {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Plus className="h-4 w-4" />}
-                                                บันทึกและกำหนด LO ต่อ
+                                                {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : viewMode === 'edit' ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                                                {viewMode === 'edit' ? 'บันทึกการแก้ไข' : 'บันทึกและกำหนด LO ต่อ'}
                                             </button>
                                         </div>
                                     </form>
@@ -1085,18 +1217,51 @@ export default function LearningContextManager() {
                                                     </div>
                                                 </div>
 
-                                                {selectedItem.source === 'context' && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedItem.source === 'context' && (
+                                                        <button
+                                                            onClick={() => toggleContextActive(selectedItem)}
+                                                            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+                                                        >
+                                                            {selectedItem.is_active ? <PauseCircle className="h-4 w-4 text-amber-700" /> : <PlayCircle className="h-4 w-4 text-emerald-700" />}
+                                                            {selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}
+                                                        </button>
+                                                    )}
                                                     <button
-                                                        onClick={() => toggleContextActive(selectedItem)}
-                                                        className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+                                                        type="button"
+                                                        onClick={() => openEdit(selectedItem)}
+                                                        className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
                                                     >
-                                                        {selectedItem.is_active ? <PauseCircle className="h-4 w-4 text-amber-700" /> : <PlayCircle className="h-4 w-4 text-emerald-700" />}
-                                                        {selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}
+                                                        <Pencil className="h-4 w-4 text-slate-600" aria-hidden="true" />แก้ไขข้อมูล
                                                     </button>
-                                                )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => deleteLearningFormat(selectedItem)}
+                                                        disabled={saving}
+                                                        className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3.5 py-2 text-xs font-bold text-rose-800 shadow-sm hover:bg-rose-50 transition disabled:opacity-40"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" aria-hidden="true" />ลบ
+                                                    </button>
+                                                </div>
                                             </div>
                                         </header>
 
+                                        {selectedItem.source === 'subject' ? (
+                                            <div className="space-y-4 p-6">
+                                                <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
+                                                    <h3 className="text-base font-bold text-indigo-950">LO ของวิชานี้กำหนดที่หน้า “กำหนด LO ของวิชา”</h3>
+                                                    <p className="mt-1 text-sm leading-6 text-indigo-900">
+                                                        ครูผู้สอนเป็นคนเลือก LO ของวิชาตัวเอง แล้วส่งให้ฝ่ายวิชาการอนุมัติ หน้านี้จึงไม่ให้แก้ LO เพื่อไม่ให้ทับงานของครู
+                                                    </p>
+                                                    <p className="mt-3 text-sm font-bold text-indigo-950 tabular-nums">ตอนนี้ใช้ประเมิน {(mappedByItem[selectedItem.key] || []).length} LO</p>
+                                                    <button type="button" onClick={() => navigate('/admin?tab=mapping')} className="btn-primary mt-4">
+                                                        <Link2 className="h-4 w-4" aria-hidden="true" />ไปหน้ากำหนด LO ของวิชา
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs leading-6 text-slate-600">หน้านี้ใช้แก้ชื่อวิชา ระดับชั้น กลุ่มวิชา และชั่วโมงเรียน หรือลบวิชาที่ไม่ได้เปิดสอนในภาคเรียนนี้ · ครูผู้สอนแก้ที่เมนู “กำหนดครูผู้สอน”</p>
+                                            </div>
+                                        ) : (
+                                            <>
                                         {/* LO Filter & Toolbar */}
                                         <div className="border-b border-line bg-slate-50/70 p-5 space-y-3">
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1240,6 +1405,8 @@ export default function LearningContextManager() {
                                                 บันทึก LO ที่ใช้ประเมิน
                                             </button>
                                         </footer>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </section>
