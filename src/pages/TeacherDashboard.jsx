@@ -26,6 +26,8 @@ export default function TeacherDashboard() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
     const [allSubjects, setAllSubjects] = useState([]);
+    // สิทธิ์ห้องเก็บแยกจากแถววิชา เพราะแถววิชาถูกส่งไปกับการเปลี่ยนหน้า และเบราว์เซอร์เก็บฟังก์ชันใน history ไม่ได้
+    const [accessBySubject, setAccessBySubject] = useState(new Map());
     const [subjectRooms, setSubjectRooms] = useState([]);
     const [progressMap, setProgressMap] = useState({});
     const [loading, setLoading] = useState(true);
@@ -63,12 +65,15 @@ export default function TeacherDashboard() {
                     }
                 });
                 const assignments = await loadSubjectAssignments([...subMap.keys()]);
+                const accessMap = new Map();
                 subMap.forEach((subject, subjectId) => {
                     const rows = assignments.filter(row => row.subject_id === subjectId);
-                    subMap.set(subjectId, { ...subject, access: teacherRoomAccess(subject, rows, currentUser.teacher_id) });
+                    const access = teacherRoomAccess(subject, rows, currentUser.teacher_id);
+                    if (access.canAccess) accessMap.set(subjectId, access);
+                    else subMap.delete(subjectId);
                 });
-                subMap.forEach((subject, subjectId) => { if (!subject.access.canAccess) subMap.delete(subjectId); });
 
+                setAccessBySubject(accessMap);
                 setAllSubjects(Array.from(subMap.values()));
             } catch (err) {
                 toast.error('ไม่สามารถดึงข้อมูลวิชาได้: ' + err.message);
@@ -122,7 +127,7 @@ export default function TeacherDashboard() {
                 const roomsToShow = uniqueRooms.length ? uniqueRooms : [null];
 
                 roomsToShow.forEach(room => {
-                    if (room && !sub.access.allows(room)) return;
+                    if (room && !accessBySubject.get(sub.subject_id)?.allows(room)) return;
 
                     const roomEnrolls = room ? subEnrolls.filter(e => e.room === room) : subEnrolls;
                     const roomEnrollIds = new Set(roomEnrolls.map(e => e.enrollment_id));
@@ -150,7 +155,7 @@ export default function TeacherDashboard() {
         };
 
         loadProgress();
-    }, [subjects]);
+    }, [subjects, accessBySubject]);
 
     // ห้องที่ยังไม่มี LO ครูต้องเลือก LO ก่อน จึงบันทึกข้อความได้
     const roomsWithoutLo = subjectRooms.filter(sr => progressMap[sr.key] && progressMap[sr.key].loCount === 0);
