@@ -202,10 +202,11 @@ export default function LearningContextManager() {
                 || (a.context_name || '').localeCompare(b.context_name || '', 'th'));
 
             const mappingMap = {};
+            // วิชาหนึ่งมี LO เดียวกันได้หลายห้อง นับเป็น LO ที่ต่างกันเท่านั้น
             subjectMappings.forEach(mapping => {
                 const key = itemKey('subject', mapping.subject_id);
                 if (!mappingMap[key]) mappingMap[key] = [];
-                mappingMap[key].push(mapping.lo_id);
+                if (!mappingMap[key].includes(mapping.lo_id)) mappingMap[key].push(mapping.lo_id);
             });
             contextMappings.forEach(mapping => {
                 const key = itemKey('context', mapping.context_id);
@@ -1251,9 +1252,9 @@ export default function LearningContextManager() {
                                                 <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
                                                     <h3 className="text-base font-bold text-indigo-950">LO ของวิชานี้กำหนดที่หน้า “กำหนด LO ของวิชา”</h3>
                                                     <p className="mt-1 text-sm leading-6 text-indigo-900">
-                                                        ครูผู้สอนเป็นคนเลือก LO ของวิชาตัวเอง แล้วส่งให้ฝ่ายวิชาการอนุมัติ หน้านี้จึงไม่ให้แก้ LO เพื่อไม่ให้ทับงานของครู
+                                                        ครูผู้สอนเลือก LO ของห้องที่ตัวเองสอนตามคำอธิบายรายวิชา แต่ละห้องใช้ LO ต่างกันได้ หน้านี้จึงไม่ให้แก้ LO เพื่อไม่ให้ทับงานของครู
                                                     </p>
-                                                    <p className="mt-3 text-sm font-bold text-indigo-950 tabular-nums">ตอนนี้ใช้ประเมิน {(mappedByItem[selectedItem.key] || []).length} LO</p>
+                                                    <p className="mt-3 text-sm font-bold text-indigo-950 tabular-nums">ตอนนี้ใช้ LO {(mappedByItem[selectedItem.key] || []).length} ข้อ (รวมทุกห้อง)</p>
                                                     <button type="button" onClick={() => navigate('/admin?tab=mapping')} className="btn-primary mt-4">
                                                         <Link2 className="h-4 w-4" aria-hidden="true" />ไปหน้ากำหนด LO ของวิชา
                                                     </button>

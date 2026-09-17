@@ -21,6 +21,8 @@ import { useAuth } from '../AuthContext';
 import { hasAnyRole } from '../lib/roles';
 import HomeroomCompetencyTab from '../components/homeroom/HomeroomCompetencyTab';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { buildLoResolver } from '../lib/loByRoom';
+import { loadRoomMappings } from '../lib/loByRoomApi';
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
@@ -103,9 +105,7 @@ export default function HomeroomView() {
             const enrollmentIds = enrollments.map(item => item.enrollment_id);
             const studentIds = [...new Set(enrollments.map(item => item.student_id))];
             const [mappings, evaluations, activities] = await Promise.all([
-                fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
-                    .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)')
-                    .in('subject_id', batch).range(from, to)),
+                loadRoomMappings(subjectIds, { withLo: true }),
                 fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
                     .select('enrollment_id, lo_id, evidence_note, workflow_status')
                     .in('enrollment_id', batch).range(from, to)),
@@ -164,26 +164,27 @@ export default function HomeroomView() {
         return [...map.values()].sort((a, b) => (a.info.subject_name || '').localeCompare(b.info.subject_name || '', 'th'));
     }, [data]);
 
+    // LO ของแต่ละวิชาขึ้นกับห้องของนักเรียน ห้องปกติกับห้อง IEP ใช้ชุดต่างกันได้
+    const loResolver = useMemo(() => buildLoResolver(data?.loData || []), [data]);
     const learningOutcomes = useMemo(() => {
         const map = new Map();
-        (data?.loData || []).forEach(item => { if (item.learning_outcomes) map.set(item.learning_outcomes.lo_id, item.learning_outcomes); });
+        (data?.enrollments || []).forEach(enrollment => loResolver.rowsFor(enrollment.subject_id, enrollment.room)
+            .forEach(item => { if (item.learning_outcomes) map.set(item.learning_outcomes.lo_id, item.learning_outcomes); }));
         return [...map.values()].sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0) || (a.lo_code || '').localeCompare(b.lo_code || '', 'th'));
-    }, [data]);
+    }, [data, loResolver]);
 
     const selectedLoInfo = learningOutcomes.find(item => item.lo_id === selectedLo) || null;
     const totalAcademicCells = (data?.enrollments || []).reduce((total, enrollment) => {
-        const mappedCount = data.loData.filter(item => item.subject_id === enrollment.subject_id).length;
-        return total + mappedCount;
+        return total + loResolver.idsFor(enrollment.subject_id, enrollment.room).size;
     }, 0);
     // LO ถือว่าบันทึกแล้วเมื่อมีข้อความสะท้อนพฤติกรรม ไม่ใช้ระดับตัดสินราย LO
     const assessedAcademicCells = (() => {
         if (!data?.evalData?.length) return 0;
-        const subjectByEnrollment = new Map((data.enrollments || []).map(item => [item.enrollment_id, item.subject_id]));
-        const mappedPairs = new Set((data.loData || []).map(item => `${item.subject_id}_${item.learning_outcomes?.lo_id ?? item.lo_id}`));
-        return data.evalData.filter(item =>
-            item.evidence_note?.trim() &&
-            mappedPairs.has(`${subjectByEnrollment.get(item.enrollment_id)}_${item.lo_id}`)
-        ).length;
+        const enrollmentById = new Map((data.enrollments || []).map(item => [item.enrollment_id, item]));
+        return data.evalData.filter(item => {
+            const enrollment = enrollmentById.get(item.enrollment_id);
+            return item.evidence_note?.trim() && enrollment && loResolver.idsFor(enrollment.subject_id, enrollment.room).has(item.lo_id);
+        }).length;
     })();
     const savedActivityStudents = Object.values(activityData).filter(item => item.eval_id).length;
     const academicPercent = totalAcademicCells ? Math.min(100, Math.round((assessedAcademicCells / totalAcademicCells) * 100)) : 0;
@@ -248,7 +249,7 @@ export default function HomeroomView() {
                                 <td className="px-4 py-3.5"><strong className="block text-slate-900">{fullName(student.info)}</strong><span className="mt-0.5 block text-xs text-slate-500">{student.info.student_code}</span></td>
                                 {subjects.map(subject => {
                                     const enrollment = data.enrollments.find(item => item.student_id === student.id && item.subject_id === subject.id);
-                                    const isMapped = data.loData.some(item => item.subject_id === subject.id && item.learning_outcomes?.lo_id === selectedLo);
+                                    const isMapped = Boolean(enrollment) && loResolver.idsFor(subject.id, enrollment.room).has(selectedLo);
                                     const evaluation = enrollment && isMapped ? data.evalData.find(item => item.enrollment_id === enrollment.enrollment_id && item.lo_id === selectedLo) : null;
                                     const evidence = isMapped ? evaluation?.evidence_note?.trim() || '' : 'N/A';
                                     return <td key={subject.id} className="px-3 py-3.5 align-top">{evidence === 'N/A' ? <span className="text-xs font-semibold text-slate-600">ไม่ได้ใช้ LO นี้</span> : evidence ? <p className="min-w-52 whitespace-normal text-left text-xs leading-5 text-slate-700">{evidence}</p> : <span className="surface-warning inline-flex rounded-lg px-2.5 py-1.5 text-xs font-bold text-amber-800">ยังไม่มีข้อความ</span>}</td>;

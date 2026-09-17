@@ -9,6 +9,7 @@ import { useAuth } from '../AuthContext';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { formalLevelLabel } from '../lib/terminology';
 import { shortAreaName } from '../lib/loMapping';
+import { loadRoomMappings } from '../lib/loByRoomApi';
 import { ROOM_STATUS, SUMMARY_LEVELS, collectRoomEvidence, decisionKey, isLockedDecision, passStatusFor, roomStatus } from '../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
@@ -137,13 +138,12 @@ export default function AcademicApprovalCenter() {
             setEvidence({ room: selectedRoomName, areas: [], notesByKey: new Map(), loading: true });
             try {
                 const enrollments = await fetchAllByIn(selectedStudentIds, (batch, from, to) => supabase.from('student_enrollments')
-                    .select('enrollment_id, student_id, subject_id, subjects!inner(subject_name, academic_year, semester)')
+                    .select('enrollment_id, student_id, subject_id, room, subjects!inner(subject_name, academic_year, semester)')
                     .in('student_id', batch).eq('enrollment_status', 'active')
                     .eq('subjects.academic_year', Number(academicYear)).eq('subjects.semester', Number(semester)).range(from, to));
                 const subjectIds = [...new Set(enrollments.map(item => item.subject_id))];
                 const [mappings, evaluations] = await Promise.all([
-                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
-                        .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, competency_area)').in('subject_id', batch).range(from, to)),
+                    loadRoomMappings(subjectIds, { withLo: true }),
                     fetchAllByIn(enrollments.map(item => item.enrollment_id), (batch, from, to) => supabase.from('lo_evaluations')
                         .select('enrollment_id, lo_id, evidence_note').in('enrollment_id', batch).range(from, to)),
                 ]);

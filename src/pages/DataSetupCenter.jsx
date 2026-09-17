@@ -6,8 +6,8 @@ import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { calculateSetupReadiness } from '../lib/evaluationProgress';
-import { statusOf } from '../lib/loProposals';
-import { loadProposals } from '../lib/loProposalsApi';
+import { buildLoResolver } from '../lib/loByRoom';
+import { loadRoomMappings, loadSubjectAssignments } from '../lib/loByRoomApi';
 import SchoolBrandingSettings from '../components/SchoolBrandingSettings';
 
 export default function DataSetupCenter() {
@@ -16,7 +16,7 @@ export default function DataSetupCenter() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
-    const [summary, setSummary] = useState({ teachers: 0, students: 0, missingRooms: 0, formats: 0, groups: 0, emptyGroups: 0, teacherlessGroups: 0, los: 0, mappedSubjects: 0, waitingApproval: 0, subjects: 0, roomsWithoutHomeroom: [] });
+    const [summary, setSummary] = useState({ teachers: 0, students: 0, missingRooms: 0, formats: 0, groups: 0, emptyGroups: 0, teacherlessGroups: 0, los: 0, mappedSubjects: 0, loSlots: 0, subjects: 0, roomsWithoutHomeroom: [] });
 
     const loadSummary = useCallback(async () => {
         if (!currentUser?.school_id || !academicYear || !semester) return;
@@ -41,15 +41,17 @@ export default function DataSetupCenter() {
             const subjectIds = subjects.map(subject => subject.subject_id);
             const groupIds = groups.map(group => group.group_id);
             const [mappings, members, assignments] = await Promise.all([
-                fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', batch).range(from, to)),
+                loadRoomMappings(subjectIds),
                 fetchAllByIn(groupIds, (batch, from, to) => supabase.from('learning_group_members').select('group_id').in('group_id', batch).eq('membership_status', 'active').is('left_at', null).range(from, to)),
                 fetchAllByIn(groupIds, (batch, from, to) => supabase.from('learning_group_teachers').select('group_id').in('group_id', batch).is('unassigned_at', null).range(from, to)),
             ]);
-            // ครูผู้สอนเสนอ LO ของวิชาตัวเอง ฝ่ายวิชาการต้องอนุมัติก่อนครูจึงเริ่มบันทึกข้อความ LO ได้
-            const proposals = await loadProposals(subjectIds);
-            const savedBySubject = new Map(subjectIds.map(id => [id, new Set()]));
-            mappings.forEach(item => savedBySubject.get(item.subject_id)?.add(item.lo_id));
-            const waitingApproval = subjects.filter(subject => statusOf(proposals.get(subject.subject_id), savedBySubject.get(subject.subject_id)) === 'submitted').length;
+            // LO เลือกเป็นรายห้อง นับเป็นคู่วิชา × ห้องจากครูรายห้อง วิชาที่ไม่มีครูรายห้องนับเป็นหนึ่งหน่วย
+            const loResolver = buildLoResolver(mappings);
+            const teacherRows = await loadSubjectAssignments(subjectIds);
+            const loSlots = subjects.flatMap(subject => {
+                const rooms = [...new Set(teacherRows.filter(row => row.subject_id === subject.subject_id && row.room_name).map(row => row.room_name))];
+                return rooms.length ? rooms.map(room => ({ subjectId: subject.subject_id, room })) : [{ subjectId: subject.subject_id, room: null }];
+            });
             const groupsWithMembers = new Set(members.map(item => item.group_id));
             const groupsWithTeachers = new Set(assignments.map(item => item.group_id));
             setSummary({
@@ -62,8 +64,8 @@ export default function DataSetupCenter() {
                 emptyGroups: groups.filter(group => !groupsWithMembers.has(group.group_id)).length,
                 teacherlessGroups: groups.filter(group => !groupsWithTeachers.has(group.group_id)).length,
                 los: loResult.count || 0,
-                mappedSubjects: new Set(mappings.map(item => item.subject_id)).size,
-                waitingApproval,
+                mappedSubjects: loSlots.filter(slot => loResolver.idsFor(slot.subjectId, slot.room).size > 0).length,
+                loSlots: loSlots.length,
                 roomsWithoutHomeroom: (() => {
                     const assigned = new Set(homeroomRows.map(item => item.homeroom));
                     return [...new Set(activeStudents.map(student => student.current_room).filter(Boolean))]
@@ -86,7 +88,7 @@ export default function DataSetupCenter() {
         { title: 'กำหนดวิชา หน่วย โครงงาน และกิจกรรม', description: 'รูปแบบการเรียนรู้ในภาคเรียนปัจจุบัน', value: summary.formats, unit: 'รายการ', ready: summary.formats > 0, icon: BookOpenCheck, action: () => navigate('/admin/learning-contexts') },
         { title: 'จัดกลุ่มเรียน', description: summary.emptyGroups ? `มี ${summary.emptyGroups} กลุ่มที่ยังไม่มีนักเรียน` : 'รองรับรวมหลายห้องและแบ่งกลุ่มย่อย', value: summary.groups, unit: 'กลุ่ม', ready: summary.groups > 0 && summary.emptyGroups === 0, icon: Users, action: () => navigate('/admin/learning-groups') },
         { title: 'กำหนดครูผู้รับผิดชอบ', description: summary.teacherlessGroups ? `มี ${summary.teacherlessGroups} กลุ่มที่ยังไม่มีครู` : 'กำหนดครูหลักและครูร่วมแล้ว', value: Math.max(0, summary.groups - summary.teacherlessGroups), unit: `จาก ${summary.groups}`, ready: summary.groups > 0 && summary.teacherlessGroups === 0, icon: ClipboardCheck, action: () => navigate('/admin/learning-groups') },
-        { title: 'กำหนด LO ของวิชา', description: `อนุมัติแล้ว ${summary.mappedSubjects} จาก ${summary.subjects} วิชา${summary.waitingApproval ? ` · รออนุมัติ ${summary.waitingApproval} วิชา` : ''}`, value: summary.los, unit: 'LO', ready: summary.los > 0 && summary.subjects > 0 && summary.mappedSubjects === summary.subjects, icon: Database, action: () => navigate('/admin?tab=mapping') },
+        { title: 'กำหนด LO ของวิชา', description: `เลือก LO แล้ว ${summary.mappedSubjects} จาก ${summary.loSlots} ห้องเรียน`, value: summary.los, unit: 'LO', ready: summary.los > 0 && summary.loSlots > 0 && summary.mappedSubjects === summary.loSlots, icon: Database, action: () => navigate('/admin?tab=mapping') },
     ];
     const readiness = calculateSetupReadiness(summary);
     const readyCount = readiness.completed;
@@ -100,7 +102,7 @@ export default function DataSetupCenter() {
 
                 {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4" role="alert"><div className="flex gap-3"><AlertTriangle className="h-5 w-5 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดสถานะการตั้งค่าไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={loadSummary} className="mt-3 min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-bold text-white">ลองโหลดอีกครั้ง</button></div></div></section>}
 
-                {(summary.missingRooms > 0 || summary.emptyGroups > 0 || summary.teacherlessGroups > 0 || summary.waitingApproval > 0 || summary.roomsWithoutHomeroom.length > 0) && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">มีข้อมูลที่ต้องจัดการก่อนเริ่มประเมิน</h2><ul className="mt-2 space-y-1 text-sm text-amber-900">{summary.waitingApproval > 0 && <li>• ครูส่ง LO ของวิชามาให้อนุมัติแล้ว {summary.waitingApproval} วิชา ครูจะเริ่มบันทึกข้อความ LO ได้หลังอนุมัติ อนุมัติได้ที่การ์ด “กำหนด LO ของวิชา”</li>}{summary.missingRooms > 0 && <li>• นักเรียนไม่มีชั้นหรือห้องประจำชั้น {summary.missingRooms} คน</li>}{summary.emptyGroups > 0 && <li>• กลุ่มเรียนยังไม่มีสมาชิก {summary.emptyGroups} กลุ่ม</li>}{summary.teacherlessGroups > 0 && <li>• กลุ่มเรียนยังไม่มีครูรับผิดชอบ {summary.teacherlessGroups} กลุ่ม</li>}{summary.roomsWithoutHomeroom.length > 0 && <li>• ห้องที่ยังไม่มีครูประจำชั้น {summary.roomsWithoutHomeroom.length} ห้อง ({summary.roomsWithoutHomeroom.slice(0, 8).join(', ')}{summary.roomsWithoutHomeroom.length > 8 ? ' …' : ''}) ครูประจำชั้นเป็นผู้สรุปความสามารถรายด้าน กำหนดได้ในเมนูครูและนักเรียน</li>}</ul></div></div></section>}
+                {(summary.missingRooms > 0 || summary.emptyGroups > 0 || summary.teacherlessGroups > 0 || summary.roomsWithoutHomeroom.length > 0) && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex gap-3"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><h2 className="font-bold text-amber-950">มีข้อมูลที่ต้องจัดการก่อนเริ่มประเมิน</h2><ul className="mt-2 space-y-1 text-sm text-amber-900">{summary.missingRooms > 0 && <li>• นักเรียนไม่มีชั้นหรือห้องประจำชั้น {summary.missingRooms} คน</li>}{summary.emptyGroups > 0 && <li>• กลุ่มเรียนยังไม่มีสมาชิก {summary.emptyGroups} กลุ่ม</li>}{summary.teacherlessGroups > 0 && <li>• กลุ่มเรียนยังไม่มีครูรับผิดชอบ {summary.teacherlessGroups} กลุ่ม</li>}{summary.roomsWithoutHomeroom.length > 0 && <li>• ห้องที่ยังไม่มีครูประจำชั้น {summary.roomsWithoutHomeroom.length} ห้อง ({summary.roomsWithoutHomeroom.slice(0, 8).join(', ')}{summary.roomsWithoutHomeroom.length > 8 ? ' …' : ''}) ครูประจำชั้นเป็นผู้สรุปความสามารถรายด้าน กำหนดได้ในเมนูครูและนักเรียน</li>}</ul></div></div></section>}
 
                 <section className="overflow-hidden rounded-2xl border border-line bg-white">{steps.map((step, index) => <button key={step.title} onClick={step.action} className="group grid min-h-20 w-full gap-4 border-b border-line p-5 text-left last:border-b-0 hover:bg-slate-50 sm:grid-cols-[44px_minmax(0,1fr)_140px_36px] sm:items-center"><span className={`flex h-11 w-11 items-center justify-center rounded-xl font-bold ${step.ready ? 'surface-success text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{step.ready ? <CheckCircle2 className="h-5 w-5" /> : index + 1}</span><div><h2 className="font-bold text-slate-950">{step.title}</h2><p className={`mt-1 text-sm ${step.ready ? 'text-slate-600' : 'text-amber-800'}`}>{step.description}</p></div><div className="sm:text-right"><strong className="text-xl font-bold text-slate-900">{loading ? '–' : step.value.toLocaleString()}</strong><span className="ml-1 text-sm font-bold text-slate-500">{step.unit}</span><p className={`mt-1 text-xs font-bold ${step.ready ? 'text-emerald-700' : 'text-amber-700'}`}>{step.ready ? 'พร้อมแล้ว' : 'รอดำเนินการ'}</p></div><ArrowRight className="hidden h-5 w-5 text-slate-300 transition group-hover:translate-x-1 group-hover:text-blue-700 sm:block" /></button>)}</section>
             </div>

@@ -27,7 +27,8 @@ export function calculateSetupReadiness(summary = {}) {
         Boolean(summary.formats > 0),
         Boolean(summary.groups > 0 && summary.emptyGroups === 0),
         Boolean(summary.groups > 0 && summary.teacherlessGroups === 0),
-        Boolean(summary.los > 0 && summary.subjects > 0 && summary.mappedSubjects === summary.subjects),
+        // LO เลือกเป็นรายห้อง ถ้ามีจำนวนห้องเรียนให้เทียบกับจำนวนห้อง ไม่งั้นเทียบกับจำนวนวิชาแบบเดิม
+        Boolean(summary.los > 0 && (summary.loSlots ?? summary.subjects) > 0 && summary.mappedSubjects === (summary.loSlots ?? summary.subjects)),
     ];
     return { ...calculateCompletion(checks.filter(Boolean).length, checks.length), checks };
 }

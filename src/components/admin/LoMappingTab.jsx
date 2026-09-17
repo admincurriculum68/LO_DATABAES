@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCheck, ListChecks, RefreshCw, RotateCcw, Save, Search, Sparkles, Table2, Undo2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ListChecks, RefreshCw, Save, Search, Sparkles, Table2, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { fetchAllByIn, fetchAllRows, supabase } from '../../lib/supabase';
 import { useAuth } from '../../AuthContext';
@@ -10,17 +10,19 @@ import {
     areaSelectionState, gradesOf, groupLearningOutcomesByArea, learningOutcomesForGrade,
     sameSelection, shortAreaName, sortSubjectsForMapping, suggestAreasForSubject, toggleArea,
 } from '../../lib/loMapping';
-import { PROPOSAL_STATUS, lastEditedText, statusOf } from '../../lib/loProposals';
-import { LO_PROPOSAL_SQL_HINT, approveSubjects, countEvaluationsAtRisk, loProposalsSupported, loadProposals, planApproval, returnProposal } from '../../lib/loProposalsApi';
+import { buildLoResolver } from '../../lib/loByRoom';
+import { LO_BY_ROOM_SQL_HINT, countEvaluationsAtRisk, loByRoomSupported, loadRoomMappings, loadSubjectAssignments, planRoomSelection, saveRoomSelection } from '../../lib/loByRoomApi';
+import { compareRooms } from '../../lib/teacherAccess';
 
 // กำหนด LO ของวิชา (ฝ่ายวิชาการ)
-// ครูผู้สอนเลือก LO ของวิชาตัวเองแล้วส่งมาให้อนุมัติ หน้านี้ใช้ตรวจ อนุมัติ และส่งกลับ
-// ฝ่ายวิชาการแก้เองได้ด้วย แก้แล้วกดบันทึกคืออนุมัติทันที ระบบจึงเขียน subject_lo_mapping ให้ตรงกัน
-// มีสองมุมมอง: ตารางรายชั้น ติ๊กเป็นรายด้านทั้งชั้นในหน้าเดียว · รายวิชา เลือกรายข้อเมื่อวิชาใช้ไม่ครบทุกข้อ
+// ครูผู้สอนเลือก LO ของห้องที่ตัวเองสอนแล้วใช้ได้ทันที หน้านี้ใช้ดูภาพรวมทุกวิชาทุกห้อง และแก้แทนครูได้
+// หน่วยงานคือ "วิชา × ห้อง" เพราะห้องปกติกับห้อง IEP ของวิชาเดียวกันใช้ LO ต่างกันได้
+// มีสองมุมมอง: ตารางรายชั้น ติ๊กเป็นรายด้าน · รายวิชา เลือกรายข้อทีละห้อง
 
-const EMPTY = new Set();
-const draftKey = (schoolId, year, semester) => `loMappingDraft:${schoolId}:${year}:${semester}`;
+const draftKey = (schoolId, year, semester) => `loRoomDraft:${schoolId}:${year}:${semester}`;
+const slotKey = (subjectId, room) => `${subjectId}|${room || ''}`;
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim();
+const formatWhen = value => (value ? new Date(value).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
 function AreaCheckbox({ state, label, onChange }) {
     const ref = useRef(null);
@@ -29,10 +31,10 @@ function AreaCheckbox({ state, label, onChange }) {
     return <input ref={ref} type="checkbox" checked={state === 'all'} onChange={onChange} aria-label={label} className="h-5 w-5 cursor-pointer accent-indigo-700" />;
 }
 
-function StatusChip({ status, dirty, count }) {
-    if (dirty) return <span className="chip chip-warning">แก้แล้วยังไม่บันทึก · {count} LO</span>;
-    const tone = PROPOSAL_STATUS[status];
-    return <span className={`chip ${tone.chip}`}>{status === 'approved' ? `✓ ${count} LO` : `${tone.short}${count ? ` · ${count} LO` : ''}`}</span>;
+function StatusChip({ savedCount, draftCount, dirty }) {
+    if (dirty) return <span className="chip chip-warning">ยังไม่บันทึก · {draftCount} LO</span>;
+    if (savedCount) return <span className="chip chip-success">✓ {savedCount} LO</span>;
+    return <span className="chip chip-neutral">ยังไม่เลือก</span>;
 }
 
 export default function LoMappingTab() {
@@ -40,21 +42,22 @@ export default function LoMappingTab() {
     const { academicYear, semester } = useAcademic();
     const dialog = useDialog();
     const [subjects, setSubjects] = useState([]);
+    const [slots, setSlots] = useState([]);
     const [learningOutcomes, setLearningOutcomes] = useState([]);
-    const [saved, setSaved] = useState(new Map());
-    const [proposals, setProposals] = useState(new Map());
-    const [teacherNames, setTeacherNames] = useState(new Map());
+    const [mappings, setMappings] = useState([]);
+    const [names, setNames] = useState(new Map());
     const [supported, setSupported] = useState(true);
     const [drafts, setDrafts] = useState(new Map());
-    const [suggestedIds, setSuggestedIds] = useState(new Set());
+    const [suggestedKeys, setSuggestedKeys] = useState(new Set());
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
     const [saving, setSaving] = useState(false);
     const [view, setView] = useState('grade');
     const [grade, setGrade] = useState('');
+    const [onlyMissing, setOnlyMissing] = useState(false);
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
+    const [selectedRoom, setSelectedRoom] = useState('');
     const [query, setQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
     const restoredRef = useRef(false);
     const storageKey = draftKey(currentUser?.school_id, academicYear, semester);
@@ -64,50 +67,69 @@ export default function LoMappingTab() {
         setLoading(true);
         setLoadError('');
         try {
-            const [subjectResult, loRows, teacherResult] = await Promise.all([
-                supabase.from('subjects').select('subject_id, subject_name, grade_level')
+            const [subjectResult, loRows, teacherRows, isSupported] = await Promise.all([
+                supabase.from('subjects').select('subject_id, subject_name, grade_level, teacher_id')
                     .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester),
                 fetchAllRows((from, to) => supabase.from('learning_outcomes')
                     .select('lo_id, lo_code, ability_no, competency_area, is_custom_competency, lo_description, grade_level')
                     .eq('school_id', currentUser.school_id).range(from, to)),
                 fetchAllRows((from, to) => supabase.from('users_teachers')
                     .select('teacher_id, prefix, first_name, last_name').eq('school_id', currentUser.school_id).range(from, to)),
+                loByRoomSupported(),
             ]);
             if (subjectResult.error) throw subjectResult.error;
             const sortedSubjects = sortSubjectsForMapping(subjectResult.data || []);
             const subjectIds = sortedSubjects.map(subject => subject.subject_id);
-            const [mappings, proposalMap, isSupported] = await Promise.all([
-                fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                    .from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', batch).range(from, to)),
-                loadProposals(subjectIds),
-                loProposalsSupported(),
+            const [mappingRows, assignments, enrollments] = await Promise.all([
+                loadRoomMappings(subjectIds),
+                loadSubjectAssignments(subjectIds),
+                isSupported
+                    ? fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('student_enrollments')
+                        .select('subject_id, room').in('subject_id', batch).eq('enrollment_status', 'active').range(from, to))
+                    : Promise.resolve([]),
             ]);
-            const nextSaved = new Map(sortedSubjects.map(subject => [subject.subject_id, new Set()]));
-            mappings.forEach(row => nextSaved.get(row.subject_id)?.add(row.lo_id));
+            const nameById = new Map((teacherRows || []).map(teacher => [teacher.teacher_id, fullName(teacher)]));
+
+            // หน่วยงาน: วิชา × ห้องที่มีนักเรียนจริง ถ้าฐานข้อมูลยังไม่รองรับรายห้อง ใช้วิชาละหนึ่งหน่วย
+            const roomsBySubject = new Map(subjectIds.map(id => [id, new Set()]));
+            enrollments.forEach(row => { if (row.room) roomsBySubject.get(row.subject_id)?.add(row.room); });
+            const nextSlots = sortedSubjects.flatMap(subject => {
+                const rows = assignments.filter(row => row.subject_id === subject.subject_id);
+                const teacherNamesFor = room => {
+                    const ids = rows.length
+                        ? rows.filter(row => !row.room_name || row.room_name === room).map(row => row.teacher_id)
+                        : [subject.teacher_id];
+                    return [...new Set(ids.filter(Boolean))].map(id => nameById.get(id)).filter(Boolean);
+                };
+                const rooms = isSupported ? [...roomsBySubject.get(subject.subject_id)].sort(compareRooms) : [];
+                if (!rooms.length) return [{ key: slotKey(subject.subject_id, null), subject, room: null, teachers: teacherNamesFor(null) }];
+                return rooms.map(room => ({ key: slotKey(subject.subject_id, room), subject, room, teachers: teacherNamesFor(room) }));
+            });
 
             setSubjects(sortedSubjects);
+            setSlots(nextSlots);
             setLearningOutcomes(loRows || []);
-            setSaved(nextSaved);
-            setProposals(proposalMap);
+            setMappings(mappingRows);
+            setNames(nameById);
             setSupported(isSupported);
-            setTeacherNames(new Map((teacherResult || []).map(teacher => [teacher.teacher_id, fullName(teacher)])));
             const grades = gradesOf(sortedSubjects);
             setGrade(current => (grades.includes(current) ? current : grades[0] || ''));
-            setSelectedSubjectId(current => (nextSaved.has(current) ? current : sortedSubjects[0]?.subject_id || ''));
+            setSelectedSubjectId(current => (subjectIds.includes(current) ? current : subjectIds[0] || ''));
 
             // กู้สิ่งที่ติ๊กไว้แต่ยังไม่บันทึก ครั้งเดียวต่อการเปิดหน้า
             if (!restoredRef.current) {
                 restoredRef.current = true;
                 try {
                     const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-                    const baseOf = id => (proposalMap.get(id)?.lo_ids ? new Set(proposalMap.get(id).lo_ids) : nextSaved.get(id));
+                    const resolver = buildLoResolver(mappingRows);
+                    const validKeys = new Map(nextSlots.map(slot => [slot.key, slot]));
                     const restored = new Map(Object.entries(stored?.drafts || {})
-                        .filter(([id, ids]) => nextSaved.has(id) && !sameSelection(ids, baseOf(id)))
-                        .map(([id, ids]) => [id, new Set(ids)]));
+                        .filter(([key, ids]) => validKeys.has(key) && !sameSelection(ids, resolver.idsFor(validKeys.get(key).subject.subject_id, validKeys.get(key).room)))
+                        .map(([key, ids]) => [key, new Set(ids)]));
                     if (restored.size) {
                         setDrafts(restored);
-                        setSuggestedIds(new Set((stored.suggested || []).filter(id => restored.has(id))));
-                        toast(`กู้รายการที่ยังไม่บันทึกกลับมา ${restored.size} วิชา`, { icon: '↩️' });
+                        setSuggestedKeys(new Set((stored.suggested || []).filter(key => restored.has(key))));
+                        toast(`กู้รายการที่ยังไม่บันทึกกลับมา ${restored.size} ห้อง`, { icon: '↩️' });
                     }
                 } catch { /* เบราว์เซอร์ไม่ให้ใช้ sessionStorage ก็ทำงานต่อได้ */ }
             }
@@ -120,175 +142,134 @@ export default function LoMappingTab() {
 
     useEffect(() => { load(); }, [load]);
 
-    // สิ่งที่ต้องแสดง: ของที่ฝ่ายวิชาการกำลังแก้ → ของที่ครูเสนอ → ของที่อนุมัติไว้แล้ว
-    const baseOf = useCallback(id => (proposals.get(id)?.lo_ids ? new Set(proposals.get(id).lo_ids) : (saved.get(id) || EMPTY)), [proposals, saved]);
-    const selectionOf = useCallback(id => drafts.get(id) || baseOf(id), [baseOf, drafts]);
-    const statusFor = useCallback(id => statusOf(proposals.get(id), saved.get(id)), [proposals, saved]);
-
-    const dirtyIds = useMemo(() => [...drafts.keys()].filter(id => !sameSelection(drafts.get(id), baseOf(id))), [baseOf, drafts]);
-    const dirtySet = useMemo(() => new Set(dirtyIds), [dirtyIds]);
+    const resolver = useMemo(() => buildLoResolver(mappings), [mappings]);
+    const slotByKey = useMemo(() => new Map(slots.map(slot => [slot.key, slot])), [slots]);
+    const savedOf = useCallback(slot => resolver.idsFor(slot.subject.subject_id, slot.room), [resolver]);
+    const selectionOf = useCallback(slot => drafts.get(slot.key) || savedOf(slot), [drafts, savedOf]);
+    const dirtyKeys = useMemo(() => [...drafts.keys()].filter(key => slotByKey.has(key) && !sameSelection(drafts.get(key), savedOf(slotByKey.get(key)))), [drafts, savedOf, slotByKey]);
+    const dirtySet = useMemo(() => new Set(dirtyKeys), [dirtyKeys]);
 
     useEffect(() => {
         if (!restoredRef.current) return;
         try {
-            if (!dirtyIds.length) sessionStorage.removeItem(storageKey);
+            if (!dirtyKeys.length) sessionStorage.removeItem(storageKey);
             else sessionStorage.setItem(storageKey, JSON.stringify({
-                drafts: Object.fromEntries(dirtyIds.map(id => [id, [...drafts.get(id)]])),
-                suggested: [...suggestedIds].filter(id => dirtySet.has(id)),
+                drafts: Object.fromEntries(dirtyKeys.map(key => [key, [...drafts.get(key)]])),
+                suggested: [...suggestedKeys].filter(key => dirtySet.has(key)),
             }));
         } catch { /* เก็บไม่ได้ก็ไม่เป็นไร */ }
-    }, [dirtyIds, dirtySet, drafts, storageKey, suggestedIds]);
+    }, [dirtyKeys, dirtySet, drafts, storageKey, suggestedKeys]);
 
     // ปิดแท็บหรือรีเฟรชหน้าขณะมีรายการยังไม่บันทึก ให้เบราว์เซอร์ถามก่อน
     useEffect(() => {
-        if (!dirtyIds.length) return undefined;
+        if (!dirtyKeys.length) return undefined;
         const warn = event => { event.preventDefault(); event.returnValue = ''; };
         window.addEventListener('beforeunload', warn);
         return () => window.removeEventListener('beforeunload', warn);
-    }, [dirtyIds.length]);
+    }, [dirtyKeys.length]);
 
-    const setSelection = useCallback((subjectId, next) => {
+    const setSelection = useCallback((slot, next) => {
         setDrafts(previous => {
             const map = new Map(previous);
-            if (sameSelection(next, baseOf(subjectId))) map.delete(subjectId);
-            else map.set(subjectId, new Set(next));
+            if (sameSelection(next, savedOf(slot))) map.delete(slot.key);
+            else map.set(slot.key, new Set(next));
             return map;
         });
-    }, [baseOf]);
+    }, [savedOf]);
 
-    const counts = useMemo(() => {
-        const result = { approved: 0, submitted: 0, waiting: 0 };
-        subjects.forEach(subject => {
-            const status = statusFor(subject.subject_id);
-            if (status === 'approved') result.approved += 1;
-            else if (status === 'submitted') result.submitted += 1;
-            else result.waiting += 1;
-        });
-        return result;
-    }, [statusFor, subjects]);
-
+    const doneCount = useMemo(() => slots.filter(slot => savedOf(slot).size > 0).length, [savedOf, slots]);
     const grades = useMemo(() => gradesOf(subjects), [subjects]);
-    const gradeSubjects = useMemo(() => subjects.filter(subject => subject.grade_level === grade), [grade, subjects]);
+    const gradeSlots = useMemo(() => slots.filter(slot => slot.subject.grade_level === grade && (!onlyMissing || savedOf(slot).size === 0 || dirtySet.has(slot.key))), [dirtySet, grade, onlyMissing, savedOf, slots]);
     const gradeGroups = useMemo(() => groupLearningOutcomesByArea(learningOutcomesForGrade(learningOutcomes, grade)), [grade, learningOutcomes]);
-    const gradeSubmitted = useMemo(() => gradeSubjects.filter(subject => statusFor(subject.subject_id) === 'submitted' && !dirtySet.has(subject.subject_id)), [dirtySet, gradeSubjects, statusFor]);
 
-    // วิชาของชั้นนี้ที่ครูยังไม่ได้เสนอ LO และระบบเดาด้านจากชื่อวิชาได้
+    // ห้องของชั้นนี้ที่ยังไม่มี LO และระบบเดาด้านจากชื่อวิชาได้
     const suggestions = useMemo(() => {
         const areas = gradeGroups.map(group => group.area);
-        return gradeSubjects
-            .filter(subject => statusFor(subject.subject_id) === 'none' && !drafts.has(subject.subject_id))
-            .map(subject => ({ subject, areas: suggestAreasForSubject(subject.subject_name, areas) }));
-    }, [drafts, gradeGroups, gradeSubjects, statusFor]);
+        return slots
+            .filter(slot => slot.subject.grade_level === grade && savedOf(slot).size === 0 && !drafts.has(slot.key))
+            .map(slot => ({ slot, areas: suggestAreasForSubject(slot.subject.subject_name, areas) }));
+    }, [drafts, grade, gradeGroups, savedOf, slots]);
     const suggestable = suggestions.filter(item => item.areas.length);
-    const unsuggestable = suggestions.filter(item => !item.areas.length);
+    const unsuggestable = [...new Set(suggestions.filter(item => !item.areas.length).map(item => item.slot.subject.subject_name))];
 
     const applySuggestions = () => {
         const losByArea = new Map(gradeGroups.map(group => [group.area, group.los.map(lo => lo.lo_id)]));
         setDrafts(previous => {
             const map = new Map(previous);
-            suggestable.forEach(({ subject, areas }) => map.set(subject.subject_id, new Set(areas.flatMap(area => losByArea.get(area) || []))));
+            suggestable.forEach(({ slot, areas }) => map.set(slot.key, new Set(areas.flatMap(area => losByArea.get(area) || []))));
             return map;
         });
-        setSuggestedIds(previous => new Set([...previous, ...suggestable.map(item => item.subject.subject_id)]));
-        toast.success(`เลือกด้านให้ ${suggestable.length} วิชาแล้ว ตรวจช่องกรอบเส้นประสีเหลืองก่อนกดบันทึก`);
+        setSuggestedKeys(previous => new Set([...previous, ...suggestable.map(item => item.slot.key)]));
+        toast.success(`เลือกด้านให้ ${suggestable.length} ห้องแล้ว ตรวจช่องกรอบเส้นประสีเหลืองก่อนกดบันทึก`);
     };
 
-    /** เขียน LO ที่อนุมัติลงฐานข้อมูล ใช้ทั้งตอนฝ่ายวิชาการแก้เอง และตอนอนุมัติของที่ครูส่งมา */
-    const approve = async (entries, { successText }) => {
-        if (!entries.length || saving) return;
+    const saveAll = async () => {
+        if (!dirtyKeys.length || saving) return;
         setSaving(true);
         try {
-            const plans = await planApproval(entries);
-            const removals = plans.filter(plan => plan.toRemove.length);
-            if (removals.length) {
-                const evaluated = await countEvaluationsAtRisk(removals);
-                if (evaluated > 0) {
-                    const confirmed = await dialog.confirm({
-                        title: 'เอา LO ที่ครูประเมินแล้วออกจากวิชา',
-                        message: `LO ที่จะเอาออกมีผลการประเมินของครูแล้ว ${evaluated.toLocaleString()} รายการ\nผลเดิมยังเก็บอยู่ในระบบ แต่จะไม่แสดงในหน้าประเมินของวิชานั้นจนกว่าจะเลือก LO กลับมา`,
-                        confirmLabel: 'เอาออกและอนุมัติ',
-                        cancelLabel: 'กลับไปแก้',
-                        tone: 'danger',
-                    });
-                    if (!confirmed) return;
-                }
+            // รวมห้องของวิชาเดียวกันที่เลือกชุดเดียวกันเป็นการบันทึกครั้งเดียว
+            const groups = new Map();
+            dirtyKeys.forEach(key => {
+                const slot = slotByKey.get(key);
+                const ids = [...drafts.get(key)].sort();
+                const groupKey = `${slot.subject.subject_id}|${ids.join(',')}`;
+                if (!groups.has(groupKey)) groups.set(groupKey, { subjectId: slot.subject.subject_id, rooms: [], loIds: ids });
+                if (slot.room) groups.get(groupKey).rooms.push(slot.room);
+            });
+            const jobs = [...groups.values()];
+            if (jobs.some(job => !job.loIds.length)) {
+                toast.error('ห้องที่ไม่เลือก LO เลยบันทึกไม่ได้ ติ๊กอย่างน้อย 1 ด้าน หรือกดยกเลิกการเปลี่ยนแปลง');
+                return;
             }
-            const rows = await approveSubjects({ schoolId: currentUser.school_id, entries, actor: currentUser, plans });
 
-            const ids = entries.map(entry => entry.subjectId);
-            setSaved(previous => {
-                const map = new Map(previous);
-                entries.forEach(entry => map.set(entry.subjectId, new Set(entry.loIds)));
-                return map;
-            });
-            setProposals(previous => {
-                const map = new Map(previous);
-                rows.forEach(row => map.set(row.subject_id, row));
-                return map;
-            });
-            setDrafts(previous => {
-                const map = new Map(previous);
-                ids.forEach(id => map.delete(id));
-                return map;
-            });
-            setSuggestedIds(previous => new Set([...previous].filter(id => !ids.includes(id))));
-            toast.success(successText(entries.length));
+            const planned = [];
+            let atRisk = 0;
+            for (const job of jobs) {
+                const plans = supported && job.rooms.length ? await planRoomSelection(job.subjectId, job.rooms, job.loIds) : null;
+                if (plans) atRisk += await countEvaluationsAtRisk(job.subjectId, plans);
+                planned.push({ ...job, plans });
+            }
+            if (atRisk > 0) {
+                const confirmed = await dialog.confirm({
+                    title: 'LO ที่จะเอาออกมีข้อความของนักเรียนแล้ว',
+                    message: `มีข้อความพฤติกรรมที่ครูบันทึกไว้แล้ว ${atRisk.toLocaleString()} รายการใน LO ที่ห้องเหล่านี้จะเลิกใช้\nข้อความยังเก็บอยู่ในระบบ แต่จะไม่แสดงจนกว่าจะเลือก LO นั้นกลับมา`,
+                    confirmLabel: 'บันทึกต่อ',
+                    cancelLabel: 'กลับไปแก้',
+                    tone: 'danger',
+                });
+                if (!confirmed) return;
+            }
+            for (const job of planned) {
+                await saveRoomSelection({ subjectId: job.subjectId, rooms: job.rooms, loIds: job.loIds, actor: currentUser, plans: job.plans, schoolId: currentUser.school_id });
+            }
+            const savedCount = dirtyKeys.length;
+            setMappings(await loadRoomMappings(subjects.map(subject => subject.subject_id)));
+            setDrafts(new Map());
+            setSuggestedKeys(new Set());
+            toast.success(`บันทึก LO ของ ${savedCount} ห้องแล้ว ครูบันทึกข้อความได้ทันที`);
         } catch (error) {
-            toast.error(`บันทึกไม่สำเร็จ: ${error.message} รายการที่ติ๊กไว้ยังอยู่ ลองกดอีกครั้ง`);
+            toast.error(`บันทึกไม่สำเร็จ: ${error.message} รายการที่ติ๊กไว้ยังอยู่ ลองกดบันทึกอีกครั้ง`);
         } finally {
             setSaving(false);
-        }
-    };
-
-    const saveAll = () => approve(
-        dirtyIds.map(id => ({ subjectId: id, loIds: [...drafts.get(id)] })),
-        { successText: count => `บันทึกและอนุมัติ LO ของ ${count} วิชาแล้ว ครูบันทึกข้อความ LO ได้เลย` },
-    );
-
-    const approveSubmitted = subjectList => approve(
-        subjectList.map(subject => ({ subjectId: subject.subject_id, loIds: [...selectionOf(subject.subject_id)] })),
-        { successText: count => `อนุมัติ LO ของ ${count} วิชาแล้ว` },
-    );
-
-    const sendBack = async subject => {
-        const id = subject.subject_id;
-        const approved = statusFor(id) === 'approved';
-        const reason = await dialog.prompt({
-            title: approved ? `ปลดล็อกให้ครูแก้ LO · ${subject.subject_name}` : `ส่งกลับให้ครูแก้ · ${subject.subject_name}`,
-            message: approved
-                ? 'ครูจะแก้ LO ได้อีกครั้ง LO ที่อนุมัติไว้ยังใช้งานอยู่จนกว่าจะอนุมัติรอบใหม่'
-                : 'ครูผู้สอนจะเห็นเหตุผลนี้ในหน้าเลือก LO ของวิชา',
-            inputLabel: 'เหตุผล',
-            placeholder: 'เช่น วิชานี้ควรประเมินด้านการเขียนด้วย',
-        });
-        if (reason === null) return;
-        try {
-            const row = await returnProposal({
-                schoolId: currentUser.school_id, subjectId: id, reason: reason.trim() || 'ฝ่ายวิชาการขอให้ทบทวน',
-                actor: currentUser, proposal: proposals.get(id), loIds: [...selectionOf(id)],
-            });
-            setProposals(previous => new Map(previous).set(id, row));
-            toast.success(approved ? 'ปลดล็อกให้ครูแก้แล้ว' : 'ส่งกลับให้ครูแก้แล้ว');
-        } catch (error) {
-            toast.error('ทำรายการไม่สำเร็จ: ' + error.message);
         }
     };
 
     const discardAll = async () => {
         const confirmed = await dialog.confirm({
             title: 'ยกเลิกการเปลี่ยนแปลง',
-            message: `สิ่งที่ติ๊กไว้แต่ยังไม่บันทึกใน ${dirtyIds.length} วิชาจะหายไป LO ที่อนุมัติแล้วไม่เปลี่ยน`,
+            message: `สิ่งที่ติ๊กไว้แต่ยังไม่บันทึกใน ${dirtyKeys.length} ห้องจะหายไป LO ที่บันทึกแล้วไม่เปลี่ยน`,
             confirmLabel: 'ยกเลิกการเปลี่ยนแปลง',
             cancelLabel: 'เก็บไว้ก่อน',
             tone: 'danger',
         });
         if (!confirmed) return;
         setDrafts(new Map());
-        setSuggestedIds(new Set());
+        setSuggestedKeys(new Set());
     };
 
-    const openSubject = subjectId => {
-        setSelectedSubjectId(subjectId);
+    const openSlot = slot => {
+        setSelectedSubjectId(slot.subject.subject_id);
+        setSelectedRoom(slot.room || '');
         setView('subject');
         setMobileDetailOpen(true);
     };
@@ -296,21 +277,17 @@ export default function LoMappingTab() {
     // ── มุมมองรายวิชา ──
     const filteredSubjects = useMemo(() => {
         const normalized = query.trim().toLowerCase();
-        return subjects.filter(subject => {
-            const id = subject.subject_id;
-            if (normalized && !`${subject.subject_name} ${subject.grade_level}`.toLowerCase().includes(normalized)) return false;
-            if (statusFilter === 'dirty') return dirtySet.has(id);
-            if (statusFilter === 'all') return true;
-            return statusFor(id) === statusFilter && !dirtySet.has(id);
-        });
-    }, [dirtySet, query, statusFilter, statusFor, subjects]);
+        return subjects.filter(subject => !normalized || `${subject.subject_name} ${subject.grade_level}`.toLowerCase().includes(normalized));
+    }, [query, subjects]);
     const selectedSubject = subjects.find(subject => subject.subject_id === selectedSubjectId);
-    const selectedStatus = selectedSubject ? statusFor(selectedSubject.subject_id) : 'none';
-    const selectedProposal = selectedSubject ? proposals.get(selectedSubject.subject_id) : null;
-    const subjectLos = useMemo(
-        () => (selectedSubject ? learningOutcomesForGrade(learningOutcomes, selectedSubject.grade_level) : []),
-        [learningOutcomes, selectedSubject],
-    );
+    const subjectSlots = useMemo(() => slots.filter(slot => slot.subject.subject_id === selectedSubjectId), [selectedSubjectId, slots]);
+    const activeSlot = subjectSlots.find(slot => (slot.room || '') === selectedRoom) || subjectSlots[0];
+    const activeEdit = activeSlot ? resolver.lastEdit(activeSlot.subject.subject_id, activeSlot.room) : null;
+    const subjectLos = useMemo(() => (selectedSubject ? learningOutcomesForGrade(learningOutcomes, selectedSubject.grade_level) : []), [learningOutcomes, selectedSubject]);
+    const subjectProgress = subject => {
+        const list = slots.filter(slot => slot.subject.subject_id === subject.subject_id);
+        return { done: list.filter(slot => savedOf(slot).size > 0).length, total: list.length, dirty: list.some(slot => dirtySet.has(slot.key)) };
+    };
 
     if (loading) return <div className="flex min-h-72 items-center justify-center" role="status"><div className="loader" aria-label="กำลังโหลดวิชาและ LO" /></div>;
     if (loadError) {
@@ -331,28 +308,26 @@ export default function LoMappingTab() {
         );
     }
 
-    const percent = Math.round((counts.approved / subjects.length) * 100);
+    const unit = supported ? 'ห้องเรียน' : 'วิชา';
+    const percent = slots.length ? Math.round((doneCount / slots.length) * 100) : 0;
 
     return (
         <div className="space-y-5">
             {!supported && (
                 <p className="flex gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />{LO_PROPOSAL_SQL_HINT}
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />{LO_BY_ROOM_SQL_HINT}
                 </p>
             )}
 
             <section className="rounded-2xl border border-line bg-white p-4 sm:p-6" aria-label="ความคืบหน้าและมุมมอง">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-700">ครูผู้สอนเลือก LO ของวิชาตัวเองแล้วส่งมาให้อนุมัติ ฝ่ายวิชาการแก้เองแล้วกดบันทึกก็ถือว่าอนุมัติทันที</p>
+                        <p className="text-sm text-slate-700">ครูผู้สอนเลือก LO ของห้องที่ตัวเองสอนตามคำอธิบายรายวิชา แล้วใช้ได้ทันที หน้านี้ใช้ติดตามและแก้แทนครู</p>
                         <div className="mt-3 flex items-center gap-3">
-                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={subjects.length} aria-valuenow={counts.approved} aria-label="วิชาที่อนุมัติ LO แล้ว">
+                            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={slots.length} aria-valuenow={doneCount} aria-label={`${unit}ที่เลือก LO แล้ว`}>
                                 <div className="h-full rounded-full bg-emerald-600 transition-[width]" style={{ width: `${percent}%` }} />
                             </div>
-                            <p className="shrink-0 text-sm font-bold text-slate-900 tabular-nums">
-                                อนุมัติแล้ว {counts.approved} จาก {subjects.length} วิชา
-                                {counts.submitted > 0 && <span className="ml-2 text-amber-800">· รออนุมัติ {counts.submitted}</span>}
-                            </p>
+                            <p className="shrink-0 text-sm font-bold text-slate-900 tabular-nums">เลือก LO แล้ว {doneCount} จาก {slots.length} {unit}</p>
                         </div>
                     </div>
                     <div className="flex shrink-0 rounded-xl bg-slate-100 p-1" role="group" aria-label="มุมมอง">
@@ -369,19 +344,25 @@ export default function LoMappingTab() {
             {view === 'grade' && (
                 <section className="rounded-2xl border border-line bg-white" aria-labelledby="grade-matrix-title">
                     <div className="border-b border-line p-4 sm:p-6">
-                        <h2 id="grade-matrix-title" className="text-lg font-bold text-slate-950">ตารางรายชั้น</h2>
-                        <p className="mt-1 text-sm text-slate-600">ติ๊กช่องเพื่อใช้ LO ทุกข้อของด้านนั้นกับวิชา ถ้าวิชาใช้ไม่ครบทุกข้อ กด “เลือกรายข้อ”</p>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h2 id="grade-matrix-title" className="text-lg font-bold text-slate-950">ตารางรายชั้น</h2>
+                                <p className="mt-1 text-sm text-slate-600">แต่ละแถวคือวิชาของห้องหนึ่ง ติ๊กช่องเพื่อใช้ LO ทุกข้อของด้านนั้น ถ้าใช้ไม่ครบทุกข้อ กด “เลือกรายข้อ”</p>
+                            </div>
+                            <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-line px-3 text-sm font-bold text-slate-800">
+                                <input type="checkbox" checked={onlyMissing} onChange={event => setOnlyMissing(event.target.checked)} className="h-5 w-5 accent-indigo-700" />
+                                เฉพาะ{unit}ที่ยังไม่เลือก
+                            </label>
+                        </div>
                         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="เลือกชั้น">
                             {grades.map(item => {
-                                const inGrade = subjects.filter(subject => subject.grade_level === item);
-                                const done = inGrade.filter(subject => statusFor(subject.subject_id) === 'approved').length;
-                                const waiting = inGrade.filter(subject => statusFor(subject.subject_id) === 'submitted').length;
-                                const pending = inGrade.some(subject => dirtySet.has(subject.subject_id));
+                                const inGrade = slots.filter(slot => slot.subject.grade_level === item);
+                                const done = inGrade.filter(slot => savedOf(slot).size > 0).length;
+                                const pending = inGrade.some(slot => dirtySet.has(slot.key));
                                 return (
                                     <button key={item} type="button" aria-pressed={grade === item} onClick={() => setGrade(item)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold ${grade === item ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}>
                                         {item}
                                         <span className={`tabular-nums ${grade === item ? 'text-indigo-100' : done === inGrade.length ? 'text-emerald-700' : 'text-slate-500'}`}>{done}/{inGrade.length}</span>
-                                        {waiting > 0 && <span className={`rounded-md px-1.5 text-xs tabular-nums ${grade === item ? 'bg-white/20' : 'bg-amber-100 text-amber-900'}`} title={`รออนุมัติ ${waiting} วิชา`}>รอ {waiting}</span>}
                                         {pending && <span className="h-2 w-2 rounded-full bg-amber-500" aria-label="มีรายการยังไม่บันทึก" />}
                                     </button>
                                 );
@@ -389,25 +370,18 @@ export default function LoMappingTab() {
                         </div>
                     </div>
 
-                    {gradeSubmitted.length > 0 && (
-                        <div className="flex flex-col gap-3 border-b border-line bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                            <p className="text-sm text-emerald-950"><strong>{grade}</strong> มี <strong>{gradeSubmitted.length} วิชา</strong>ที่ครูส่ง LO มาให้อนุมัติ ตรวจในตารางแล้วอนุมัติได้ทีเดียว</p>
-                            <button type="button" onClick={() => approveSubmitted(gradeSubmitted)} disabled={saving} className="btn-primary shrink-0"><CheckCheck className="h-4 w-4" aria-hidden="true" />อนุมัติทั้งชั้น ({gradeSubmitted.length} วิชา)</button>
-                        </div>
-                    )}
-
                     {(suggestable.length > 0 || unsuggestable.length > 0) && (
                         <div className="border-b border-line bg-indigo-50/60 p-4 sm:px-6">
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                 <div className="flex items-start gap-3">
                                     <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" aria-hidden="true" />
                                     <div className="text-sm text-slate-800">
-                                        <p><strong>{grade}</strong> มี {suggestions.length} วิชาที่ครูยังไม่ส่ง LO{suggestable.length > 0 && <> ถ้าไม่รอครู ระบบเลือกด้านจากชื่อวิชาให้ได้ <strong>{suggestable.length} วิชา</strong></>}</p>
-                                        {unsuggestable.length > 0 && <p className="mt-1 text-slate-600">ต้องเลือกด้านเอง: {unsuggestable.map(item => item.subject.subject_name).join(', ')}</p>}
+                                        <p><strong>{grade}</strong> มี {suggestions.length} {unit}ที่ยังไม่เลือก LO{suggestable.length > 0 && <> ถ้าไม่รอครู ระบบเลือกด้านจากชื่อวิชาให้ได้ <strong>{suggestable.length} {unit}</strong></>}</p>
+                                        {unsuggestable.length > 0 && <p className="mt-1 text-slate-600">ต้องเลือกด้านเอง: {unsuggestable.join(', ')}</p>}
                                     </div>
                                 </div>
                                 {suggestable.length > 0 && (
-                                    <button type="button" onClick={applySuggestions} className="btn-secondary shrink-0"><Sparkles className="h-4 w-4" aria-hidden="true" />เลือกด้านตามชื่อวิชา ({suggestable.length} วิชา)</button>
+                                    <button type="button" onClick={applySuggestions} className="btn-secondary shrink-0"><Sparkles className="h-4 w-4" aria-hidden="true" />เลือกด้านตามชื่อวิชา ({suggestable.length} {unit})</button>
                                 )}
                             </div>
                         </div>
@@ -415,13 +389,15 @@ export default function LoMappingTab() {
 
                     {gradeGroups.length === 0 ? (
                         <p className="p-8 text-center text-sm text-slate-600">ยังไม่มี LO ของ {grade} นำเข้า LO ของชั้นนี้ก่อน</p>
+                    ) : gradeSlots.length === 0 ? (
+                        <p className="p-8 text-center text-sm text-slate-600">{grade} เลือก LO ครบทุก{unit}แล้ว</p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="min-w-full border-collapse text-sm">
-                                <caption className="sr-only">ด้านความสามารถที่แต่ละวิชาของ {grade} ใช้ประเมิน</caption>
+                                <caption className="sr-only">ด้านความสามารถที่แต่ละวิชาและห้องของ {grade} ใช้ประเมิน</caption>
                                 <thead className="bg-slate-50 text-slate-700">
                                     <tr>
-                                        <th scope="col" className="sticky left-0 z-10 min-w-[9.5rem] border-b border-line bg-slate-50 px-3 py-3 text-left font-bold sm:min-w-[15rem] sm:px-4">วิชา</th>
+                                        <th scope="col" className="sticky left-0 z-10 min-w-[10rem] border-b border-line bg-slate-50 px-3 py-3 text-left font-bold sm:min-w-[16rem] sm:px-4">วิชา · ห้อง</th>
                                         {gradeGroups.map(group => (
                                             <th key={group.area} scope="col" className="min-w-[5rem] border-b border-line px-1 py-3 text-center align-bottom text-xs font-bold sm:min-w-[6.5rem] sm:px-2">
                                                 <span className="block leading-5">{shortAreaName(group.area)}</span>
@@ -431,31 +407,24 @@ export default function LoMappingTab() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {gradeSubjects.map(subject => {
-                                        const id = subject.subject_id;
-                                        const selection = selectionOf(id);
-                                        const dirty = dirtySet.has(id);
-                                        const status = statusFor(id);
-                                        const suggested = dirty && suggestedIds.has(id);
-                                        const rowTone = dirty ? 'bg-amber-50' : status === 'submitted' ? 'bg-emerald-50/50' : 'bg-white';
+                                    {gradeSlots.map((slot, index) => {
+                                        const selection = selectionOf(slot);
+                                        const dirty = dirtySet.has(slot.key);
+                                        const suggested = dirty && suggestedKeys.has(slot.key);
+                                        const firstOfSubject = index === 0 || gradeSlots[index - 1].subject.subject_id !== slot.subject.subject_id;
+                                        const rowTone = dirty ? 'bg-amber-50' : 'bg-white';
                                         return (
-                                            <tr key={id} className={`${rowTone} border-b border-line last:border-b-0`}>
+                                            <tr key={slot.key} className={`${rowTone} border-b ${firstOfSubject ? 'border-t-2 border-t-slate-200' : ''} border-line`}>
                                                 <th scope="row" className={`sticky left-0 z-10 ${rowTone} px-3 py-2 text-left align-middle font-normal sm:px-4`}>
-                                                    <span className="block font-bold text-slate-900">{subject.subject_name}</span>
-                                                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                                                        <StatusChip status={status} dirty={dirty} count={selection.size} />
-                                                        <button type="button" onClick={() => openSubject(id)} className="inline-flex min-h-8 items-center rounded-md px-2 text-xs font-bold text-indigo-800 underline-offset-2 hover:bg-indigo-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">เลือกรายข้อ</button>
-                                                        {!dirty && status === 'submitted' && (
-                                                            <button type="button" onClick={() => approveSubmitted([subject])} disabled={saving} className="inline-flex min-h-8 items-center gap-1 rounded-md bg-emerald-700 px-2 text-xs font-bold text-white hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700">
-                                                                <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />อนุมัติ
-                                                            </button>
-                                                        )}
-                                                        {supported && !dirty && (status === 'submitted' || status === 'approved') && (
-                                                            <button type="button" onClick={() => sendBack(subject)} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-bold text-rose-800 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700">
-                                                                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />{status === 'approved' ? 'ปลดล็อก' : 'ส่งกลับ'}
-                                                            </button>
-                                                        )}
+                                                    {firstOfSubject
+                                                        ? <span className="block font-bold text-slate-900">{slot.subject.subject_name}</span>
+                                                        : <span className="sr-only">{slot.subject.subject_name}</span>}
+                                                    <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                                        {slot.room && <span className="chip chip-info">{slot.room}</span>}
+                                                        <StatusChip savedCount={savedOf(slot).size} draftCount={selection.size} dirty={dirty} />
+                                                        <button type="button" onClick={() => openSlot(slot)} className="inline-flex min-h-8 items-center rounded-md px-2 text-xs font-bold text-indigo-800 underline-offset-2 hover:bg-indigo-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">เลือกรายข้อ</button>
                                                     </span>
+                                                    {slot.teachers.length > 0 && <span className="mt-0.5 block text-xs text-slate-500">{slot.teachers.join(', ')}</span>}
                                                 </th>
                                                 {gradeGroups.map(group => {
                                                     const loIds = group.los.map(lo => lo.lo_id);
@@ -464,7 +433,7 @@ export default function LoMappingTab() {
                                                     return (
                                                         <td key={group.area} className="px-1 py-1 text-center">
                                                             <label className={`mx-auto flex min-h-11 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg ${suggested && cell.state !== 'none' ? 'border-2 border-dashed border-amber-500 bg-amber-100/60' : 'hover:bg-slate-100'}`}>
-                                                                <AreaCheckbox state={cell.state} label={`${subject.subject_name} ${shortAreaName(group.area)}: ${stateLabel}`} onChange={() => setSelection(id, toggleArea(selection, loIds))} />
+                                                                <AreaCheckbox state={cell.state} label={`${slot.subject.subject_name} ${slot.room || ''} ${shortAreaName(group.area)}: ${stateLabel}`} onChange={() => setSelection(slot, toggleArea(selection, loIds))} />
                                                                 {cell.state === 'some' && <span className="text-[11px] font-bold leading-none text-slate-700 tabular-nums">{cell.count}/{cell.total}</span>}
                                                             </label>
                                                         </td>
@@ -477,7 +446,7 @@ export default function LoMappingTab() {
                             </table>
                         </div>
                     )}
-                    {gradeSubjects.some(subject => dirtySet.has(subject.subject_id) && suggestedIds.has(subject.subject_id)) && (
+                    {gradeSlots.some(slot => dirtySet.has(slot.key) && suggestedKeys.has(slot.key)) && (
                         <p className="flex items-center gap-2 border-t border-line px-4 py-3 text-xs text-slate-700 sm:px-6">
                             <span className="inline-block h-4 w-6 rounded border-2 border-dashed border-amber-500 bg-amber-100/60" aria-hidden="true" />
                             ช่องกรอบเส้นประสีเหลือง คือด้านที่ระบบเลือกให้จากชื่อวิชา ตรวจให้ถูกก่อนกดบันทึก
@@ -489,21 +458,12 @@ export default function LoMappingTab() {
             {view === 'subject' && (
                 <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
                     <aside className={`rounded-2xl border border-line bg-white ${mobileDetailOpen ? 'hidden lg:block' : ''}`} aria-label="รายการวิชา">
-                        <div className="space-y-2 border-b border-line p-4">
+                        <div className="border-b border-line p-4">
                             <label className="relative block">
                                 <span className="sr-only">ค้นหาวิชา</span>
                                 <Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-500" aria-hidden="true" />
                                 <input value={query} onChange={event => setQuery(event.target.value)} placeholder="ค้นหาชื่อวิชาหรือชั้น" className="min-h-11 w-full rounded-xl border border-field bg-white pl-10 pr-3 text-sm placeholder:text-slate-500 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
                             </label>
-                            <select aria-label="กรองตามสถานะ" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-800">
-                                <option value="all">ทุกวิชา ({subjects.length})</option>
-                                <option value="submitted">รออนุมัติ ({counts.submitted})</option>
-                                <option value="none">ครูยังไม่ส่ง ({subjects.filter(subject => statusFor(subject.subject_id) === 'none').length})</option>
-                                <option value="draft">ครูกำลังเลือก ({subjects.filter(subject => statusFor(subject.subject_id) === 'draft').length})</option>
-                                <option value="returned">ส่งกลับแล้ว ({subjects.filter(subject => statusFor(subject.subject_id) === 'returned').length})</option>
-                                <option value="approved">อนุมัติแล้ว ({counts.approved})</option>
-                                <option value="dirty">ยังไม่บันทึก ({dirtyIds.length})</option>
-                            </select>
                         </div>
                         <div className="max-h-[36rem] overflow-y-auto">
                             {filteredSubjects.length === 0 && <p className="p-6 text-center text-sm text-slate-600">ไม่พบวิชาที่ตรงกับที่ค้นหา</p>}
@@ -512,13 +472,13 @@ export default function LoMappingTab() {
                                     <h3 className="sticky top-0 z-10 border-b border-line bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700">{item}</h3>
                                     <ul className="divide-y divide-line">
                                         {filteredSubjects.filter(subject => subject.grade_level === item).map(subject => {
-                                            const id = subject.subject_id;
-                                            const active = id === selectedSubjectId;
+                                            const active = subject.subject_id === selectedSubjectId;
+                                            const progress = subjectProgress(subject);
                                             return (
-                                                <li key={id}>
-                                                    <button type="button" aria-current={active ? 'true' : undefined} onClick={() => openSubject(id)} className={`flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left ${active ? 'surface-selected' : 'hover:bg-slate-50'}`}>
+                                                <li key={subject.subject_id}>
+                                                    <button type="button" aria-current={active ? 'true' : undefined} onClick={() => { setSelectedSubjectId(subject.subject_id); setSelectedRoom(''); setMobileDetailOpen(true); }} className={`flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left ${active ? 'surface-selected' : 'hover:bg-slate-50'}`}>
                                                         <span className={`min-w-0 text-sm ${active ? 'font-bold text-indigo-950' : 'font-semibold text-slate-900'}`}>{subject.subject_name}</span>
-                                                        <StatusChip status={statusFor(id)} dirty={dirtySet.has(id)} count={selectionOf(id).size} />
+                                                        <span className={`chip ${progress.dirty ? 'chip-warning' : progress.done === progress.total ? 'chip-success' : 'chip-neutral'}`}>{progress.done}/{progress.total}</span>
                                                     </button>
                                                 </li>
                                             );
@@ -530,38 +490,38 @@ export default function LoMappingTab() {
                     </aside>
 
                     <section className={`min-w-0 rounded-2xl border border-line bg-white ${mobileDetailOpen ? '' : 'hidden lg:block'}`} aria-labelledby="subject-lo-title">
-                        {!selectedSubject ? (
+                        {!selectedSubject || !activeSlot ? (
                             <p className="p-10 text-center text-sm text-slate-600">เลือกวิชาจากรายการด้านซ้าย</p>
                         ) : (
                             <>
                                 <div className="border-b border-line p-4 sm:p-6">
                                     <button type="button" onClick={() => setMobileDetailOpen(false)} className="btn-ghost mb-2 lg:hidden"><ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายการวิชา</button>
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                        <div className="min-w-0">
-                                            <h2 id="subject-lo-title" className="text-lg font-bold text-slate-950">{selectedSubject.subject_name} <span className="chip chip-info align-middle">{selectedSubject.grade_level}</span></h2>
-                                            <p className="mt-1 text-sm text-slate-600" aria-live="polite">
-                                                เลือกแล้ว {selectionOf(selectedSubject.subject_id).size} ข้อ · {PROPOSAL_STATUS[selectedStatus].label}
-                                            </p>
-                                            {selectedProposal?.updated_at && <p className="mt-0.5 text-xs text-slate-500">{lastEditedText(selectedProposal, teacherNames)}</p>}
-                                            {selectedStatus === 'returned' && selectedProposal?.review_note && (
-                                                <p className="mt-1 text-xs text-rose-800">ส่งกลับเพราะ: {selectedProposal.review_note}</p>
-                                            )}
+                                    <h2 id="subject-lo-title" className="text-lg font-bold text-slate-950">{selectedSubject.subject_name} <span className="chip chip-info align-middle">{selectedSubject.grade_level}</span></h2>
+                                    {subjectSlots.length > 1 || activeSlot.room ? (
+                                        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="เลือกห้อง">
+                                            {subjectSlots.map(slot => {
+                                                const active = slot.key === activeSlot.key;
+                                                const count = savedOf(slot).size;
+                                                return (
+                                                    <button key={slot.key} type="button" aria-pressed={active} onClick={() => setSelectedRoom(slot.room || '')} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-bold ${active ? 'border-indigo-700 bg-indigo-700 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}>
+                                                        {slot.room}
+                                                        <span className={`text-xs tabular-nums ${active ? 'text-indigo-100' : count ? 'text-emerald-700' : 'text-amber-700'}`}>{dirtySet.has(slot.key) ? 'แก้อยู่' : count ? `${count} ข้อ` : 'ยังไม่เลือก'}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="flex shrink-0 flex-wrap gap-2">
-                                            {!dirtySet.has(selectedSubject.subject_id) && selectedStatus === 'submitted' && (
-                                                <button type="button" onClick={() => approveSubmitted([selectedSubject])} disabled={saving} className="btn-primary"><CheckCheck className="h-4 w-4" aria-hidden="true" />อนุมัติวิชานี้</button>
-                                            )}
-                                            {supported && !dirtySet.has(selectedSubject.subject_id) && (selectedStatus === 'submitted' || selectedStatus === 'approved') && (
-                                                <button type="button" onClick={() => sendBack(selectedSubject)} className="btn-secondary"><RotateCcw className="h-4 w-4" aria-hidden="true" />{selectedStatus === 'approved' ? 'ปลดล็อกให้ครูแก้' : 'ส่งกลับให้ครูแก้'}</button>
-                                            )}
-                                        </div>
-                                    </div>
+                                    ) : null}
+                                    <p className="mt-2 text-sm text-slate-600" aria-live="polite">
+                                        {activeSlot.room ? `ห้อง ${activeSlot.room} · ` : ''}เลือกแล้ว {selectionOf(activeSlot).size} ข้อ
+                                        {activeSlot.teachers.length > 0 && ` · ครูผู้สอน ${activeSlot.teachers.join(', ')}`}
+                                    </p>
+                                    {activeEdit?.updated_at && <p className="mt-0.5 text-xs text-slate-500">แก้ล่าสุด{names.get(activeEdit.updated_by) ? `โดย ${names.get(activeEdit.updated_by)}` : ''} {formatWhen(activeEdit.updated_at)}</p>}
                                 </div>
                                 <div className="p-4 sm:p-6">
                                     <LoAreaPicker
                                         learningOutcomes={subjectLos}
-                                        selection={selectionOf(selectedSubject.subject_id)}
-                                        onChange={next => setSelection(selectedSubject.subject_id, next)}
+                                        selection={selectionOf(activeSlot)}
+                                        onChange={next => setSelection(activeSlot, next)}
                                         emptyText={`ยังไม่มี LO ของ ${selectedSubject.grade_level}`}
                                     />
                                 </div>
@@ -571,16 +531,16 @@ export default function LoMappingTab() {
                 </div>
             )}
 
-            {dirtyIds.length > 0 && (
+            {dirtyKeys.length > 0 && (
                 <div className="sticky bottom-0 z-30 rounded-2xl border border-amber-300 bg-amber-50 p-3 shadow-lg sm:p-4" role="region" aria-label="รายการที่ยังไม่บันทึก">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="flex items-center gap-2 text-sm font-bold text-amber-950" aria-live="polite">
                             <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
-                            แก้ไว้ {dirtyIds.length} วิชา · กดบันทึกแล้วถือว่าอนุมัติทันที
+                            ยังไม่บันทึก {dirtyKeys.length} {unit} เปลี่ยนชั้นหรือวิชาได้ รายการไม่หาย
                         </p>
                         <div className="flex flex-col-reverse gap-2 sm:flex-row">
                             <button type="button" onClick={discardAll} disabled={saving} className="btn-secondary"><Undo2 className="h-4 w-4" aria-hidden="true" />ยกเลิกการเปลี่ยนแปลง</button>
-                            <button type="button" onClick={saveAll} disabled={saving} className="btn-primary"><Save className="h-4 w-4" aria-hidden="true" />{saving ? 'กำลังบันทึก...' : `บันทึกและอนุมัติ ${dirtyIds.length} วิชา`}</button>
+                            <button type="button" onClick={saveAll} disabled={saving} className="btn-primary"><Save className="h-4 w-4" aria-hidden="true" />{saving ? 'กำลังบันทึก...' : `บันทึก ${dirtyKeys.length} ${unit}`}</button>
                         </div>
                     </div>
                 </div>

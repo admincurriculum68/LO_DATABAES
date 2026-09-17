@@ -19,7 +19,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formalLevelLabel } from '../lib/terminology';
-import { calculateEvidenceProgress, isReviewableWorkflow } from '../lib/evaluationProgress';
+import { calculateCompletion, isReviewableWorkflow } from '../lib/evaluationProgress';
+import { buildLoResolver } from '../lib/loByRoom';
+import { loadRoomMappings, loadSubjectAssignments } from '../lib/loByRoomApi';
+import { formatRoomRange, teachersWithRooms } from '../lib/teacherAccess';
 
 const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
 const PASSING_LEVELS = ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
@@ -93,11 +96,11 @@ export default function ExecutiveDashboard() {
                 const subjectIds = subjects.map(item => item.subject_id);
                 const contextIds = contexts.map(item => item.context_id);
 
-                const [enrollments, mappings, submissions] = await Promise.all([
-                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('student_enrollments').select('enrollment_id, subject_id, student_id')
+                const [enrollments, mappings, assignments, submissions] = await Promise.all([
+                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('student_enrollments').select('enrollment_id, subject_id, student_id, room')
                         .in('subject_id', batch).eq('enrollment_status', 'active').range(from, to)),
-                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping').select('subject_id, lo_id')
-                        .in('subject_id', batch).range(from, to)),
+                    loadRoomMappings(subjectIds),
+                    loadSubjectAssignments(subjectIds),
                     fetchAllRows((from, to) => supabase.from('assessment_submissions').select('subject_id, status')
                         .eq('school_id', schoolId).eq('academic_year', academicYear).eq('semester', semester).range(from, to)),
                 ]);
@@ -119,6 +122,7 @@ export default function ExecutiveDashboard() {
                     decisions,
                     enrollments,
                     mappings,
+                    assignments,
                     submissions,
                     evaluations,
                     contextEvaluations,
@@ -139,26 +143,30 @@ export default function ExecutiveDashboard() {
         const teacherById = new Map(data.teachers.map(item => [item.teacher_id, item]));
         const loById = new Map(data.los.map(item => [item.lo_id, item]));
         const submissionBySubject = new Map(data.submissions.map(item => [item.subject_id, item.status]));
-        const mappedPairs = new Set(data.mappings.map(item => `${item.subject_id}_${item.lo_id}`));
+        // LO ของแต่ละห้องต่างกันได้ ใช้ห้องของนักเรียนหา LO ที่ต้องบันทึก
+        const loResolver = buildLoResolver(data.mappings);
+        const loCountFor = enrollment => loResolver.idsFor(enrollment.subject_id, enrollment.room).size;
 
         // ผลรายวิชาที่ยังผูกกับ LO อยู่จริงเท่านั้น เพื่อให้ตัวเลขตรงกับหน้าประเมินของครู
         const validEvaluations = data.evaluations.filter(item => {
             const enrollment = enrollmentById.get(item.enrollment_id);
-            return enrollment && mappedPairs.has(`${enrollment.subject_id}_${item.lo_id}`);
+            return enrollment && loResolver.idsFor(enrollment.subject_id, enrollment.room).has(item.lo_id);
         });
 
         // 1. ความคืบหน้ารายวิชา
         const subjectRows = data.subjects.map(subject => {
             const subjectEnrollments = data.enrollments.filter(item => item.subject_id === subject.subject_id);
-            const subjectLoCount = data.mappings.filter(item => item.subject_id === subject.subject_id).length;
+            const subjectLoCount = loResolver.allIdsForSubject(subject.subject_id).size;
             const enrollmentIdSet = new Set(subjectEnrollments.map(item => item.enrollment_id));
             const filled = validEvaluations.filter(item => enrollmentIdSet.has(item.enrollment_id) && item.evidence_note?.trim()).length;
-            const progress = calculateEvidenceProgress({ enrollmentCount: subjectEnrollments.length, loCount: subjectLoCount, filledCount: filled });
+            const progress = calculateCompletion(filled, subjectEnrollments.reduce((sum, item) => sum + loCountFor(item), 0));
             return {
                 id: subject.subject_id,
                 name: subject.subject_name,
                 gradeLevel: subject.grade_level,
-                teacher: teacherName(teacherById.get(subject.teacher_id)),
+                teacher: teachersWithRooms(subject, data.assignments.filter(item => item.subject_id === subject.subject_id))
+                    .map(item => `${teacherName(teacherById.get(item.teacherId))}${item.rooms.length ? ` (${formatRoomRange(item.rooms)})` : ''}`)
+                    .join(' · '),
                 studentCount: subjectEnrollments.length,
                 loCount: subjectLoCount,
                 total: progress.total,
@@ -229,7 +237,7 @@ export default function ExecutiveDashboard() {
             const room = studentById.get(enrollment.student_id)?.current_room || 'ไม่ระบุห้อง';
             const entry = ensureRoom(room);
             entry.students.add(enrollment.student_id);
-            entry.total += data.mappings.filter(item => item.subject_id === enrollment.subject_id).length;
+            entry.total += loCountFor(enrollment);
         });
         validEvaluations.forEach(item => {
             const enrollment = enrollmentById.get(item.enrollment_id);

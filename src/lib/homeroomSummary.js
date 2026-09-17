@@ -6,6 +6,7 @@
 
 import { normalizeCompetencyArea } from '../constants/curriculum2568.js';
 import { groupLearningOutcomesByArea } from './loMapping.js';
+import { buildLoResolver } from './loByRoom.js';
 
 export const SUMMARY_LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ', 'N/A'];
 
@@ -84,25 +85,22 @@ export function roomStatus(rows, expectedCount) {
 
 /**
  * ด้านที่ห้องใช้จริง และข้อความ LO ของนักเรียนแต่ละคนแยกตามด้าน
- * enrollments: [{ enrollment_id, student_id, subject_id, subjects: { subject_name } }]
- * mappings: [{ subject_id, learning_outcomes: { lo_id, lo_code, ability_no, competency_area } }]
+ * enrollments: [{ enrollment_id, student_id, subject_id, room, subjects: { subject_name } }]
+ * mappings: [{ subject_id, room_name, learning_outcomes: { lo_id, lo_code, ability_no, competency_area } }]
  * evaluations: [{ enrollment_id, lo_id, evidence_note }]
+ * LO ของแต่ละวิชาขึ้นกับห้องของนักเรียน ห้องที่ไม่มีชุดของตัวเองใช้ชุดทั้งวิชา
  */
 export function collectRoomEvidence(enrollments, mappings, evaluations) {
-    const losBySubject = new Map();
-    (mappings || []).forEach(item => {
-        if (!item?.learning_outcomes) return;
-        if (!losBySubject.has(item.subject_id)) losBySubject.set(item.subject_id, []);
-        losBySubject.get(item.subject_id).push(item.learning_outcomes);
-    });
-    const uniqueLos = [...new Map([...losBySubject.values()].flat().map(lo => [lo.lo_id, lo])).values()];
+    const resolver = buildLoResolver((mappings || []).filter(item => item?.learning_outcomes));
+    const losFor = enrollment => resolver.rowsFor(enrollment.subject_id, enrollment.room).map(row => row.learning_outcomes);
+    const uniqueLos = [...new Map((enrollments || []).flatMap(losFor).map(lo => [lo.lo_id, lo])).values()];
     const areas = groupLearningOutcomesByArea(uniqueLos).map(group => group.area);
     const noteByEnrollmentLo = new Map((evaluations || [])
         .filter(item => normalizeText(item.evidence_note))
         .map(item => [`${item.enrollment_id}:${item.lo_id}`, normalizeText(item.evidence_note)]));
     const notesByKey = new Map();
     (enrollments || []).forEach(enrollment => {
-        [...(losBySubject.get(enrollment.subject_id) || [])]
+        [...losFor(enrollment)]
             .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0))
             .forEach(lo => {
                 const text = noteByEnrollmentLo.get(`${enrollment.enrollment_id}:${lo.lo_id}`);

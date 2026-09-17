@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { buildLoResolver } from '../lib/loByRoom';
+import { loadRoomMappings } from '../lib/loByRoomApi';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import Layout from '../components/Layout';
@@ -43,9 +45,7 @@ export default function StudentDashboard() {
                 // ผลรายด้านมาจากครูประจำชั้นที่ฝ่ายวิชาการรับรองแล้วเท่านั้น
                 const hasSummary = await homeroomSummarySupported();
                 const [loData, evalData, finalData] = await Promise.all([
-                    fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
-                        .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, lo_description)')
-                        .in('subject_id', batch).range(from, to)),
+                    loadRoomMappings(subjectIds, { withLo: true }),
                     fetchAllByIn(enrollmentIds, (batch, from, to) => supabase.from('lo_evaluations')
                         .select('enrollment_id, lo_id, evidence_note')
                         .in('enrollment_id', batch).range(from, to)),
@@ -56,10 +56,11 @@ export default function StudentDashboard() {
                 ]);
                 setFinalResults(finalData);
 
+                // LO ของวิชาขึ้นกับห้องของนักเรียน
+                const loResolver = buildLoResolver(loData);
                 const dashboardData = currentEnrollments.map(enroll => {
                     const subject = enroll.subjects;
-                    const subjectLos = loData
-                        .filter(l => l.subject_id === subject.subject_id)
+                    const subjectLos = loResolver.rowsFor(subject.subject_id, enroll.room)
                         .map(l => l.learning_outcomes)
                         .filter(Boolean)
                         .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));

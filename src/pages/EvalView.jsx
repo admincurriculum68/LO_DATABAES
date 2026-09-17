@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
@@ -7,6 +7,9 @@ import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, Me
 import toast from 'react-hot-toast';
 import useDocumentTitle from '../lib/useDocumentTitle';
 import { useDialog } from '../lib/dialogContext';
+import { buildLoResolver, sameSetAcrossRooms } from '../lib/loByRoom';
+import { LO_FIELDS, mappingSelect } from '../lib/loByRoomApi';
+import { compareRooms, teacherRoomAccess } from '../lib/teacherAccess';
 
 export default function EvalView() {
     const { subjectId } = useParams();
@@ -19,7 +22,8 @@ export default function EvalView() {
 
     const [subject, setSubject] = useState(location.state?.subject || null);
     const [enrollments, setEnrollments] = useState([]);
-    const [learningOutcomes, setLearningOutcomes] = useState([]);
+    // แถว LO ของวิชาทุกห้อง LO ที่แสดงขึ้นกับห้องที่เลือก
+    const [mappingRows, setMappingRows] = useState([]);
     const [evaluations, setEvaluations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -33,6 +37,21 @@ export default function EvalView() {
     const [lockedCells, setLockedCells] = useState(new Set());
     useDocumentTitle(subject ? `ประเมิน ${subject.subject_name}` : 'ประเมินผลรายวิชา');
 
+    // ห้องต่างกันอาจใช้ LO ต่างกัน "ทุกห้อง" แสดงได้เฉพาะเมื่อทุกห้องใช้ชุดเดียวกัน
+    const resolver = useMemo(() => buildLoResolver(mappingRows), [mappingRows]);
+    const roomList = useMemo(() => [...new Set(enrollments.map(e => e.room).filter(Boolean))].sort(compareRooms), [enrollments]);
+    const roomsShareLo = useMemo(() => sameSetAcrossRooms(roomList.map(room => resolver.idsFor(subjectId, room))), [resolver, roomList, subjectId]);
+    const loRoom = selectedRoom === 'all' ? (roomsShareLo ? roomList[0] || null : null) : selectedRoom;
+    const learningOutcomes = useMemo(() => resolver.rowsFor(subjectId, loRoom)
+        .map(row => row.learning_outcomes)
+        .filter(Boolean)
+        .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0) || String(a.lo_code || '').localeCompare(String(b.lo_code || ''), 'th', { numeric: true })),
+    [loRoom, resolver, subjectId]);
+
+    useEffect(() => {
+        if (selectedRoom === 'all' && !roomsShareLo && roomList.length) setSelectedRoom(roomList[0]);
+    }, [roomList, roomsShareLo, selectedRoom]);
+
     useEffect(() => {
         async function loadData() {
             try {
@@ -40,20 +59,19 @@ export default function EvalView() {
                     .select('*').eq('subject_id', subjectId).eq('school_id', currentUser.school_id).single();
                 if (subjectError || !subjectRecord) throw new Error('ไม่พบรายวิชานี้ในโรงเรียนของคุณ');
 
-                let allowedRooms = null;
+                let access = null;
                 if (mustCheckAssignment) {
+                    // ครูหลักของวิชาไม่ได้แปลว่าสอนทุกห้อง ดูแถวครูรายห้องของวิชาทั้งหมด
                     const { data: assignments, error: assignmentError } = await supabase.from('subject_teachers')
-                        .select('room_name').eq('subject_id', subjectId).eq('teacher_id', currentUser.teacher_id);
+                        .select('teacher_id, room_name').eq('subject_id', subjectId);
                     if (assignmentError) throw assignmentError;
-                    const isPrimaryTeacher = subjectRecord.teacher_id === currentUser.teacher_id;
-                    const assignedRooms = (assignments || []).map(item => item.room_name).filter(Boolean);
-                    const assignedAllRooms = (assignments || []).some(item => !item.room_name);
-                    if (!isPrimaryTeacher && !(assignments || []).length) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินรายวิชานี้');
-                    if (roomParam && !isPrimaryTeacher && !assignedAllRooms && !assignedRooms.includes(roomParam)) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินห้องนี้');
-                    if (!isPrimaryTeacher && !assignedAllRooms) allowedRooms = new Set(assignedRooms);
+                    access = teacherRoomAccess(subjectRecord, assignments || [], currentUser.teacher_id);
+                    if (!access.canAccess) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินรายวิชานี้');
+                    if (roomParam && !access.allows(roomParam)) throw new Error('คุณไม่ได้รับมอบหมายให้ประเมินห้องนี้');
                 }
                 setSubject(subjectRecord);
 
+                const mappingColumns = await mappingSelect(`learning_outcomes(${LO_FIELDS})`);
                 const [enrolls, { data: mappedLOs, error: mappingError }] = await Promise.all([
                     fetchAllRows((from, to) => supabase.from('student_enrollments')
                         .select(`
@@ -61,24 +79,25 @@ export default function EvalView() {
               users_students(student_id, student_code, prefix, first_name, last_name)
             `).eq('subject_id', subjectId).eq('enrollment_status', 'active').range(from, to)),
                     supabase.from('subject_lo_mapping')
-                        .select(`learning_outcomes(lo_id, lo_code, ability_no, competency_area, lo_description)`)
+                        .select(mappingColumns)
                         .eq('subject_id', subjectId)
                 ]);
                 if (mappingError) throw mappingError;
 
-                const formatLOs = (mappedLOs || [])
-                    .map(item => item.learning_outcomes)
-                    .filter(Boolean)
-                    .sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0));
-                setLearningOutcomes(formatLOs);
+                const rows = (mappedLOs || []).map(row => ({ room_name: null, ...row })).filter(row => row.learning_outcomes);
+                setMappingRows(rows);
+                // LO ทุกข้อที่ใช้ในห้องใดห้องหนึ่งของวิชา ใช้กรองผลและหาช่องที่ถูกล็อก
+                const unionIds = buildLoResolver(rows).allIdsForSubject(subjectId);
+                const formatLOs = [...new Map(rows.map(row => [row.lo_id, row.learning_outcomes])).values()]
+                    .filter(lo => unionIds.has(lo.lo_id));
 
-                let formatEnrolls = allowedRooms ? enrolls.filter(item => allowedRooms.has(item.room)) : enrolls;
+                let formatEnrolls = access && !access.allRooms ? enrolls.filter(item => access.allows(item.room)) : enrolls;
                 // sort by student code
                 formatEnrolls.sort((a, b) => (a.users_students?.student_code || '').localeCompare(b.users_students?.student_code || ''));
                 setEnrollments(formatEnrolls);
 
                 const enrollIds = formatEnrolls.map(e => e.enrollment_id);
-                const mappedLoIds = new Set(formatLOs.map(lo => lo.lo_id));
+                const mappedLoIds = unionIds;
 
                 if (enrollIds.length > 0) {
                     const evals = await fetchAllByIn(enrollIds, (batch, from, to) => supabase
@@ -254,8 +273,9 @@ export default function EvalView() {
 
     const scopedEnrollments = selectedRoom === 'all' ? enrollments : enrollments.filter(enrollment => enrollment.room === selectedRoom);
     const scopedEnrollmentIds = new Set(scopedEnrollments.map(enrollment => enrollment.enrollment_id));
+    const currentLoIds = new Set(learningOutcomes.map(lo => lo.lo_id));
     const totalCells = scopedEnrollments.length * learningOutcomes.length;
-    const filledCells = evaluations.filter(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()).length;
+    const filledCells = evaluations.filter(e => scopedEnrollmentIds.has(e.enrollment_id) && currentLoIds.has(e.lo_id) && e.evidence_note?.trim()).length;
     const missingCount = Math.max(0, totalCells - filledCells);
 
     const fillEvidenceColumn = async lo => {
@@ -358,12 +378,12 @@ export default function EvalView() {
 
     let displayedEnrollments = showMissingOnly
         ? scopedEnrollments.filter(enroll => {
-            const studentEvals = evaluations.filter(e => e.enrollment_id === enroll.enrollment_id && e.evidence_note?.trim());
+            const studentEvals = evaluations.filter(e => e.enrollment_id === enroll.enrollment_id && currentLoIds.has(e.lo_id) && e.evidence_note?.trim());
             return studentEvals.length < learningOutcomes.length;
         })
         : scopedEnrollments;
 
-    const uniqueRooms = [...new Set(enrollments.map(e => e.room).filter(Boolean))].sort();
+    const uniqueRooms = roomList;
     const submissionStatus = submission?.status || 'draft';
     const submissionLabel = {
         draft: 'ฉบับร่าง',
@@ -488,10 +508,10 @@ export default function EvalView() {
                         <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
                             <ClipboardCheck className="w-8 h-8 text-indigo-700" aria-hidden="true" />
                         </div>
-                        <p className="text-xl font-bold text-slate-800">วิชานี้ยังไม่มี LO ที่อนุมัติแล้ว</p>
-                        <p className="text-slate-600 mt-2">เลือก LO ของวิชาแล้วส่งให้ฝ่ายวิชาการอนุมัติ อนุมัติแล้วจึงบันทึกข้อความพฤติกรรมราย LO ได้</p>
-                        <button type="button" onClick={() => navigate(`/lo-setup/${subjectId}`)} className="btn-primary mt-5">
-                            <ClipboardCheck className="h-4 w-4" aria-hidden="true" />เลือก LO ของวิชานี้
+                        <p className="text-xl font-bold text-slate-800">{loRoom ? `ห้อง ${loRoom} ยังไม่ได้เลือก LO` : 'วิชานี้ยังไม่ได้เลือก LO'}</p>
+                        <p className="text-slate-600 mt-2">เลือก LO ตามคำอธิบายรายวิชาก่อน บันทึกแล้วกลับมาบันทึกข้อความพฤติกรรมได้ทันที</p>
+                        <button type="button" onClick={() => navigate(`/lo-setup/${subjectId}${loRoom ? `?room=${encodeURIComponent(loRoom)}` : ''}`)} className="btn-primary mt-5">
+                            <ClipboardCheck className="h-4 w-4" aria-hidden="true" />เลือก LO{loRoom ? `ของห้อง ${loRoom}` : 'ของวิชานี้'}
                         </button>
                     </div>
                 ) : enrollments.length === 0 ? (
@@ -530,7 +550,7 @@ export default function EvalView() {
                                         onChange={(e) => setSelectedRoom(e.target.value)}
                                         className="min-h-11 text-sm px-3 py-1.5 rounded-lg border border-field font-bold bg-white text-slate-700 outline-none focus:ring-2 focus:ring-indigo-400"
                                     >
-                                        <option value="all">แสดงทุกห้อง ({enrollments.length} คน)</option>
+                                        {roomsShareLo && <option value="all">แสดงทุกห้อง ({enrollments.length} คน)</option>}
                                         {uniqueRooms.map(room => {
                                             const count = enrollments.filter(e => e.room === room).length;
                                             return <option key={room} value={room}>{room} ({count} คน)</option>;

@@ -5,6 +5,9 @@ import toast from 'react-hot-toast';
 import { fetchAllByIn, supabase } from '../../lib/supabase';
 import { useAuth } from '../../AuthContext';
 import { useAcademic } from '../../AcademicContext';
+import { buildLoResolver } from '../../lib/loByRoom';
+import { loadRoomMappings, loadSubjectAssignments } from '../../lib/loByRoomApi';
+import { formatRoomRange, teachersWithRooms } from '../../lib/teacherAccess';
 
 // แท็บติดตามการรายงานผลของฝ่ายวิชาการ แยกออกจาก AdminDashboard ให้โหลดเฉพาะตอนเปิดแท็บ
 // และแก้แท็บนี้ได้โดยไม่เสี่ยงกระทบแท็บอื่น
@@ -38,18 +41,23 @@ export default function ProgressTab() {
                 return;
             }
 
-            const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                .from('student_enrollments')
-                .select('enrollment_id, subject_id')
-                .in('subject_id', batch)
-                .eq('enrollment_status', 'active')
-                .range(from, to));
-
-            const loMaps = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                .from('subject_lo_mapping')
-                .select('subject_id, lo_id')
-                .in('subject_id', batch)
-                .range(from, to));
+            const [enrolls, loMaps, assignments] = await Promise.all([
+                fetchAllByIn(subjectIds, (batch, from, to) => supabase
+                    .from('student_enrollments')
+                    .select('enrollment_id, subject_id, room')
+                    .in('subject_id', batch)
+                    .eq('enrollment_status', 'active')
+                    .range(from, to)),
+                loadRoomMappings(subjectIds),
+                loadSubjectAssignments(subjectIds),
+            ]);
+            // LO ของแต่ละห้องต่างกันได้ จำนวนช่องที่ต้องบันทึกจึงนับตามห้องของนักเรียน
+            const loResolver = buildLoResolver(loMaps);
+            const teacherIds = [...new Set([...(subs || []).map(subject => subject.teacher_id), ...assignments.map(row => row.teacher_id)].filter(Boolean))];
+            const { data: teacherRows } = teacherIds.length
+                ? await supabase.from('users_teachers').select('teacher_id, prefix, first_name, last_name').in('teacher_id', teacherIds)
+                : { data: [] };
+            const teacherNameById = new Map((teacherRows || []).map(teacher => [teacher.teacher_id, `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}`]));
 
             const enrollmentIds = enrolls.map(enrollment => enrollment.enrollment_id);
             const evaluations = enrollmentIds.length > 0
@@ -61,37 +69,36 @@ export default function ProgressTab() {
                 : [];
 
             const enrollmentCountBySubject = new Map();
-            const subjectByEnrollment = new Map();
+            const cellCountBySubject = new Map();
+            const enrollmentById = new Map();
             enrolls.forEach(enrollment => {
                 enrollmentCountBySubject.set(enrollment.subject_id, (enrollmentCountBySubject.get(enrollment.subject_id) || 0) + 1);
-                subjectByEnrollment.set(enrollment.enrollment_id, enrollment.subject_id);
-            });
-
-            const loIdsBySubject = new Map();
-            loMaps.forEach(mapping => {
-                if (!loIdsBySubject.has(mapping.subject_id)) loIdsBySubject.set(mapping.subject_id, new Set());
-                loIdsBySubject.get(mapping.subject_id).add(mapping.lo_id);
+                cellCountBySubject.set(enrollment.subject_id, (cellCountBySubject.get(enrollment.subject_id) || 0) + loResolver.idsFor(enrollment.subject_id, enrollment.room).size);
+                enrollmentById.set(enrollment.enrollment_id, enrollment);
             });
 
             const filledCountBySubject = new Map();
             evaluations.forEach(evaluation => {
                 if (!evaluation.evidence_note?.trim()) return;
-                const subjectId = subjectByEnrollment.get(evaluation.enrollment_id);
-                if (!subjectId || !loIdsBySubject.get(subjectId)?.has(evaluation.lo_id)) return;
-                filledCountBySubject.set(subjectId, (filledCountBySubject.get(subjectId) || 0) + 1);
+                const enrollment = enrollmentById.get(evaluation.enrollment_id);
+                if (!enrollment || !loResolver.idsFor(enrollment.subject_id, enrollment.room).has(evaluation.lo_id)) return;
+                filledCountBySubject.set(enrollment.subject_id, (filledCountBySubject.get(enrollment.subject_id) || 0) + 1);
             });
 
             const progress = (subs || []).map(subject => {
                 const studentCount = enrollmentCountBySubject.get(subject.subject_id) || 0;
-                const loCount = loIdsBySubject.get(subject.subject_id)?.size || 0;
-                const totalCells = studentCount * loCount;
+                const loCount = loResolver.allIdsForSubject(subject.subject_id).size;
+                const totalCells = cellCountBySubject.get(subject.subject_id) || 0;
                 const filledCells = filledCountBySubject.get(subject.subject_id) || 0;
                 const percent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
-                const teacher = subject.users_teachers;
+                // ครูของวิชาแยกตามห้อง ไม่ใช้ครูหลักคนเดียว ฝ่ายวิชาการจะได้ตามถูกคน
+                const teacherName = teachersWithRooms(subject, assignments.filter(row => row.subject_id === subject.subject_id))
+                    .map(item => `${teacherNameById.get(item.teacherId) || 'ครูผู้สอน'}${item.rooms.length ? ` (${formatRoomRange(item.rooms)})` : ''}`)
+                    .join(' · ');
 
                 return {
                     ...subject,
-                    teacherName: teacher ? `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}` : 'ยังไม่มอบหมาย',
+                    teacherName: teacherName || 'ยังไม่มอบหมาย',
                     studentCount,
                     loCount,
                     totalCells,

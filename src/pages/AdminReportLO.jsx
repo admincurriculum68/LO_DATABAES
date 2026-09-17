@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
+import { buildLoResolver } from '../lib/loByRoom';
+import { loadRoomMappings } from '../lib/loByRoomApi';
 import { useAuth } from '../AuthContext';
 import { useAcademic } from '../AcademicContext';
 import { Printer, ChevronDown, Download } from 'lucide-react';
@@ -86,21 +88,26 @@ export default function AdminReportLO() {
                 .eq('subjects.semester', semester);
             if (mappingError) throw mappingError;
 
-            const mappedSubjects = (mappings || []).map(m => m.subjects).filter(Boolean);
-            // Filter to this school's subjects
-            const filtered = mappedSubjects.filter(s => s);
+            // วิชาหนึ่งมีได้หลายแถวเมื่อเลือก LO แยกห้อง จึงตัดวิชาซ้ำ
+            const filtered = [...new Map((mappings || []).map(m => m.subjects).filter(Boolean).map(s => [s.subject_id, s])).values()];
             setSubjects(filtered);
 
             const subjectIds = filtered.map(s => s.subject_id);
             if (subjectIds.length === 0) { setEvalsByLO([]); setEnrollmentMap({}); return; }
 
             // 2. Get all enrollments for those subjects
-            const enrolls = await fetchAllByIn(subjectIds, (batch, from, to) => supabase
-                .from('student_enrollments')
-                .select('enrollment_id, student_id, subject_id')
-                .in('subject_id', batch)
-                .eq('enrollment_status', 'active')
-                .range(from, to));
+            // เก็บเฉพาะนักเรียนในห้องที่ใช้ LO นี้จริง ห้องอื่นของวิชาเดียวกันอาจเลือก LO ต่างกัน
+            const [allEnrolls, roomMappings] = await Promise.all([
+                fetchAllByIn(subjectIds, (batch, from, to) => supabase
+                    .from('student_enrollments')
+                    .select('enrollment_id, student_id, subject_id, room')
+                    .in('subject_id', batch)
+                    .eq('enrollment_status', 'active')
+                    .range(from, to)),
+                loadRoomMappings(subjectIds),
+            ]);
+            const loResolver = buildLoResolver(roomMappings);
+            const enrolls = allEnrolls.filter(e => loResolver.idsFor(e.subject_id, e.room).has(loId));
 
             const eMap = {};
             enrolls.forEach(e => { eMap[e.enrollment_id] = { student_id: e.student_id, subject_id: e.subject_id }; });

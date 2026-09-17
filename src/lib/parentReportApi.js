@@ -2,6 +2,7 @@ import { fetchAllByIn, fetchAllRows, supabase } from './supabase';
 import { normalizeCompetencyArea } from '../constants/curriculum2568';
 import { buildParentReport } from './parentReport';
 import { homeroomSummarySupported } from './homeroomSummaryApi';
+import { loadRoomMappings } from './loByRoomApi';
 import { loadSchoolProfile } from './schoolProfile';
 
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim();
@@ -45,8 +46,7 @@ export async function loadParentReports({ schoolId, academicYear, semester, stud
     const grades = [...new Set(enrollments.map(item => item.users_students?.current_grade_level || item.subjects?.grade_level).filter(Boolean))];
 
     const [mappings, evaluations, decisions, activities, teachers, yearly] = await Promise.all([
-        fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping')
-            .select('subject_id, learning_outcomes(lo_id, lo_code, ability_no, competency_area)').in('subject_id', batch).range(from, to)),
+        loadRoomMappings(subjectIds, { withLo: true }),
         fetchAllByIn(enrollments.map(item => item.enrollment_id), (batch, from, to) => supabase.from('lo_evaluations')
             .select('enrollment_id, lo_id, evidence_note').in('enrollment_id', batch).range(from, to)),
         fetchAllByIn(studentIds, (batch, from, to) => supabase.from('competency_area_final_decisions')

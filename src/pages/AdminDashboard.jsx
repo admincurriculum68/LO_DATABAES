@@ -240,9 +240,12 @@ export default function AdminDashboard() {
                 setStats(prev => ({ ...prev, teachers: count || 0 }));
             });
 
-        supabase.from('learning_contexts').select('context_id', { count: 'exact', head: true })
-            .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester)
-            .then(({ count }) => setStats(prev => ({ ...prev, contexts: count || 0 })));
+        // ปีการศึกษายังโหลดไม่เสร็จ ไม่ต้องถาม ไม่งั้นได้คำขอที่ล้มทุกครั้งที่เปิดหน้า
+        if (academicYear && semester) {
+            supabase.from('learning_contexts').select('context_id', { count: 'exact', head: true })
+                .eq('school_id', currentUser.school_id).eq('academic_year', academicYear).eq('semester', semester)
+                .then(({ count }) => setStats(prev => ({ ...prev, contexts: count || 0 })));
+        }
 
         supabase.from('learning_outcomes').select('lo_id', { count: 'exact', head: true })
             .eq('school_id', currentUser.school_id)
