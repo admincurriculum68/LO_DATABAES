@@ -35,6 +35,8 @@ import { useAuth } from '../AuthContext';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
+import { loadSubjectAssignments } from '../lib/loByRoomApi';
+import { formatRoomRange, teachersWithRooms } from '../lib/teacherAccess';
 import { ACTIVITY_CATEGORIES_51, CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
 const TYPE_META = {
@@ -170,9 +172,10 @@ export default function LearningContextManager() {
             const contexts = contextsResult.data || [];
             const subjectIds = subjects.map(item => item.subject_id);
             const contextIds = contexts.map(item => item.context_id);
-            const [subjectMappings, contextMappings] = await Promise.all([
+            const [subjectMappings, contextMappings, subjectAssignments] = await Promise.all([
                 fetchAllByIn(subjectIds, (batch, from, to) => supabase.from('subject_lo_mapping').select('subject_id, lo_id').in('subject_id', batch).range(from, to)),
                 fetchAllByIn(contextIds, (batch, from, to) => supabase.from('learning_context_lo_mappings').select('context_id, lo_id').in('context_id', batch).range(from, to)),
+                loadSubjectAssignments(subjectIds),
             ]);
 
             const items = [
@@ -186,6 +189,8 @@ export default function LearningContextManager() {
                     description: subject.description || (subject.subject_group ? `กลุ่มวิชา: ${subject.subject_group}` : ''),
                     grade_level: subject.grade_level,
                     responsible_teacher_id: subject.teacher_id,
+                    // วิชาหนึ่งมีครูได้หลายคนแยกตามห้อง ครูหลักคนเดียวไม่พอบอกว่าใครสอนห้องไหน
+                    teacher_rooms: teachersWithRooms(subject, subjectAssignments.filter(row => row.subject_id === subject.subject_id)),
                     teaching_hours: subject.teaching_hours,
                     is_active: true,
                 })),
@@ -241,6 +246,13 @@ export default function LearningContextManager() {
         teacher.teacher_id,
         `${teacher.prefix || ''}${teacher.first_name} ${teacher.last_name}`.trim(),
     ])), [teachers]);
+
+    const teacherLabel = useCallback(item => {
+        if (item.source !== 'subject') return teacherById[item.responsible_teacher_id] || '';
+        return (item.teacher_rooms || [])
+            .map(entry => `${teacherById[entry.teacherId] || 'ครูผู้สอน'}${entry.rooms.length ? ` (${formatRoomRange(entry.rooms)})` : ''}`)
+            .join(' · ');
+    }, [teacherById]);
 
     const formatCounts = useMemo(() => {
         const counts = Object.fromEntries(LEARNING_FORMAT_ORDER.map(type => [type, 0]));
@@ -302,14 +314,14 @@ export default function LearningContextManager() {
 
             // 5. Search Text Query
             if (normalized) {
-                const teacherName = teacherById[item.responsible_teacher_id] || '';
+                const teacherName = teacherLabel(item);
                 const haystack = `${item.context_name || ''} ${item.subject_group || ''} ${item.description || ''} ${item.grade_level || ''} ${teacherName}`.toLowerCase();
                 if (!haystack.includes(normalized)) return false;
             }
 
             return true;
         });
-    }, [formatFilter, gradeFilter, groupFilter, loStatusFilter, itemQuery, learningFormats, mappedByItem, teacherById]);
+    }, [formatFilter, gradeFilter, groupFilter, loStatusFilter, itemQuery, learningFormats, mappedByItem, teacherLabel]);
 
     const competencyAreas = useMemo(() => [...new Set(los.map(lo => lo.competency_area).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')), [los]);
     const filteredLOs = useMemo(() => {
@@ -927,9 +939,9 @@ export default function LearningContextManager() {
                                                                 </span>
                                                             </div>
 
-                                                            {item.responsible_teacher_id && (
+                                                            {teacherLabel(item) && (
                                                                 <p className={`text-xs truncate ${isActiveItem ? 'text-indigo-200' : 'text-slate-500'}`}>
-                                                                    ผู้รับผิดชอบ: {teacherById[item.responsible_teacher_id] || '-'}
+                                                                    {item.source === 'subject' ? 'ครูผู้สอน' : 'ผู้รับผิดชอบ'}: {teacherLabel(item)}
                                                                 </p>
                                                             )}
                                                         </div>
@@ -1210,11 +1222,13 @@ export default function LearningContextManager() {
                                                         {selectedItem.context_name}
                                                     </h2>
 
-                                                    <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                                                    <div className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                                                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
                                                             <User className="h-3.5 w-3.5" />
                                                         </span>
-                                                        <span>ผู้รับผิดชอบ: <strong className="text-slate-800 font-bold">{teacherById[selectedItem.responsible_teacher_id] || 'ยังไม่กำหนด'}</strong></span>
+                                                        <span className="pt-1 leading-5">
+                                                            {selectedItem.source === 'subject' ? 'ครูผู้สอน' : 'ผู้รับผิดชอบ'}: <strong className="text-slate-800 font-bold">{teacherLabel(selectedItem) || 'ยังไม่กำหนด'}</strong>
+                                                        </span>
                                                     </div>
                                                 </div>
 
@@ -1226,6 +1240,15 @@ export default function LearningContextManager() {
                                                         >
                                                             {selectedItem.is_active ? <PauseCircle className="h-4 w-4 text-amber-700" /> : <PlayCircle className="h-4 w-4 text-emerald-700" />}
                                                             {selectedItem.is_active ? 'พักการใช้งาน' : 'เปิดใช้งาน'}
+                                                        </button>
+                                                    )}
+                                                    {selectedItem.source === 'subject' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => navigate(`/admin/subject-teachers?subject=${selectedItem.recordId}`)}
+                                                            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+                                                        >
+                                                            <User className="h-4 w-4 text-slate-600" aria-hidden="true" />แก้ครูผู้สอน
                                                         </button>
                                                     )}
                                                     <button

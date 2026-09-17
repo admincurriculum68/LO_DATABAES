@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeTeacherImportRows, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft, personFieldErrors } from '../src/lib/people.js';
+import { mergeTeacherImportRows, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, validatePersonDraft, personFieldErrors, thaiDobPassword, STUDENT_STATUS_CHOICES, studentStatusLabel } from '../src/lib/people.js';
 
 const multiRole = {
     role: 'teacher',
@@ -97,4 +97,21 @@ test('personFieldErrors บอกข้อผิดพลาดแยกรา�
     assert.deepEqual(Object.keys(errors), ['citizen_id', 'first_name', 'roles']);
     assert.match(errors.citizen_id, /ขณะนี้ 3 หลัก/);
     assert.deepEqual(personFieldErrors('students', { citizen_id: '1234567890123', first_name: 'ก', last_name: 'ข' }), {});
+});
+
+test('นักเรียนใหม่ต้องมีวันเกิดที่ใช้เป็นรหัสผ่านได้ รับได้ทั้งแบบมีขีดคั่นและ 8 หลัก', () => {
+    const base = { citizen_id: '1234567890123', first_name: 'ปอ', last_name: 'ใจดี' };
+    assert.equal(personFieldErrors('students', { ...base, dob: '' }).dob, 'กรอกวันเดือนปีเกิด 8 หลัก ปี พ.ศ. เช่น 05012560');
+    assert.equal(personFieldErrors('students', { ...base, dob: '32012560' }).dob !== undefined, true);
+    assert.equal(personFieldErrors('students', { ...base, dob: '05012560' }).dob, undefined);
+    assert.equal(personFieldErrors('students', base).dob, undefined);
+    assert.equal(thaiDobPassword('5/1/2560'), '05012560');
+    assert.equal(thaiDobPassword('05-01-2017'), '05012560');
+    assert.equal(thaiDobPassword('0501'), '');
+});
+
+test('สถานะนักเรียนใช้เฉพาะค่าที่ฐานข้อมูลยอมรับ ไม่มี inactive', () => {
+    assert.deepEqual(STUDENT_STATUS_CHOICES.map(([value]) => value), ['active', 'transferred', 'dropped', 'graduated']);
+    assert.equal(studentStatusLabel('transferred'), 'ย้ายออก');
+    assert.equal(studentStatusLabel('inactive'), 'ไม่ได้เรียนแล้ว');
 });

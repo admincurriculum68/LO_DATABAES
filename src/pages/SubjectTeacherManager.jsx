@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Save, Search, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAcademic } from '../AcademicContext';
 import { useAuth } from '../AuthContext';
@@ -14,6 +15,9 @@ const pairKey = (teacherId, room) => `${teacherId}::${room}`;
 export default function SubjectTeacherManager() {
     const { currentUser } = useAuth();
     const { academicYear, semester } = useAcademic();
+    // เปิดจากหน้ารายวิชาพร้อม ?subject= จะเลือกวิชานั้นให้เลย
+    const [searchParams] = useSearchParams();
+    const requestedSubjectId = searchParams.get('subject') || '';
     const [subjects, setSubjects] = useState([]);
     const [teachers, setTeachers] = useState([]);
     const [subjectId, setSubjectId] = useState('');
@@ -28,7 +32,8 @@ export default function SubjectTeacherManager() {
     const [saving, setSaving] = useState(false);
 
     const loadBaseData = useCallback(async () => {
-        if (!currentUser?.school_id) return;
+        // ปีการศึกษายังไม่โหลด ถ้าส่งคำขอไปก่อนจะได้ academic_year=null แล้วล้ม
+        if (!currentUser?.school_id || !academicYear || !semester) return;
         setLoading(true);
         try {
             const [subjectResult, teacherResult] = await Promise.all([
@@ -39,13 +44,15 @@ export default function SubjectTeacherManager() {
             if (teacherResult.error) throw teacherResult.error;
             setSubjects(subjectResult.data || []);
             setTeachers(teacherResult.data || []);
-            setSubjectId(current => current || subjectResult.data?.[0]?.subject_id || '');
+            const loaded = subjectResult.data || [];
+            const requested = loaded.some(subject => subject.subject_id === requestedSubjectId) ? requestedSubjectId : '';
+            setSubjectId(current => current || requested || loaded[0]?.subject_id || '');
         } catch (error) {
             toast.error('โหลดข้อมูลครูประจำวิชาไม่สำเร็จ: ' + error.message);
         } finally {
             setLoading(false);
         }
-    }, [academicYear, currentUser?.school_id, semester]);
+    }, [academicYear, currentUser?.school_id, requestedSubjectId, semester]);
 
     useEffect(() => { loadBaseData(); }, [loadBaseData]);
     useEffect(() => { roomHoursSupported().then(setRoomHoursEnabled); }, []);

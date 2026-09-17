@@ -5,7 +5,7 @@
  * ส่วนที่คุยกับ Supabase อยู่ใน peopleApi.js
  */
 import { ROLE_LABELS, parseRoleList, rolesOf } from './roles.js';
-import { citizenIdFormatError, isCitizenIdFormat, LOSSY_SCIENTIFIC, sanitizeCitizenId } from './importSanitizers.js';
+import { citizenIdFormatError, isCitizenIdFormat, LOSSY_SCIENTIFIC, normalizeThaiDob, sanitizeCitizenId } from './importSanitizers.js';
 
 export const ROLE_CHOICES = [
     ['teacher', 'ครูผู้สอน'],
@@ -49,6 +49,32 @@ export function teacherRoleSummary(teacher) {
  * คืน object เช่น { citizen_id: '...', first_name: '...' } ช่องที่ถูกต้องไม่มี key
  * ข้อความอธิบายผลที่จะเกิดจริง ไม่ใช่แค่บอกว่าข้อมูลไม่ถูกต้อง
  */
+// ค่าที่ฐานข้อมูลยอมรับ (users_students_student_status_check) ไม่มีค่า inactive
+export const STUDENT_STATUS_CHOICES = [
+    ['active', 'ใช้งานอยู่'],
+    ['transferred', 'ย้ายออก'],
+    ['dropped', 'ลาออก'],
+    ['graduated', 'จบการศึกษา'],
+];
+
+export function studentStatusLabel(status) {
+    return STUDENT_STATUS_CHOICES.find(([value]) => value === status)?.[1] || 'ไม่ได้เรียนแล้ว';
+}
+
+/** วันเดือนปีเกิด DDMMYYYY ปี พ.ศ. ที่ใช้เป็นรหัสผ่านได้ คืนค่าว่างถ้าไม่ถูกต้อง */
+export function thaiDobPassword(value) {
+    const text = String(value ?? '').trim();
+    // รับเฉพาะที่พิมพ์เป็นวันที่ ไม่แปลงตัวเลขสั้น ๆ เป็นเลขวันที่ของ Excel
+    if (!/^\d{8}$/.test(text) && !/^\d{1,2}[\s./-]\d{1,2}[\s./-]\d{2,4}$/.test(text)) return '';
+    const dob = normalizeThaiDob(text);
+    if (!/^\d{8}$/.test(dob)) return '';
+    const day = Number(dob.slice(0, 2));
+    const month = Number(dob.slice(2, 4));
+    const year = Number(dob.slice(4));
+    if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2400 || year > 2700) return '';
+    return dob;
+}
+
 export function personFieldErrors(kind, data) {
     const errors = {};
     const id = sanitizeCitizenId(data.citizen_id);
@@ -60,6 +86,10 @@ export function personFieldErrors(kind, data) {
 
     if (kind === 'teachers' && (!Array.isArray(data.roles) || data.roles.length === 0)) {
         errors.roles = 'ครู 1 คนต้องมีอย่างน้อย 1 บทบาท';
+    }
+    // ช่องวันเกิดมีเฉพาะตอนเพิ่มคนใหม่ ใช้เป็นรหัสผ่านเข้าสู่ระบบ
+    if (data.dob !== undefined && !thaiDobPassword(data.dob)) {
+        errors.dob = 'กรอกวันเดือนปีเกิด 8 หลัก ปี พ.ศ. เช่น 05012560';
     }
     if (data.new_password !== undefined && data.new_password !== null && String(data.new_password).trim() !== '') {
         const pw = String(data.new_password).replace(/\D/g, '');

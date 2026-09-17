@@ -1,22 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, Check, Save, Search, UserRound, Users, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Save, Search, UserPlus, UserRound, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Layout from '../components/Layout';
 import { useAuth } from '../AuthContext';
+import { useAcademic } from '../AcademicContext';
+import { useDialog } from '../lib/dialogContext';
 import { fetchAllRows, supabase } from '../lib/supabase';
 import { ROLE_LABELS } from '../lib/roles';
 import {
-    ROLE_CHOICES, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, personFieldErrors,
+    ROLE_CHOICES, personSearchText, primaryTeacherRoleOf, teacherRoleSummary, teacherRolesOf, personFieldErrors, thaiDobPassword,
+    STUDENT_STATUS_CHOICES, studentStatusLabel,
 } from '../lib/people';
 import { syncTeacherRoles } from '../lib/peopleApi';
 import { normalizeCitizenInput, sanitizeCitizenId } from '../lib/importSanitizers';
+import { LEAVE_STATUS, placementSummary, planStudentPlacement } from '../lib/studentPlacement';
+import {
+    applyStudentPlacement, createStudent, findCitizenOwner, loadRoomSubjects, loadStudentTermEnrollments,
+} from '../lib/studentPlacementApi';
 
 const TEACHER_SELECT = 'teacher_id, citizen_id, prefix, first_name, last_name, role, homeroom, is_active, teacher_roles(role, is_primary)';
 const STUDENT_SELECT = 'student_id, citizen_id, student_code, prefix, first_name, last_name, current_grade_level, current_room, student_status';
 
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim() || 'ไม่ระบุชื่อ';
 const isActivePerson = (person, kind) => (kind === 'teachers' ? person.is_active === true : person.student_status === 'active');
+const inactiveLabel = kind => (kind === 'teachers' ? 'ระงับการใช้งาน' : 'ย้ายออก ลาออก หรือจบการศึกษา');
+const BLANK_STUDENT = {
+    citizen_id: '', dob: '', student_code: '', prefix: '', first_name: '', last_name: '',
+    current_grade_level: '', current_room: '', student_status: 'active',
+};
+// ป.4/1 → ป.4 ใช้เมื่อไม่ได้กรอกชั้นเอง
+const gradeFromRoom = room => String(room || '').match(/^(.*\d+)\s*\/\s*\d+$/)?.[1]?.trim() || '';
 
 function Field({ label, hint, error, errorId, children }) {
     return (
@@ -37,6 +51,8 @@ const inputClass = 'min-h-11 w-full rounded-xl border border-field bg-white px-3
 
 export default function PeopleManager() {
     const { currentUser } = useAuth();
+    const { academicYear, semester } = useAcademic();
+    const dialog = useDialog();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const kind = searchParams.get('type') === 'students' ? 'students' : 'teachers';
@@ -51,6 +67,9 @@ export default function PeopleManager() {
     const [draft, setDraft] = useState(null);
     const [fieldErrors, setFieldErrors] = useState({});
     const [saving, setSaving] = useState(false);
+    // เพิ่มนักเรียนใหม่ใช้แผงเดียวกับการแก้ไข
+    const [creating, setCreating] = useState(false);
+    const [roomPreview, setRoomPreview] = useState({ room: '', subjects: [], loading: false });
 
     const idKey = kind === 'teachers' ? 'teacher_id' : 'student_id';
     const people = kind === 'teachers' ? teachers : students;
@@ -105,6 +124,7 @@ export default function PeopleManager() {
 
     // เตรียมแบบร่างใหม่ทุกครั้งที่เปลี่ยนคนที่เลือก เพื่อไม่ให้ค่าที่แก้ค้างข้ามคน
     useEffect(() => {
+        if (creating) return;
         if (!selected) { setDraft(null); return; }
         setDraft(kind === 'teachers'
             ? {
@@ -119,11 +139,38 @@ export default function PeopleManager() {
                 current_grade_level: selected.current_grade_level || '', current_room: selected.current_room || '',
                 student_status: selected.student_status || 'active',
             });
-    }, [selected, kind]);
+    }, [selected, kind, creating]);
+
+    // ตอนเพิ่มนักเรียน แสดงวิชาที่จะจัดให้ตามห้องที่กรอก
+    const previewRoom = creating ? String(draft?.current_room || '').trim() : '';
+    useEffect(() => {
+        if (!previewRoom) { setRoomPreview({ room: '', subjects: [], loading: false }); return undefined; }
+        let cancelled = false;
+        setRoomPreview(current => ({ ...current, loading: true }));
+        const timer = setTimeout(() => {
+            loadRoomSubjects({ schoolId: currentUser?.school_id, academicYear, semester, room: previewRoom })
+                .then(({ subjects }) => { if (!cancelled) setRoomPreview({ room: previewRoom, subjects, loading: false }); })
+                .catch(() => { if (!cancelled) setRoomPreview({ room: previewRoom, subjects: [], loading: false, failed: true }); });
+        }, 400);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [academicYear, currentUser?.school_id, previewRoom, semester]);
+
+    const startCreate = () => {
+        setSelectedId('');
+        setFieldErrors({});
+        setCreating(true);
+        setDraft({ ...BLANK_STUDENT, current_room: groupFilter !== 'all' ? groupFilter : '' });
+    };
+
+    const closePanel = () => {
+        setCreating(false);
+        setSelectedId('');
+    };
 
     const switchKind = nextKind => {
         setSearchParams(nextKind === 'students' ? { type: 'students' } : {}, { replace: true });
         setSelectedId('');
+        setCreating(false);
         setQuery('');
         setStatusFilter('all');
         setGroupFilter('all');
@@ -152,16 +199,104 @@ export default function PeopleManager() {
         'aria-describedby': fieldErrors[key] ? `person-${key}-error` : undefined,
     });
 
+    const focusFirstError = errors => {
+        const firstInvalid = Object.keys(errors)[0];
+        if (firstInvalid) document.getElementById(`person-${firstInvalid}`)?.focus();
+        return Boolean(firstInvalid);
+    };
+
+    // วิชาของภาคเรียนนี้ที่ต้องเปลี่ยนเมื่อย้ายห้อง ย้ายออก หรือกลับมาเรียน ถามก่อนทุกครั้ง
+    // คืน null ถ้าผู้ใช้ยกเลิก คืน { plan } ถ้าไปต่อได้ (plan ว่างได้)
+    const confirmPlacement = async ({ mode, room, name }) => {
+        const withdraw = mode === 'withdraw';
+        const { subjects, termSubjects } = await loadRoomSubjects({
+            schoolId: currentUser.school_id, academicYear, semester, room: withdraw ? '' : room,
+        });
+        const enrollments = await loadStudentTermEnrollments(selectedId, termSubjects.map(subject => subject.subject_id));
+        const plan = planStudentPlacement({
+            enrollments,
+            targetSubjectIds: withdraw ? [] : subjects.map(subject => subject.subject_id),
+            targetRoom: room || null,
+            leaveStatus: withdraw ? LEAVE_STATUS.withdraw : LEAVE_STATUS.move,
+        });
+        if (!plan.hasChanges) return { plan };
+        const names = new Map(termSubjects.map(subject => [subject.subject_id, subject.subject_name]));
+        const lines = placementSummary(plan, names);
+        if (!withdraw && room && subjects.length === 0) {
+            lines.unshift(`ห้อง ${room} ยังไม่มีวิชาในภาคเรียนที่ ${semester}/${academicYear} ตรวจชื่อห้องอีกครั้ง`);
+        }
+        const copy = {
+            withdraw: { title: `บันทึกว่า ${name} ${studentStatusLabel(draft.student_status)}?`, confirmLabel: 'นำออกจากทุกวิชา' },
+            reopen: { title: `${name} กลับมาเรียนห้อง ${room || '-'}?`, confirmLabel: 'จัดเข้าวิชาของห้อง' },
+            move: { title: room ? `ย้าย ${name} ไปห้อง ${room}?` : `นำ ${name} ออกจากห้องเรียน?`, confirmLabel: 'ย้ายห้องและวิชา' },
+        }[mode];
+        const confirmed = await dialog.confirm({
+            ...copy,
+            message: `ภาคเรียนที่ ${semester}/${academicYear}\n${lines.map(line => `• ${line}`).join('\n')}`,
+            tone: plan.toLeave.length ? 'danger' : undefined,
+        });
+        return confirmed ? { plan } : null;
+    };
+
+    const addStudent = async () => {
+        const citizenId = sanitizeCitizenId(draft.citizen_id);
+        const owner = await findCitizenOwner(citizenId);
+        if (owner) {
+            const message = owner.kind === 'teacher'
+                ? 'เลขนี้เป็นของครูหรือบุคลากรในระบบแล้ว ตรวจเลขอีกครั้ง'
+                : owner.school_id === currentUser.school_id
+                    ? 'มีนักเรียนเลขนี้ในโรงเรียนแล้ว ค้นหาชื่อในรายการทางซ้ายแทนการเพิ่มใหม่'
+                    : 'เลขนี้ถูกใช้ในโรงเรียนอื่นแล้ว ตรวจเลขอีกครั้ง';
+            const errors = { citizen_id: message };
+            setFieldErrors(errors);
+            focusFirstError(errors);
+            return;
+        }
+        const room = draft.current_room.trim();
+        const { subjects } = await loadRoomSubjects({ schoolId: currentUser.school_id, academicYear, semester, room });
+        const plan = planStudentPlacement({ enrollments: [], targetSubjectIds: subjects.map(subject => subject.subject_id), targetRoom: room || null });
+        const studentId = await createStudent({
+            schoolId: currentUser.school_id,
+            dob: thaiDobPassword(draft.dob),
+            student: {
+                citizen_id: citizenId,
+                student_code: draft.student_code.trim(),
+                prefix: draft.prefix.trim(),
+                first_name: draft.first_name.trim(),
+                last_name: draft.last_name.trim(),
+                current_grade_level: draft.current_grade_level.trim() || gradeFromRoom(room),
+                current_room: room,
+            },
+        });
+        const name = fullName(draft);
+        try {
+            if (plan.hasChanges) {
+                await applyStudentPlacement({
+                    studentId, plan, schoolId: currentUser.school_id, actor: currentUser,
+                    action: 'add_student', detail: { room, academic_year: academicYear, semester },
+                });
+            }
+            toast.success(subjects.length
+                ? `เพิ่ม ${name} แล้ว เข้าเรียน ${subjects.length} วิชาของห้อง ${room}`
+                : `เพิ่ม ${name} แล้ว ยังไม่ได้เข้าวิชาใด`);
+        } catch (error) {
+            toast.error(`เพิ่ม ${name} แล้ว แต่จัดเข้าวิชาไม่สำเร็จ: ${error.message} เปิดชื่อนักเรียนแล้วแก้ห้องเพื่อจัดวิชาอีกครั้ง`);
+        }
+        setCreating(false);
+        await loadPeople();
+        setSelectedId(studentId);
+    };
+
     const save = async () => {
         const errors = personFieldErrors(kind, draft);
         setFieldErrors(errors);
-        const firstInvalid = Object.keys(errors)[0];
-        if (firstInvalid) {
-            document.getElementById(`person-${firstInvalid}`)?.focus();
-            return;
-        }
+        if (focusFirstError(errors)) return;
         setSaving(true);
         try {
+            if (creating) {
+                await addStudent();
+                return;
+            }
             const citizenId = sanitizeCitizenId(draft.citizen_id);
             if (kind === 'teachers') {
                 const { error } = await supabase.from('users_teachers').update({
@@ -172,11 +307,30 @@ export default function PeopleManager() {
                 if (error) throw error;
                 await syncTeacherRoles(selectedId, draft.roles, draft.role);
             } else {
+                const roomBefore = String(selected.current_room || '').trim();
+                const roomAfter = draft.current_room.trim();
+                const wasActive = selected.student_status === 'active';
+                const isActive = draft.student_status === 'active';
+                const mode = wasActive && !isActive ? 'withdraw'
+                    : !wasActive && isActive ? 'reopen'
+                        : isActive && roomBefore !== roomAfter ? 'move' : null;
+                // จัดวิชาก่อนแก้ข้อมูลนักเรียน ถ้าล้มกลางทาง กดบันทึกซ้ำแล้วระบบคำนวณจากข้อมูลล่าสุดใหม่
+                if (mode && academicYear && semester) {
+                    const decision = await confirmPlacement({ mode, room: roomAfter, name: fullName(selected) });
+                    if (!decision) return;
+                    if (decision.plan.hasChanges) {
+                        await applyStudentPlacement({
+                            studentId: selectedId, plan: decision.plan, schoolId: currentUser.school_id, actor: currentUser,
+                            action: { withdraw: 'withdraw_student', reopen: 'reopen_student', move: 'move_student_room' }[mode],
+                            detail: { from_room: roomBefore || null, to_room: roomAfter || null, academic_year: academicYear, semester },
+                        });
+                    }
+                }
                 const { error } = await supabase.from('users_students').update({
                     citizen_id: citizenId, student_code: draft.student_code.trim() || null,
                     prefix: draft.prefix.trim(), first_name: draft.first_name.trim(), last_name: draft.last_name.trim(),
                     current_grade_level: draft.current_grade_level.trim() || null,
-                    current_room: draft.current_room.trim() || null, student_status: draft.student_status,
+                    current_room: roomAfter || null, student_status: draft.student_status,
                 }).eq('student_id', selectedId).eq('school_id', currentUser.school_id);
                 if (error) throw error;
             }
@@ -188,6 +342,9 @@ export default function PeopleManager() {
             setSaving(false);
         }
     };
+
+    const detailOpen = Boolean(selectedId) || creating;
+    const roomOptions = groupOptions.map(option => option.value);
 
     return (
         <Layout title="ครูและนักเรียน">
@@ -243,7 +400,7 @@ export default function PeopleManager() {
                     >
                         <option value="all">ทุกสถานะ</option>
                         <option value="active">ใช้งานอยู่</option>
-                        <option value="inactive">ระงับการใช้งาน</option>
+                        <option value="inactive">{inactiveLabel(kind)}</option>
                     </select>
                 </section>
 
@@ -254,13 +411,20 @@ export default function PeopleManager() {
                 )}
 
                 <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-                    <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${selectedId ? 'hidden lg:block' : ''}`}>
-                        <div className="border-b border-line px-4 py-3">
-                            <h2 className="font-bold text-slate-900">
-                                {kind === 'teachers' ? 'ครูและบุคลากร' : 'นักเรียน'} {visiblePeople.length} คน
-                            </h2>
-                            {visiblePeople.length !== people.length && (
-                                <p className="mt-0.5 text-xs text-slate-600">จากทั้งหมด {people.length} คน</p>
+                    <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${detailOpen ? 'hidden lg:block' : ''}`}>
+                        <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+                            <div>
+                                <h2 className="font-bold text-slate-900">
+                                    {kind === 'teachers' ? 'ครูและบุคลากร' : 'นักเรียน'} {visiblePeople.length} คน
+                                </h2>
+                                {visiblePeople.length !== people.length && (
+                                    <p className="mt-0.5 text-xs text-slate-600">จากทั้งหมด {people.length} คน</p>
+                                )}
+                            </div>
+                            {kind === 'students' && (
+                                <button type="button" onClick={startCreate} aria-pressed={creating} className="action-primary inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-bold">
+                                    <UserPlus className="h-4 w-4" aria-hidden="true" />เพิ่มนักเรียน
+                                </button>
                             )}
                         </div>
                         <div className="max-h-[640px] divide-y divide-line overflow-y-auto">
@@ -272,7 +436,7 @@ export default function PeopleManager() {
                                     <button
                                         key={person[idKey]}
                                         type="button"
-                                        onClick={() => { setSelectedId(person[idKey]); setFieldErrors({}); }}
+                                        onClick={() => { setCreating(false); setSelectedId(person[idKey]); setFieldErrors({}); }}
                                         aria-current={selectedId === person[idKey] ? 'true' : undefined}
                                         className={`flex w-full items-center gap-3 p-4 text-left ${selectedId === person[idKey] ? 'surface-selected' : 'hover:bg-slate-50'}`}
                                     >
@@ -289,7 +453,7 @@ export default function PeopleManager() {
                                         </span>
                                         {!active && (
                                             <span className="shrink-0 rounded-lg border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
-                                                ระงับ
+                                                {kind === 'teachers' ? 'ระงับ' : studentStatusLabel(person.student_status)}
                                             </span>
                                         )}
                                     </button>
@@ -305,8 +469,8 @@ export default function PeopleManager() {
                         </div>
                     </aside>
 
-                    <section className={`overflow-hidden rounded-2xl border border-line bg-white ${selectedId ? '' : 'hidden lg:block'}`}>
-                        {!selected || !draft ? (
+                    <section className={`overflow-hidden rounded-2xl border border-line bg-white ${detailOpen ? '' : 'hidden lg:block'}`}>
+                        {(!selected && !creating) || !draft ? (
                             <div className="p-16 text-center text-slate-600">
                                 <UserRound className="mx-auto mb-3 h-10 w-10 text-slate-300" />
                                 เลือกรายชื่อทางซ้ายเพื่อดูและแก้ไขข้อมูล
@@ -314,14 +478,16 @@ export default function PeopleManager() {
                         ) : (
                             <>
                                 <header className="border-b border-line p-5">
-                                    <button type="button" onClick={() => setSelectedId('')} className="btn-ghost -ml-2 mb-2 lg:hidden">
+                                    <button type="button" onClick={closePanel} className="btn-ghost -ml-2 mb-2 lg:hidden">
                                         <ArrowLeft className="h-4 w-4" aria-hidden="true" />กลับไปรายชื่อ
                                     </button>
-                                    <h2 className="text-lg font-bold text-slate-950">{fullName(selected)}</h2>
+                                    <h2 className="text-lg font-bold text-slate-950">{creating ? 'เพิ่มนักเรียนใหม่' : fullName(selected)}</h2>
                                     <p className="mt-1 text-sm text-slate-600">
-                                        {kind === 'teachers'
-                                            ? teacherRoleSummary(selected)
-                                            : `${selected.current_grade_level || 'ยังไม่ระบุชั้น'} · ห้อง ${selected.current_room || 'ยังไม่จัด'}`}
+                                        {creating
+                                            ? `บันทึกแล้วระบบจัดเข้าทุกวิชาของห้องในภาคเรียนที่ ${semester}/${academicYear} ให้`
+                                            : kind === 'teachers'
+                                                ? teacherRoleSummary(selected)
+                                                : `${selected.current_grade_level || 'ยังไม่ระบุชั้น'} · ห้อง ${selected.current_room || 'ยังไม่จัด'}`}
                                     </p>
                                 </header>
 
@@ -348,6 +514,17 @@ export default function PeopleManager() {
                                                 className={`${inputClass} font-mono tracking-wide`}
                                             />
                                         </Field>
+                                        {creating && (
+                                            <Field label="วันเดือนปีเกิด" hint="ใช้เป็นรหัสผ่านเข้าสู่ระบบ 8 หลัก ปี พ.ศ. เช่น 05012560" error={fieldErrors.dob} errorId="person-dob-error">
+                                                <input
+                                                    {...invalidProps('dob')}
+                                                    value={draft.dob}
+                                                    onChange={e => updateDraft('dob', e.target.value)}
+                                                    inputMode="numeric" maxLength={10} autoComplete="off" placeholder="วันเดือนปี พ.ศ."
+                                                    className={`${inputClass} font-mono tracking-wide`}
+                                                />
+                                            </Field>
+                                        )}
                                     </section>
 
                                     {kind === 'teachers' ? (
@@ -399,36 +576,69 @@ export default function PeopleManager() {
                                                     <input value={draft.current_grade_level} onChange={e => setDraft({ ...draft, current_grade_level: e.target.value })} placeholder="เช่น ป.1" className={inputClass} />
                                                 </Field>
                                                 <Field label="ห้องเรียน">
-                                                    <input value={draft.current_room} onChange={e => setDraft({ ...draft, current_room: e.target.value })} placeholder="เช่น ป.1/1" className={inputClass} />
+                                                    <input value={draft.current_room} onChange={e => setDraft({ ...draft, current_room: e.target.value })} list="student-room-options" placeholder="เช่น ป.1/1" className={inputClass} />
                                                 </Field>
                                             </div>
+                                            <datalist id="student-room-options">
+                                                {roomOptions.map(room => <option key={room} value={room} />)}
+                                            </datalist>
+                                            {creating ? (
+                                                <div className="rounded-xl border border-line bg-slate-50 p-4 text-sm" aria-live="polite">
+                                                    {!previewRoom ? (
+                                                        <p className="text-slate-600">กรอกห้องเรียน ระบบจะจัดเข้าทุกวิชาของห้องนั้นให้</p>
+                                                    ) : roomPreview.loading || roomPreview.room !== previewRoom ? (
+                                                        <p className="text-slate-600">กำลังดูวิชาของห้อง {previewRoom}...</p>
+                                                    ) : roomPreview.subjects.length ? (
+                                                        <>
+                                                            <p className="font-bold text-slate-900">จะเข้าเรียน {roomPreview.subjects.length} วิชาของห้อง {previewRoom}</p>
+                                                            <p className="mt-1 leading-6 text-slate-700">{roomPreview.subjects.map(subject => subject.subject_name).join(' · ')}</p>
+                                                        </>
+                                                    ) : (
+                                                        <p className="flex items-start gap-2 font-bold text-amber-800">
+                                                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                                                            {roomPreview.failed
+                                                                ? 'ดูวิชาของห้องไม่สำเร็จ ลองพิมพ์ห้องอีกครั้ง'
+                                                                : `ห้อง ${previewRoom} ยังไม่มีวิชาในภาคเรียนนี้ ตรวจชื่อห้อง หรือเพิ่มแล้วจัดเข้าวิชาภายหลัง`}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-600">เปลี่ยนห้องแล้ว ระบบจะถามก่อนย้ายวิชาของภาคเรียนนี้ไปห้องใหม่ ข้อความ LO ของวิชาเดิมย้ายตามไปด้วย</p>
+                                            )}
                                         </section>
                                     )}
 
-                                    <section className="space-y-4">
-                                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">สถานะบัญชี</h3>
-                                        <Field label="สถานะการใช้งาน" hint="บัญชีที่ระงับจะเข้าสู่ระบบไม่ได้ แต่ผลงานที่บันทึกไว้ยังอยู่ครบ">
-                                            <select
-                                                value={kind === 'teachers' ? String(draft.is_active) : draft.student_status}
-                                                onChange={e => setDraft(kind === 'teachers'
-                                                    ? { ...draft, is_active: e.target.value === 'true' }
-                                                    : { ...draft, student_status: e.target.value })}
-                                                className={inputClass}
+                                    {!creating && (
+                                        <section className="space-y-4">
+                                            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">สถานะบัญชี</h3>
+                                            <Field
+                                                label="สถานะการใช้งาน"
+                                                hint={kind === 'teachers'
+                                                    ? 'บัญชีที่ระงับจะเข้าสู่ระบบไม่ได้ แต่ผลงานที่บันทึกไว้ยังอยู่ครบ'
+                                                    : 'นักเรียนที่ไม่ได้เรียนแล้วจะเข้าสู่ระบบไม่ได้ และชื่อจะหายจากหน้าครูทุกวิชาของภาคเรียนนี้ ข้อความที่บันทึกไว้ยังเก็บอยู่'}
                                             >
-                                                {kind === 'teachers' ? (
-                                                    <><option value="true">ใช้งานอยู่</option><option value="false">ระงับการใช้งาน</option></>
-                                                ) : (
-                                                    <><option value="active">ใช้งานอยู่</option><option value="inactive">ระงับการใช้งาน</option></>
-                                                )}
-                                            </select>
-                                        </Field>
-                                    </section>
+                                                <select
+                                                    value={kind === 'teachers' ? String(draft.is_active) : draft.student_status}
+                                                    onChange={e => setDraft(kind === 'teachers'
+                                                        ? { ...draft, is_active: e.target.value === 'true' }
+                                                        : { ...draft, student_status: e.target.value })}
+                                                    className={inputClass}
+                                                >
+                                                    {kind === 'teachers' ? (
+                                                        <><option value="true">ใช้งานอยู่</option><option value="false">ระงับการใช้งาน</option></>
+                                                    ) : (
+                                                        STUDENT_STATUS_CHOICES.map(([value, label]) => <option key={value} value={value}>{label}</option>)
+                                                    )}
+                                                </select>
+                                            </Field>
+                                        </section>
+                                    )}
                                 </div>
 
                                 <footer className="flex flex-col-reverse gap-2 border-t border-line p-5 sm:flex-row sm:justify-end">
                                     <button
                                         type="button"
-                                        onClick={() => setSelectedId('')}
+                                        onClick={closePanel}
                                         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
                                     >
                                         <X className="h-4 w-4" />ปิด
@@ -439,7 +649,8 @@ export default function PeopleManager() {
                                         disabled={saving}
                                         className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-50"
                                     >
-                                        <Save className="h-4 w-4" />{saving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
+                                        {creating ? <UserPlus className="h-4 w-4" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
+                                        {saving ? 'กำลังบันทึก...' : creating ? 'เพิ่มนักเรียน' : 'บันทึกข้อมูล'}
                                     </button>
                                 </footer>
                             </>
