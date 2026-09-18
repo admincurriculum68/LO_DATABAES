@@ -5,6 +5,7 @@ import AcademicReportShell from '../components/AcademicReportShell';
 import { normalizeCompetencyArea } from '../constants/curriculum2568';
 import { Search, Printer, Save, CheckCircle, XCircle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { PUBLISHED_STATUSES } from '../lib/homeroomSummary';
 
 // ─── Level ordering for comparison ─────────────────────────────────────────
 const LEVEL_ORDER = { 'เริ่มต้น': 1, 'พัฒนา': 2, 'ชำนาญ': 3, 'เชี่ยวชาญ': 4 };
@@ -99,7 +100,7 @@ export default function YearlyReportAdmin() {
                 .eq('school_id', currentUser.school_id)
                 .eq('student_id', studentId)
                 .eq('academic_year', year)
-                .eq('decision_status', 'approved')
+                .in('decision_status', PUBLISHED_STATUSES)
                 .order('semester', { ascending: false }),
         ]);
         if (resultError) throw resultError;

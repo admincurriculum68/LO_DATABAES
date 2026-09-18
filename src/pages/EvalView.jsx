@@ -3,13 +3,14 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import { hasRole } from '../lib/roles';
-import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, RotateCcw, ClipboardCheck, Printer } from 'lucide-react';
+import { ChevronLeft, Save, FileText, CheckCircle2, AlertCircle, Clock, Send, MessageSquareText, ClipboardCheck, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useDocumentTitle from '../lib/useDocumentTitle';
 import { useDialog } from '../lib/dialogContext';
 import { buildLoResolver, sameSetAcrossRooms } from '../lib/loByRoom';
 import { LO_FIELDS, mappingSelect } from '../lib/loByRoomApi';
 import { compareRooms, teacherRoomAccess } from '../lib/teacherAccess';
+import { isPublishedDecision } from '../lib/homeroomSummary';
 
 export default function EvalView() {
     const { subjectId } = useParams();
@@ -34,7 +35,8 @@ export default function EvalView() {
     const [selectedRoom, setSelectedRoom] = useState(roomParam || 'all');
     const [submission, setSubmission] = useState(null);
     const [submitting, setSubmitting] = useState(false);
-    const [lockedCells, setLockedCells] = useState(new Set());
+    // ห้องที่ครูประจำชั้นสรุปผลรายด้านแล้ว ใช้แจ้งเตือนเฉย ๆ ไม่ล็อกช่อง ครูผู้สอนแก้ข้อความได้ตลอด
+    const [summarizedAreas, setSummarizedAreas] = useState([]);
     useDocumentTitle(subject ? `ประเมิน ${subject.subject_name}` : 'ประเมินผลรายวิชา');
 
     // ห้องต่างกันอาจใช้ LO ต่างกัน "ทุกห้อง" แสดงได้เฉพาะเมื่อทุกห้องใช้ชุดเดียวกัน
@@ -106,21 +108,20 @@ export default function EvalView() {
                     setEvaluations(evals.filter(e => mappedLoIds.has(e.lo_id)));
                 }
 
-                // เมื่อฝ่ายวิชาการรับรองรายด้านแล้ว ให้ล็อก LO ทุกข้อในด้านนั้น
+                // ครูประจำชั้นสรุปด้านไหนไปแล้วบ้าง ถ้าครูผู้สอนแก้ข้อความหลังจากนี้ ครูประจำชั้นต้องสรุปใหม่เอง
                 const studentIds = formatEnrolls.map(e => e.users_students?.student_id).filter(Boolean);
                 if (studentIds.length > 0 && mappedLoIds.size > 0) {
                     const decisions = await fetchAllByIn(studentIds, (batch, from, to) => supabase
                         .from('competency_area_final_decisions')
-                        .select('student_id, competency_area, decision_status, is_locked')
+                        .select('student_id, competency_area, decision_status')
                         .eq('school_id', currentUser.school_id)
                         .eq('academic_year', subjectRecord.academic_year)
                         .eq('semester', subjectRecord.semester)
                         .in('student_id', batch).range(from, to));
-                    setLockedCells(new Set(
-                        decisions
-                            .filter(d => d.is_locked || d.decision_status === 'approved')
-                            .flatMap(d => formatLOs.filter(lo => lo.competency_area === d.competency_area).map(lo => `${d.student_id}_${lo.lo_id}`))
-                    ));
+                    const areasOfThisSubject = new Set(formatLOs.map(lo => lo.competency_area));
+                    setSummarizedAreas([...new Set(decisions
+                        .filter(row => isPublishedDecision(row) && areasOfThisSubject.has(row.competency_area))
+                        .map(row => row.competency_area))]);
                 }
 
                 // Track attendance state separately for easy upsert
@@ -282,7 +283,7 @@ export default function EvalView() {
         const label = lo.lo_code || `LO ${lo.ability_no}`;
         const note = await dialog.prompt({
             title: `เติมข้อความ ${label} ให้ทุกคนที่แสดงอยู่`,
-            message: `ระบบจะใส่ข้อความนี้ให้นักเรียน ${displayedEnrollments.length} คนที่กำลังแสดง ช่องที่ฝ่ายวิชาการรับรองแล้วจะไม่ถูกเปลี่ยน และยังแก้รายคนได้ภายหลัง`,
+            message: `ระบบจะใส่ข้อความนี้ให้นักเรียน ${displayedEnrollments.length} คนที่กำลังแสดง และยังแก้รายคนได้ภายหลัง`,
             inputLabel: 'ข้อความตั้งต้น',
             confirmLabel: 'เติมข้อความ',
         });
@@ -291,8 +292,6 @@ export default function EvalView() {
         setEvaluations(previous => {
             const next = previous.map(item => ({ ...item }));
             displayedEnrollments.forEach(enrollment => {
-                const studentId = enrollment.users_students?.student_id;
-                if (submissionStatus === 'approved' || lockedCells.has(`${studentId}_${lo.lo_id}`)) return;
                 const index = next.findIndex(item => item.enrollment_id === enrollment.enrollment_id && item.lo_id === lo.lo_id);
                 const value = {
                     evaluation_id: index >= 0 ? next[index].evaluation_id : crypto.randomUUID(),
@@ -315,9 +314,9 @@ export default function EvalView() {
 
     const submitForReview = async () => {
         if (missingCount > 0 && !(await dialog.confirm({
-            title: 'ส่งผลทั้งที่ยังกรอกไม่ครบ?',
-            message: `ยังมี ${missingCount} ช่องที่ไม่มีข้อความพฤติกรรม ครูประจำชั้นและฝ่ายวิชาการจะเห็นว่าช่องเหล่านี้ว่าง`,
-            confirmLabel: 'ส่งผลรายวิชา',
+            title: 'ยืนยันทั้งที่ยังกรอกไม่ครบ?',
+            message: `ยังมี ${missingCount} ช่องที่ไม่มีข้อความพฤติกรรม ครูประจำชั้นและฝ่ายวิชาการจะเห็นว่าช่องเหล่านี้ว่าง ยืนยันแล้วยังกลับมาแก้ได้ตลอด`,
+            confirmLabel: 'ยืนยันว่าบันทึกครบ',
         }))) {
             return;
         }
@@ -368,9 +367,9 @@ export default function EvalView() {
             setEvaluations(prev => prev.map(e => scopedEnrollmentIds.has(e.enrollment_id) && e.evidence_note?.trim()
                 ? { ...e, workflow_status: 'submitted', submitted_at: now }
                 : e));
-            toast.success('ส่งผลรายวิชาแล้ว ครูประจำชั้นนำข้อความไปสรุปความสามารถรายด้านได้');
+            toast.success('ยืนยันแล้ว ครูประจำชั้นนำข้อความไปสรุปความสามารถรายด้านได้ และยังแก้ข้อความได้ตลอด');
         } catch (err) {
-            toast.error('ส่งผลตรวจสอบไม่สำเร็จ: ' + err.message);
+            toast.error('ยืนยันไม่สำเร็จ: ' + err.message);
         } finally {
             setSubmitting(false);
         }
@@ -385,13 +384,14 @@ export default function EvalView() {
 
     const uniqueRooms = roomList;
     const submissionStatus = submission?.status || 'draft';
+    // ไม่มีขั้นรอตรวจแล้ว ส่งผลคือการยืนยันว่าบันทึกครบ แถวเก่าที่เป็น approved ถือว่าส่งแล้วเช่นกัน
     const submissionLabel = {
-        draft: 'ฉบับร่าง',
-        submitted: 'ส่งผลแล้ว',
-        under_review: 'กำลังตรวจสอบ',
-        returned: 'ส่งกลับแก้ไข',
-        approved: 'ฝ่ายวิชาการรับรองแล้ว'
-    }[submissionStatus] || 'ฉบับร่าง';
+        draft: 'ยังไม่ได้ยืนยัน',
+        submitted: 'ยืนยันแล้ว',
+        under_review: 'ยืนยันแล้ว',
+        returned: 'ยังไม่ได้ยืนยัน',
+        approved: 'ยืนยันแล้ว',
+    }[submissionStatus] || 'ยังไม่ได้ยืนยัน';
 
     // Warn if navigating away with unsaved changes
     const handleBack = async () => {
@@ -404,17 +404,14 @@ export default function EvalView() {
         navigate(-1);
     };
 
-    const statusTone = submissionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        : submissionStatus === 'returned' ? 'border-rose-200 bg-rose-50 text-rose-700'
-            : submissionStatus === 'submitted' || submissionStatus === 'under_review' ? 'border-blue-200 bg-blue-50 text-blue-700'
-                : 'border-line bg-slate-50 text-slate-600';
-    const StatusIcon = submissionStatus === 'returned' ? RotateCcw : ClipboardCheck;
+    const confirmed = ['submitted', 'under_review', 'approved'].includes(submissionStatus);
+    const statusTone = confirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-line bg-slate-50 text-slate-600';
+    const StatusIcon = ClipboardCheck;
 
     // ช่องหลักฐานราย LO ใช้ทั้งในตาราง (จอกว้าง) และในการ์ดรายคน (จอเล็ก)
     // บนจอเล็กใช้ตัวอักษร 16px เพราะ iPhone จะซูมทั้งหน้าเมื่อแตะช่องที่เล็กกว่านั้น
     const renderEvidence = (enroll, st, lo, stacked = false) => {
         const ev = evaluations.find(e => e.enrollment_id === enroll.enrollment_id && e.lo_id === lo.lo_id);
-        const cellLocked = submissionStatus === 'approved' || lockedCells.has(`${st.student_id}_${lo.lo_id}`);
         const code = lo.lo_code || `LO ${lo.ability_no}`;
         return (
             <label key={lo.lo_id} className="block text-left">
@@ -427,8 +424,7 @@ export default function EvalView() {
                         rows="2"
                         value={ev?.evidence_note || ''}
                         onChange={(e) => handleEvidenceChange(enroll.enrollment_id, lo.lo_id, e.target.value)}
-                        disabled={cellLocked}
-                        placeholder={cellLocked ? 'ฝ่ายวิชาการรับรองผลนี้แล้ว' : 'บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน'}
+                        placeholder="บันทึกหลักฐานหรือข้อสังเกตจากการประเมิน"
                         className={`w-full resize-y rounded-lg border border-field bg-white py-2 pl-8 pr-2 text-slate-800 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 ${stacked ? 'text-base leading-6' : 'text-xs leading-5'}`}
                     />
                 </div>
@@ -480,7 +476,7 @@ export default function EvalView() {
                         </button>
                         <button
                             onClick={saveEvaluations}
-                            disabled={saving || !isDirty || submissionStatus === 'approved'}
+                            disabled={saving || !isDirty}
                             className="btn-secondary hidden md:inline-flex"
                         >
                             {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
@@ -488,22 +484,31 @@ export default function EvalView() {
                         </button>
                         <button
                             onClick={submitForReview}
-                            disabled={submitting || loading || submissionStatus === 'approved'}
+                            disabled={submitting || loading}
                             className="btn-primary hidden md:inline-flex"
-                            title={missingCount > 0 ? `ส่งได้ โดยระบบจะถามยืนยัน ${missingCount} รายการที่ยังไม่ครบ` : 'ส่งผลรายวิชาให้ครูประจำชั้นและฝ่ายวิชาการ'}
+                            title={missingCount > 0 ? `ยืนยันได้ โดยระบบจะถามก่อน ${missingCount} รายการที่ยังไม่ครบ` : 'บอกครูประจำชั้นและฝ่ายวิชาการว่าบันทึกครบแล้ว'}
                         >
                             {submitting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-                            ส่งผลรายวิชา
+                            ยืนยันว่าบันทึกครบ
                         </button>
                     </div>
                 </div>
             </header>
 
             <main className="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 pt-8 pb-40 md:pb-8">
+                {/* แก้ข้อความได้ตลอด แต่ถ้าครูประจำชั้นสรุปรายด้านไปแล้ว ต้องบอกให้สรุปใหม่ */}
+                {!loading && summarizedAreas.length > 0 && (
+                    <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+                        <p className="text-sm leading-6 text-amber-900">
+                            ครูประจำชั้นสรุปผลรายด้านของนักเรียนในห้องนี้ไปแล้ว ({summarizedAreas.join(' · ')}) แก้ข้อความได้ตลอด แต่ช่วยแจ้งครูประจำชั้นให้สรุปใหม่ด้วย
+                        </p>
+                    </div>
+                )}
                 {loading ? (
                     <div className="py-20 flex justify-center"><div className="loader"></div></div>
                 ) : learningOutcomes.length === 0 ? (
-                    // LO ของวิชาต้องผ่านการอนุมัติของฝ่ายวิชาการก่อน ครูจึงจะบันทึกข้อความได้
+                    // ห้องนี้ยังไม่ได้เลือก LO ครูเลือกเองได้ทันที ไม่ต้องรอใครอนุมัติ
                     <div className="text-center bg-white rounded-2xl p-12 border border-line mt-10 shadow-sm max-w-2xl mx-auto">
                         <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
                             <ClipboardCheck className="w-8 h-8 text-indigo-700" aria-hidden="true" />
@@ -658,11 +663,11 @@ export default function EvalView() {
                         </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <button onClick={saveEvaluations} disabled={saving || !isDirty || submissionStatus === 'approved'} className="btn-secondary">
+                        <button onClick={saveEvaluations} disabled={saving || !isDirty} className="btn-secondary">
                             <Save className="h-4 w-4" aria-hidden="true" />บันทึก
                         </button>
-                        <button onClick={submitForReview} disabled={submitting || loading || submissionStatus === 'approved'} className="btn-primary">
-                            <Send className="h-4 w-4" aria-hidden="true" />{submitting ? 'กำลังส่ง...' : 'ส่งผลรายวิชา'}
+                        <button onClick={submitForReview} disabled={submitting || loading} className="btn-primary">
+                            <Send className="h-4 w-4" aria-hidden="true" />{submitting ? 'กำลังยืนยัน...' : 'ยืนยันว่าบันทึกครบ'}
                         </button>
                     </div>
                 </div>

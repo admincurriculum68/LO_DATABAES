@@ -27,11 +27,12 @@ test('buildParentReport ใช้ผลของครูประจำชั�
         ['ความสามารถด้านการอ่าน', 'พัฒนา', 'ชำนาญ', 'อ่านได้คล่อง', 'approved'],
         ['ความสามารถด้านการเขียน', '', 'พัฒนา', '', 'submitted'],
     ]);
-    assert.equal(report.allApproved, false);
+    assert.equal(report.allPublished, true);
     assert.equal(report.hasExpected, true);
     assert.equal(report.attendance, 100);
     assert.deepEqual(report.evidence.map(item => `${item.subject}:${item.text}`), ['ภาษาไทย:อ่านคล่อง']);
 
-    const approved = buildParentReport({ student, enrollments, mappings, evaluations, decisions: decisions.map(row => ({ ...row, decision_status: 'approved' })) });
-    assert.equal(approved.allApproved, true);
+    // ฉบับร่างของครูประจำชั้นยังไม่ออกสู่ผู้ปกครอง
+    const draft = buildParentReport({ student, enrollments, mappings, evaluations, decisions: decisions.map(row => ({ ...row, decision_status: 'draft' })) });
+    assert.equal(draft.allPublished, false);
 });

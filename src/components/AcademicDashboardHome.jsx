@@ -65,8 +65,8 @@ export default function AcademicDashboardHome({ stats, onOpenTab, onNavigate }) 
         { title: 'ตั้งค่าข้อมูลโรงเรียน', description: 'ทำตามเช็กลิสต์ 6 ขั้น ตั้งแต่ครู นักเรียน ห้องเรียน ไปจนถึง LO', icon: CheckCircle2, action: () => onNavigate('/admin/setup') },
         { title: 'จัดกลุ่มเรียนและสมาชิก', description: 'รวมหลายห้อง แบ่งกลุ่มย่อย หรือเลือกนักเรียนรายบุคคล', icon: UsersRound, action: () => onNavigate('/admin/learning-groups') },
         { title: 'ติดตามการรายงานผลการเรียน', description: 'ดูว่าวิชาและห้องใดบันทึกข้อความ LO หรือสรุปรายด้านค้างอยู่', icon: ClipboardCheck, action: () => onOpenTab('progress') },
-        { title: 'ตรวจสอบและรับรองผล', description: 'รับรองตามผลครูได้ทันที และแก้เฉพาะรายการที่เห็นต่าง', icon: ShieldCheck, action: () => onNavigate('/admin/approval') },
-        { title: 'ดูรายงานผลรายด้าน', description: 'ดูผลที่ผ่านการรับรองแล้ว แยกตามด้านความสามารถ', icon: BarChart3, action: () => onNavigate('/admin/report-competency') },
+        { title: 'ตรวจผลรายด้าน', description: 'ดูผลที่ครูประจำชั้นส่งแล้ว แก้ระดับเองได้ หรือขอให้ครูแก้', icon: ShieldCheck, action: () => onNavigate('/admin/approval') },
+        { title: 'ดูรายงานผลรายด้าน', description: 'ดูผลที่ครูประจำชั้นส่งแล้ว แยกตามด้านความสามารถ', icon: BarChart3, action: () => onNavigate('/admin/report-competency') },
     ];
 
     const otherTasks = [

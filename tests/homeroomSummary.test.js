@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNarrativeDraft, collectRoomEvidence, decisionKey, isLockedDecision, passStatusFor, roomStatus, summaryProgress } from '../src/lib/homeroomSummary.js';
+import { buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus, summaryProgress } from '../src/lib/homeroomSummary.js';
 
 test('buildNarrativeDraft รวมข้อความทุกวิชา ตัดข้อความซ้ำและช่องว่างเกิน', () => {
     const draft = buildNarrativeDraft([
@@ -27,23 +27,27 @@ test('summaryProgress นับรายการที่ครบเมื่�
     assert.deepEqual(summaryProgress(['s1', 's2'], ['A', 'B'], values), { total: 4, leveled: 2, narrated: 2, complete: 1, missing: 3 });
 });
 
-test('roomStatus: ส่งกลับมาก่อน รับรองหรือส่งครบต้องครบทุกรายการ', () => {
+test('roomStatus: ส่งกลับมาก่อน ส่งครบต้องครบทุกรายการ แถวเก่าที่เคยรับรองนับเป็นส่งแล้ว', () => {
     assert.equal(roomStatus([], 4), 'empty');
     assert.equal(roomStatus([{ decision_status: 'draft' }], 4), 'draft');
     assert.equal(roomStatus([{ decision_status: 'submitted' }, { decision_status: 'submitted' }], 4), 'draft');
     assert.equal(roomStatus(Array(4).fill({ decision_status: 'submitted' }), 4), 'submitted');
     assert.equal(roomStatus([...Array(3).fill({ decision_status: 'approved' }), { decision_status: 'submitted' }], 4), 'submitted');
-    assert.equal(roomStatus(Array(4).fill({ decision_status: 'approved' }), 4), 'approved');
-    assert.equal(roomStatus([...Array(3).fill({ decision_status: 'approved' }), { decision_status: 'returned' }], 4), 'returned');
+    assert.equal(roomStatus(Array(4).fill({ decision_status: 'approved' }), 4), 'submitted');
+    assert.equal(roomStatus([...Array(3).fill({ decision_status: 'submitted' }), { decision_status: 'returned' }], 4), 'returned');
 });
 
-test('passStatusFor และ isLockedDecision', () => {
+test('passStatusFor และ isPublishedDecision', () => {
     assert.equal(passStatusFor('เริ่มต้น'), 'not_passed');
     assert.equal(passStatusFor('พัฒนา'), 'passed');
     assert.equal(passStatusFor('N/A'), 'pending');
     assert.equal(passStatusFor(''), 'pending');
-    assert.equal(isLockedDecision({ decision_status: 'approved' }), true);
-    assert.equal(isLockedDecision({ decision_status: 'returned', is_locked: false }), false);
+    // ส่งแล้วคือเผยแพร่ ฉบับร่างและรายการที่ถูกขอให้แก้ยังไม่แสดงกับผู้ปกครอง
+    assert.equal(isPublishedDecision({ decision_status: 'submitted' }), true);
+    assert.equal(isPublishedDecision({ decision_status: 'approved' }), true);
+    assert.equal(isPublishedDecision({ decision_status: 'draft' }), false);
+    assert.equal(isPublishedDecision({ decision_status: 'returned' }), false);
+    assert.equal(isPublishedDecision(null), false);
 });
 
 test('collectRoomEvidence รวมข้อความ LO ของทุกวิชาตามด้าน และใช้เฉพาะ LO ที่ผูกกับวิชานั้น', () => {

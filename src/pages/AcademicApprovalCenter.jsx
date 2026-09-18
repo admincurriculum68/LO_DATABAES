@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, CheckCircle2, ChevronRight, FileText, Lock, Printer, RotateCcw, Search, ShieldCheck, Undo2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronRight, FileText, Printer, RotateCcw, Search, ShieldCheck, Undo2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDialog } from '../lib/dialogContext';
 import Layout from '../components/Layout';
@@ -10,10 +10,10 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { formalLevelLabel } from '../lib/terminology';
 import { shortAreaName } from '../lib/loMapping';
 import { loadRoomMappings } from '../lib/loByRoomApi';
-import { ROOM_STATUS, SUMMARY_LEVELS, collectRoomEvidence, decisionKey, isLockedDecision, passStatusFor, roomStatus } from '../lib/homeroomSummary';
+import { ROOM_STATUS, SUMMARY_LEVELS, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus } from '../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
-// ฝ่ายวิชาการรับรองผลสรุปรายด้านเป็นรายห้อง
+// ฝ่ายวิชาการตรวจผลสรุปรายด้านภายหลัง
 // ครูประจำชั้นเป็นคนสรุประดับและเขียนคำบรรยาย ฝ่ายวิชาการไม่ได้รู้จักนักเรียนทุกคน
 // งานหลักจึงเป็นการกด "รับรองทั้งห้อง" และส่งกลับเฉพาะรายการที่มีปัญหาพร้อมเหตุผล
 
@@ -27,12 +27,12 @@ const LEVEL_CLASS = {
 const ROW_STATUS = {
     draft: { label: 'ครูประจำชั้นยังไม่ส่ง', chip: 'chip-neutral' },
     pending: { label: 'ครูประจำชั้นยังไม่ส่ง', chip: 'chip-neutral' },
-    submitted: { label: 'รอรับรอง', chip: 'chip-warning' },
-    returned: { label: 'ส่งกลับแล้ว', chip: 'chip-danger' },
-    approved: { label: 'รับรองแล้ว', chip: 'chip-success' },
+    submitted: { label: 'ส่งแล้ว ผู้ปกครองเห็นได้', chip: 'chip-success' },
+    returned: { label: 'ขอให้ครูประจำชั้นแก้', chip: 'chip-danger' },
+    approved: { label: 'ส่งแล้ว ผู้ปกครองเห็นได้', chip: 'chip-success' },
 };
-const APPROVAL_REASON = 'รับรองตามผลสรุปของครูประจำชั้น';
-const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, is_locked, submitted_at';
+const LEVEL_CHANGE_REASON = 'ฝ่ายวิชาการแก้ระดับ';
+const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, submitted_at';
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim() || 'ไม่ระบุชื่อ';
 const roomOrder = (a, b) => String(a).localeCompare(String(b), 'th', { numeric: true });
 const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
@@ -123,8 +123,12 @@ export default function AcademicApprovalCenter() {
         && (statusFilter === 'all' || room.status === statusFilter)
         && (!query.trim() || `${room.room} ${(homeroomTeachers.get(room.room) || []).join(' ')}`.includes(query.trim())));
     const selected = rooms.find(room => room.room === selectedRoom) || null;
-    const totals = rooms.reduce((sum, room) => ({ approved: sum.approved + room.counts.approved, submitted: sum.submitted + room.counts.submitted, all: sum.all + room.rows.length }), { approved: 0, submitted: 0, all: 0 });
-    const roomsWaiting = rooms.filter(room => room.counts.submitted > 0).length;
+    // ส่งแล้ว = ผู้ปกครองเห็นได้ (รวมแถวเก่าที่เคยรับรองไว้)
+    const totals = rooms.reduce((sum, room) => ({
+        published: sum.published + room.counts.submitted + room.counts.approved,
+        all: sum.all + room.rows.length,
+    }), { published: 0, all: 0 });
+    const roomsPending = rooms.filter(room => room.summarizedStudents < room.students.length || room.counts.draft > 0 || room.counts.returned > 0).length;
 
     // เปิดห้อง: โหลดข้อความ LO ของนักเรียนในห้องไว้ให้อ่านประกอบ
     // จำห้องที่กำลังโหลดไว้ใน ref ไม่ใช่ state การตั้ง state ระหว่างโหลดจะทำให้ effect รันใหม่และทิ้งผลที่กำลังโหลด
@@ -194,51 +198,13 @@ export default function AcademicApprovalCenter() {
         return updated;
     };
 
-    const approveRoom = async room => {
-        const notSubmitted = room.counts.draft + room.counts.returned;
-        const missingStudents = room.students.length - room.summarizedStudents;
-        const confirmed = await dialog.confirm({
-            title: `รับรองผลสรุปห้อง ${room.room}`,
-            message: [
-                `รับรองรายการที่ครูประจำชั้นส่งมา ${room.counts.submitted} รายการ รับรองแล้วครูแก้ไม่ได้จนกว่าจะส่งกลับ`,
-                notSubmitted ? `ยังมี ${notSubmitted} รายการที่ครูประจำชั้นยังไม่ส่งหรือถูกส่งกลับ รายการเหล่านี้จะยังไม่ถูกรับรอง` : '',
-                missingStudents ? `นักเรียน ${missingStudents} คนยังไม่มีผลสรุปเลย` : '',
-            ].filter(Boolean).join('\n'),
-            confirmLabel: `รับรอง ${room.counts.submitted} รายการ`,
-        });
-        if (!confirmed) return;
-        setBusy(`room:${room.room}`);
-        try {
-            const now = new Date().toISOString();
-            const actorId = currentUser.teacher_id || null;
-            const updated = await updateRoomRows(room, ['submitted'], {
-                decision_status: 'approved', is_locked: true, decision_reason: APPROVAL_REASON, decided_by: actorId, decided_at: now, updated_at: now,
-            });
-            applyRows(updated);
-            // ล็อกข้อความ LO ที่ใช้เป็นหลักฐานของห้องนี้ด้วย ครูผู้สอนจะแก้ย้อนหลังไม่ได้
-            if (evidence.room === room.room && evidence.enrollmentIds?.length) {
-                for (const batch of chunk(evidence.enrollmentIds, 200)) {
-                    const { error } = await supabase.from('lo_evaluations').update({ workflow_status: 'approved', updated_at: now })
-                        .in('enrollment_id', batch).not('evidence_note', 'is', null);
-                    if (error) throw error;
-                }
-            }
-            await audit('approve_homeroom_room', { room: room.room, approved_count: updated.length });
-            toast.success(`รับรองผลห้อง ${room.room} แล้ว ${updated.length} รายการ`);
-        } catch (error) {
-            toast.error('รับรองไม่สำเร็จ: ' + error.message);
-        } finally {
-            setBusy('');
-        }
-    };
-
     const returnRoom = async room => {
         const reason = await dialog.prompt({
-            title: `ส่งกลับผลสรุปห้อง ${room.room}`,
-            message: 'รายการที่ส่งมาหรือรับรองแล้วทั้งห้องจะกลับไปให้ครูประจำชั้นแก้ และปลดล็อก ระบุสิ่งที่ต้องการให้แก้',
+            title: `ขอให้ครูประจำชั้นแก้ผลสรุปห้อง ${room.room}`,
+            message: 'รายการที่ส่งแล้วทั้งห้องจะกลับไปให้ครูประจำชั้นแก้ และจะไม่แสดงกับนักเรียนและผู้ปกครองจนกว่าครูจะส่งใหม่',
             inputLabel: 'เหตุผลที่ส่งกลับ',
             placeholder: 'เช่น คำบรรยายด้านการคิดคำนวณยังสั้นเกินไป',
-            confirmLabel: 'ส่งกลับทั้งห้อง',
+            confirmLabel: 'ขอให้แก้ทั้งห้อง',
         });
         if (!reason) return;
         setBusy(`room:${room.room}`);
@@ -249,49 +215,49 @@ export default function AcademicApprovalCenter() {
             });
             applyRows(updated);
             await audit('return_homeroom_room', { room: room.room, returned_count: updated.length, reason });
-            toast.success(`ส่งกลับห้อง ${room.room} แล้ว ${updated.length} รายการ`);
+            toast.success(`ขอให้ครูประจำชั้นแก้ห้อง ${room.room} แล้ว ${updated.length} รายการ`);
         } catch (error) {
-            toast.error('ส่งกลับไม่สำเร็จ: ' + error.message);
+            toast.error('บันทึกไม่สำเร็จ: ' + error.message);
         } finally {
             setBusy('');
         }
     };
 
-    const decideOne = async (row, nextStatus) => {
+    // ฝ่ายวิชาการทำได้ 2 อย่าง: แก้ระดับเอง (ผลยังแสดงต่อเนื่อง) หรือขอให้ครูประจำชั้นแก้ (ผลถูกดึงกลับ)
+    const decideOne = async (row, action) => {
         const key = decisionKey(row.student_id, row.competency_area);
         const override = overrides[key] || {};
-        const level = override.level || row.final_level;
-        const changedLevel = level !== row.final_level;
+        const level = action === 'return' ? row.final_level : (override.level || row.final_level);
         let reason = override.reason?.trim() || '';
-        if (nextStatus === 'returned' || changedLevel) {
-            if (!reason) {
-                reason = await dialog.prompt({
-                    title: nextStatus === 'returned' ? 'ส่งกลับรายการนี้' : 'เหตุผลที่แก้ระดับ',
-                    message: `${shortAreaName(row.competency_area)} · ระบุให้ครูประจำชั้นเข้าใจว่าต้องแก้อะไร หรือทำไมระดับที่รับรองต่างจากที่ครูเสนอ`,
-                    inputLabel: 'เหตุผล',
-                    confirmLabel: nextStatus === 'returned' ? 'ส่งกลับ' : 'รับรองระดับที่แก้',
-                });
-                if (!reason) return;
-            }
+        if (!reason) {
+            reason = await dialog.prompt({
+                title: action === 'return' ? 'ขอให้ครูประจำชั้นแก้รายการนี้' : 'เหตุผลที่แก้ระดับ',
+                message: `${shortAreaName(row.competency_area)} · ระบุให้ครูประจำชั้นเข้าใจว่าต้องแก้อะไร หรือทำไมจึงเปลี่ยนระดับ`,
+                inputLabel: 'เหตุผล',
+                confirmLabel: action === 'return' ? 'ขอให้แก้' : 'บันทึกระดับใหม่',
+            });
+            if (!reason) return;
         }
         setBusy(key);
         try {
             const now = new Date().toISOString();
-            const { data, error } = await supabase.from('competency_area_final_decisions').update({
-                decision_status: nextStatus,
-                is_locked: nextStatus === 'approved',
+            const patch = {
                 final_level: level,
                 pass_status: passStatusFor(level),
-                decision_reason: reason || APPROVAL_REASON,
+                decision_reason: reason || LEVEL_CHANGE_REASON,
                 decided_by: currentUser.teacher_id || null,
                 decided_at: now,
                 updated_at: now,
-            }).eq('decision_id', row.decision_id).select(DECISION_SELECT);
+            };
+            // แก้ระดับไม่เปลี่ยนสถานะ ผู้ปกครองจึงเห็นผลต่อเนื่อง ส่วนการขอให้แก้จะดึงผลกลับเป็นฉบับร่าง
+            if (action === 'return') patch.decision_status = 'returned';
+            const { data, error } = await supabase.from('competency_area_final_decisions').update(patch)
+                .eq('decision_id', row.decision_id).select(DECISION_SELECT);
             if (error) throw error;
             applyRows(data);
             setOverrides(previous => { const next = { ...previous }; delete next[key]; return next; });
-            await audit(nextStatus === 'approved' ? 'approve_competency_area' : 'return_competency_area', { student_id: row.student_id, competency_area: row.competency_area, final_level: level, reason });
-            toast.success(nextStatus === 'approved' ? 'รับรองรายการนี้แล้ว' : 'ส่งกลับรายการนี้แล้ว');
+            await audit(action === 'return' ? 'return_competency_area' : 'edit_competency_area_level', { student_id: row.student_id, competency_area: row.competency_area, final_level: level, reason });
+            toast.success(action === 'return' ? 'ขอให้ครูประจำชั้นแก้รายการนี้แล้ว' : 'บันทึกระดับใหม่แล้ว ผู้ปกครองเห็นผลที่แก้ทันที');
         } catch (error) {
             toast.error('บันทึกไม่สำเร็จ: ' + error.message);
         } finally {
@@ -301,36 +267,36 @@ export default function AcademicApprovalCenter() {
 
     if (supported === false) {
         return (
-            <Layout title="รับรองผลรายด้านความสามารถ">
+            <Layout title="ตรวจผลรายด้านความสามารถ">
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6" role="alert">
-                    <p className="font-bold text-amber-950">ยังเปิดหน้ารับรองผลไม่ได้</p>
+                    <p className="font-bold text-amber-950">ยังเปิดหน้าตรวจผลไม่ได้</p>
                     <p className="mt-1 text-sm text-amber-900">{HOMEROOM_SUMMARY_SQL_HINT}</p>
                 </section>
             </Layout>
         );
     }
 
-    const approvedPercent = totals.all ? Math.round((totals.approved / totals.all) * 100) : 0;
+    const publishedPercent = totals.all ? Math.round((totals.published / totals.all) * 100) : 0;
     const roomAreas = evidence.room === selected?.room ? evidence.areas : [];
 
     return (
-        <Layout title="รับรองผลรายด้านความสามารถ">
+        <Layout title="ตรวจผลรายด้านความสามารถ">
             <div className="mx-auto max-w-[1680px] space-y-5 pb-12">
                 <header className="rounded-2xl border border-line bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
-                            <div className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-indigo-700" aria-hidden="true" /><h1 className="text-2xl font-bold text-slate-950">รับรองผลรายด้านความสามารถ</h1></div>
-                            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">ครูประจำชั้นสรุประดับและเขียนคำบรรยายของนักเรียนในห้องแล้วส่งมา ตรวจแล้วกด “รับรองทั้งห้อง” ถ้าพบปัญหาส่งกลับพร้อมเหตุผลได้ทั้งห้องหรือรายรายการ</p>
+                            <div className="flex items-center gap-2"><ShieldCheck className="h-6 w-6 text-indigo-700" aria-hidden="true" /><h1 className="text-2xl font-bold text-slate-950">ตรวจผลรายด้านความสามารถ</h1></div>
+                            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">ครูประจำชั้นสรุประดับและกดส่ง ผลออกสู่นักเรียนและผู้ปกครองทันที หน้านี้ใช้ตรวจภายหลัง แก้ระดับเองได้ หรือขอให้ครูประจำชั้นแก้</p>
                         </div>
                         <div className="min-w-64 rounded-xl bg-slate-100 px-4 py-3">
-                            <div className="flex justify-between gap-4 text-sm font-bold text-slate-700"><span>รับรองแล้ว</span><span className="tabular-nums">{totals.approved}/{totals.all} รายการ</span></div>
-                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${approvedPercent}%` }} /></div>
-                            <p className="mt-2 text-xs font-semibold text-slate-600">{roomsWaiting} ห้องมีรายการรอรับรอง</p>
+                            <div className="flex justify-between gap-4 text-sm font-bold text-slate-700"><span>ส่งแล้ว</span><span className="tabular-nums">{totals.published}/{totals.all} รายการ</span></div>
+                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-emerald-600" style={{ width: `${publishedPercent}%` }} /></div>
+                            <p className="mt-2 text-xs font-semibold text-slate-600">{roomsPending} ห้องยังส่งไม่ครบ</p>
                         </div>
                     </div>
                 </header>
 
-                {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle className="h-5 w-5 shrink-0 text-rose-700" aria-hidden="true" /><div><h2 className="font-bold text-rose-950">เปิดหน้ารับรองผลไม่ได้</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button type="button" onClick={loadData} className="btn-secondary mt-3"><RotateCcw className="h-4 w-4" aria-hidden="true" />ลองใหม่</button></div></div></section>}
+                {loadError && <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5" role="alert"><div className="flex gap-3"><AlertCircle className="h-5 w-5 shrink-0 text-rose-700" aria-hidden="true" /><div><h2 className="font-bold text-rose-950">เปิดหน้าตรวจผลไม่ได้</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button type="button" onClick={loadData} className="btn-secondary mt-3"><RotateCcw className="h-4 w-4" aria-hidden="true" />ลองใหม่</button></div></div></section>}
 
                 <div className="grid gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
                     <aside className={`overflow-hidden rounded-2xl border border-line bg-white ${mobileDetailOpen ? 'hidden lg:block' : ''}`} aria-label="รายการห้องเรียน">
@@ -348,7 +314,7 @@ export default function AcademicApprovalCenter() {
                                         <span className="min-w-0 flex-1">
                                             <span className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-950">ห้อง {room.room}</strong><span className={`chip ${ROOM_STATUS[room.status].chip}`}>{ROOM_STATUS[room.status].label}</span></span>
                                             <span className="mt-1 block truncate text-xs text-slate-600">{(homeroomTeachers.get(room.room) || ['ยังไม่มีครูประจำชั้น']).join(', ')}</span>
-                                            <span className="mt-0.5 block text-xs text-slate-600 tabular-nums">สรุปแล้ว {room.summarizedStudents}/{room.students.length} คน · รอรับรอง {room.counts.submitted}</span>
+                                            <span className="mt-0.5 block text-xs text-slate-600 tabular-nums">สรุปแล้ว {room.summarizedStudents}/{room.students.length} คน · ยังไม่ส่ง {room.counts.draft}</span>
                                         </span>
                                         <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                                     </button>
@@ -368,12 +334,11 @@ export default function AcademicApprovalCenter() {
                                         <div>
                                             <div className="flex flex-wrap items-center gap-2"><h2 id="approval-room-title" className="text-lg font-bold text-slate-950">ห้อง {selected.room}</h2><span className={`chip ${ROOM_STATUS[selected.status].chip}`}>{ROOM_STATUS[selected.status].label}</span></div>
                                             <p className="mt-1 text-sm text-slate-600">ครูประจำชั้น: {(homeroomTeachers.get(selected.room) || ['ยังไม่ได้กำหนด']).join(', ')} · นักเรียน {selected.students.length} คน{roomAreas.length ? ` · ${roomAreas.length} ด้าน` : ''}</p>
-                                            <p className="mt-1 text-xs text-slate-600 tabular-nums">รอรับรอง {selected.counts.submitted} · รับรองแล้ว {selected.counts.approved} · ยังไม่ส่ง {selected.counts.draft} · ส่งกลับ {selected.counts.returned}</p>
+                                            <p className="mt-1 text-xs text-slate-600 tabular-nums">ส่งแล้ว {selected.counts.submitted + selected.counts.approved} · ยังไม่ส่ง {selected.counts.draft} · ขอให้แก้ {selected.counts.returned}</p>
                                         </div>
                                         <div className="flex flex-col gap-2 sm:flex-row">
                                             <button type="button" onClick={() => navigate(`/batch-report/${encodeURIComponent(selected.room)}/${academicYear}/${semester}`)} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครอง</button>
-                                            <button type="button" onClick={() => returnRoom(selected)} disabled={Boolean(busy) || !(selected.counts.submitted + selected.counts.approved)} className="btn-secondary"><Undo2 className="h-4 w-4" aria-hidden="true" />ส่งกลับทั้งห้อง</button>
-                                            <button type="button" onClick={() => approveRoom(selected)} disabled={Boolean(busy) || !selected.counts.submitted} className="btn-primary"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{busy === `room:${selected.room}` ? 'กำลังบันทึก...' : `รับรองทั้งห้อง (${selected.counts.submitted})`}</button>
+                                            <button type="button" onClick={() => returnRoom(selected)} disabled={Boolean(busy) || !(selected.counts.submitted + selected.counts.approved)} className="btn-secondary"><Undo2 className="h-4 w-4" aria-hidden="true" />ขอให้ครูประจำชั้นแก้ทั้งห้อง</button>
                                         </div>
                                     </div>
                                 </header>
@@ -384,14 +349,13 @@ export default function AcademicApprovalCenter() {
                                         const areas = roomAreas.length ? roomAreas : [...new Set(selected.rows.filter(row => row.student_id === student.student_id).map(row => row.competency_area))];
                                         const studentRows = areas.map(area => decisions.get(decisionKey(student.student_id, area))).filter(Boolean);
                                         const open = openStudentId === student.student_id;
-                                        const waiting = studentRows.filter(row => row.decision_status === 'submitted').length;
-                                        const approved = studentRows.filter(row => row.decision_status === 'approved').length;
+                                        const published = studentRows.filter(isPublishedDecision).length;
                                         return (
                                             <li key={student.student_id}>
                                                 <button type="button" aria-expanded={open} onClick={() => setOpenStudentId(open ? '' : student.student_id)} className={`flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left sm:px-5 ${open ? 'bg-slate-50' : 'hover:bg-slate-50'}`}>
                                                     <ChevronRight className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
                                                     <span className="min-w-0 flex-1 text-sm"><strong className="text-slate-950">{index + 1}. {fullName(student)}</strong><span className="ml-2 text-xs text-slate-600">{student.student_code || ''}</span></span>
-                                                    <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">{studentRows.length ? `รับรอง ${approved}/${areas.length}${waiting ? ` · รอ ${waiting}` : ''}` : 'ยังไม่มีผลสรุป'}</span>
+                                                    <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">{studentRows.length ? `ส่งแล้ว ${published}/${areas.length}` : 'ยังไม่มีผลสรุป'}</span>
                                                 </button>
                                                 {open && (
                                                     <div className="space-y-3 bg-slate-50/60 px-4 pb-5 sm:px-5">
@@ -413,25 +377,24 @@ export default function AcademicApprovalCenter() {
                                                                         <>
                                                                             <div className="mt-3 flex flex-wrap items-center gap-2">
                                                                                 <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${LEVEL_CLASS[row.final_level] || LEVEL_CLASS['N/A']}`}>{row.final_level ? formalLevelLabel(row.final_level) : 'ยังไม่เลือกระดับ'}</span>
-                                                                                {isLockedDecision(row) && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><Lock className="h-3.5 w-3.5" aria-hidden="true" />ล็อกแล้ว</span>}
                                                                             </div>
                                                                             <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-800">{row.summary_text || <span className="text-amber-800">ยังไม่มีคำบรรยาย</span>}</p>
-                                                                            {row.decision_status === 'returned' && row.decision_reason && <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-900"><strong>เหตุผลที่ส่งกลับ:</strong> {row.decision_reason}</p>}
+                                                                            {row.decision_status === 'returned' && row.decision_reason && <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs text-rose-900"><strong>เหตุผลที่ขอให้แก้:</strong> {row.decision_reason}</p>}
                                                                             {notes.length > 0 && (
                                                                                 <details className="mt-3 rounded-lg border border-line">
                                                                                     <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-indigo-800">ข้อความ LO จากครูผู้สอน ({notes.length})</summary>
                                                                                     <ul className="divide-y divide-line border-t border-line">{notes.map((note, noteIndex) => <li key={noteIndex} className="p-3 text-sm"><span className="text-xs font-bold text-slate-600">{note.subject} · {note.loCode}</span><p className="mt-1 leading-6 text-slate-800">{note.text}</p></li>)}</ul>
                                                                                 </details>
                                                                             )}
-                                                                            {['submitted', 'approved'].includes(row.decision_status) && (
+                                                                            {isPublishedDecision(row) && (
                                                                                 <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-end">
-                                                                                    {row.decision_status === 'submitted' && (
+                                                                                    {isPublishedDecision(row) && (
                                                                                         <select aria-label={`แก้ระดับ ${shortAreaName(area)} ของ ${fullName(student)}`} value={override.level || row.final_level || ''} onChange={event => setOverrides(previous => ({ ...previous, [key]: { ...previous[key], level: event.target.value } }))} className="min-h-11 rounded-xl border border-field bg-white px-3 text-sm font-bold">
                                                                                             {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level === row.final_level ? `${level} (ครูประจำชั้นเสนอ)` : level}</option>)}
                                                                                         </select>
                                                                                     )}
-                                                                                    <button type="button" onClick={() => decideOne(row, 'returned')} disabled={busy === key} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-sm font-bold text-rose-800 hover:bg-rose-50 disabled:opacity-50">{row.decision_status === 'approved' ? 'ปลดล็อกและส่งกลับ' : 'ส่งกลับรายการนี้'}</button>
-                                                                                    {row.decision_status === 'submitted' && <button type="button" onClick={() => decideOne(row, 'approved')} disabled={busy === key} className="btn-primary">{(override.level && override.level !== row.final_level) ? 'รับรองระดับที่แก้' : 'รับรองรายการนี้'}</button>}
+                                                                                    <button type="button" onClick={() => decideOne(row, 'return')} disabled={busy === key} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-sm font-bold text-rose-800 hover:bg-rose-50 disabled:opacity-50">ขอให้ครูประจำชั้นแก้</button>
+                                                                                    <button type="button" onClick={() => decideOne(row, 'edit')} disabled={busy === key || !override.level || override.level === row.final_level} className="btn-primary">บันทึกระดับใหม่</button>
                                                                                 </div>
                                                                             )}
                                                                         </>

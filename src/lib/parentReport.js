@@ -4,7 +4,7 @@
 // ไฟล์นี้ต้องไม่เรียกฐานข้อมูล เพื่อให้ node --test นำเข้าไปทดสอบได้โดยตรง
 
 import { normalizeCompetencyArea } from '../constants/curriculum2568.js';
-import { collectRoomEvidence, decisionKey } from './homeroomSummary.js';
+import { collectRoomEvidence, decisionKey, isPublishedDecision } from './homeroomSummary.js';
 
 const THAI_DIGITS = ['๐', '๑', '๒', '๓', '๔', '๕', '๖', '๗', '๘', '๙'];
 
@@ -52,7 +52,8 @@ export function buildParentReport({ student, enrollments, mappings, evaluations,
         rows,
         evidence,
         activities: activities || null,
-        allApproved: rows.length > 0 && rows.every(row => row.status === 'approved'),
+        // ผลออกสู่ผู้ปกครองเมื่อครูประจำชั้นกดส่ง ไม่ต้องรอฝ่ายวิชาการรับรอง
+        allPublished: rows.length > 0 && rows.every(row => isPublishedDecision({ decision_status: row.status })),
         hasExpected: rows.some(row => row.expected),
     };
 }

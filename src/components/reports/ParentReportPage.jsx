@@ -36,7 +36,7 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
         );
     }
 
-    const draftCount = state.reports.filter(report => !report.allApproved).length;
+    const draftCount = state.reports.filter(report => !report.allPublished).length;
 
     return (
         <main className="min-h-screen bg-slate-200 py-6 font-sans text-slate-900 print:bg-white print:py-0">
@@ -56,8 +56,7 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
             {draftCount > 0 && (
                 <p className="mx-4 mb-4 flex max-w-[210mm] gap-2 rounded-xl border border-amber-300 sm:mx-auto bg-amber-50 p-3 text-sm text-amber-950 print:hidden">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-                    {isRoom ? `${draftCount} จาก ${state.reports.length} คน` : 'รายงานนี้'} ยังมีผลที่ไม่ผ่านการรับรอง แผ่นรายงานจะมีคำว่า “ฉบับร่าง” กำกับ
-                </p>
+                    {isRoom ? `${draftCount} จาก ${state.reports.length} คน` : 'รายงานนี้'} ยังมีผลที่ครูประจำชั้นยังไม่ได้ส่ง แผ่นรายงานจะมีคำว่า “ฉบับร่าง” กำกับไว้</p>
             )}
 
             {!state.error && state.reports.length === 0 ? (

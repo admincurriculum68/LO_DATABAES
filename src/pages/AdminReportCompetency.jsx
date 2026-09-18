@@ -18,7 +18,7 @@ const LEVEL_STYLES = {
     'N/A': 'border-line bg-slate-50 text-slate-600',
 };
 
-const statusLabel = status => ({ approved: 'รับรองแล้ว', returned: 'ส่งกลับแก้ไข', submitted: 'รอรับรอง', draft: 'ครูประจำชั้นยังไม่ส่ง', pending: 'รอรับรอง' }[status] || 'ยังไม่มีผลสรุป');
+const statusLabel = status => ({ approved: 'ส่งแล้ว', returned: 'ฝ่ายวิชาการขอให้แก้', submitted: 'ส่งแล้ว', draft: 'ครูประจำชั้นยังไม่ส่ง', pending: 'ครูประจำชั้นยังไม่ส่ง' }[status] || 'ยังไม่มีผลสรุป');
 const studentName = student => `${student.prefix || ''}${student.first_name || ''} ${student.last_name || ''}`.trim();
 
 export default function AdminReportCompetency() {
@@ -101,17 +101,17 @@ export default function AdminReportCompetency() {
             const decision = decisionMap.get(`${student.student_id}:${selectedArea}`);
             return [index + 1, student.student_code, studentName(student), student.current_grade_level, student.current_room, decision?.final_level || '', statusLabel(decision?.decision_status), decision?.summary_text || decision?.decision_reason || ''];
         });
-        const sheet = XLSX.utils.aoa_to_sheet([['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'ผลรับรองรายด้าน', 'สถานะ', 'คำบรรยาย/หมายเหตุ'], ...rows]);
+        const sheet = XLSX.utils.aoa_to_sheet([['เลขที่', 'รหัสนักเรียน', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'ผลรายด้าน', 'สถานะ', 'คำบรรยาย/หมายเหตุ'], ...rows]);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, sheet, 'ผลรับรองรายด้าน');
-        XLSX.writeFile(workbook, `ผลรับรอง_${selectedArea}_${academicYear}_${semester}.xlsx`);
+        XLSX.utils.book_append_sheet(workbook, sheet, 'ผลรายด้าน');
+        XLSX.writeFile(workbook, `ผลรายด้าน_${selectedArea}_${academicYear}_${semester}.xlsx`);
         toast.success('จัดทำไฟล์ Excel แล้ว');
     };
 
     return (
         <AcademicReportShell
             title="รายงานผลรายด้านความสามารถ"
-            description={`ผลที่ฝ่ายวิชาการรับรอง ภาคเรียนที่ ${semester}/${academicYear} — ข้อความราย LO ใช้เป็นหลักฐานประกอบและไม่ถูกเฉลี่ยเป็นระดับ`}
+            description={`ผลที่ครูประจำชั้นส่งแล้ว ภาคเรียนที่ ${semester}/${academicYear} — ข้อความราย LO ใช้เป็นหลักฐานประกอบและไม่ถูกเฉลี่ยเป็นระดับ`}
             wide
             actions={<>
                 <button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> ส่งออก Excel</button>
@@ -127,7 +127,7 @@ export default function AdminReportCompetency() {
 
             <section className="hidden font-sarabun-new text-black print:block">
                 <SchoolReportHeader school={school} title="แบบรายงานผลด้านความสามารถ" subtitle={`${selectedArea || 'ยังไม่ได้เลือกด้านความสามารถ'} · ภาคเรียนที่ ${semester}/${academicYear}`} compact />
-                <p className="mt-4 text-sm">ผลที่ฝ่ายวิชาการรับรอง จำนวน {filteredStudents.length} คน</p>
+                <p className="mt-4 text-sm">ผลที่ครูประจำชั้นส่งแล้ว จำนวน {filteredStudents.length} คน</p>
                 <table className="mt-3 w-full border-collapse text-[13px] leading-5"><thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">ชั้น/ห้อง</th><th className="w-24 border border-black px-2 py-2">ผลรับรอง</th><th className="w-24 border border-black px-2 py-2">สถานะ</th><th className="border border-black px-2 py-2">คำบรรยาย/หมายเหตุ</th></tr></thead><tbody>{filteredStudents.map((student, index) => { const decision = decisionMap.get(`${student.student_id}:${selectedArea}`); return <tr key={student.student_id}><td className="border border-black px-2 py-2 text-center">{index + 1}</td><td className="border border-black px-2 py-2"><strong>{studentName(student)}</strong><br /><span>{student.student_code || '-'}</span></td><td className="border border-black px-2 py-2 text-center">{student.current_grade_level || '-'}<br />{student.current_room || '-'}</td><td className="border border-black px-2 py-2 text-center">{decision?.final_level || '-'}</td><td className="border border-black px-2 py-2 text-center">{statusLabel(decision?.decision_status)}</td><td className="border border-black px-2 py-2">{decision?.summary_text || decision?.decision_reason || '-'}</td></tr>; })}</tbody></table>
             </section>
 

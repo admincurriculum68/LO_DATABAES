@@ -1,7 +1,8 @@
 // ครูประจำชั้นสรุปความสามารถรายด้าน
 //
 // ครูผู้สอนแต่ละวิชาเขียนข้อความพฤติกรรมราย LO ครูประจำชั้นรวมข้อความของทุกวิชามาเลือกระดับและเขียนคำบรรยายรายด้าน
-// แล้วส่งให้ฝ่ายวิชาการรับรองทั้งห้อง ผลเก็บใน competency_area_final_decisions
+// แล้วกดส่ง ผลจึงออกสู่นักเรียนและผู้ปกครองทันที ไม่ต้องรอฝ่ายวิชาการรับรอง
+// ฝ่ายวิชาการตรวจภายหลัง แก้ระดับเองได้ หรือขอให้ครูประจำชั้นแก้ ผลเก็บใน competency_area_final_decisions
 // ไฟล์นี้ต้องไม่เรียกฐานข้อมูล เพื่อให้ node --test นำเข้าไปทดสอบได้โดยตรง
 
 import { normalizeCompetencyArea } from '../constants/curriculum2568.js';
@@ -13,19 +14,20 @@ export const SUMMARY_LEVELS = ['เริ่มต้น', 'พัฒนา', '�
 export const ROOM_STATUS = {
     empty: { label: 'ยังไม่เริ่มสรุป', chip: 'chip-neutral' },
     draft: { label: 'กำลังสรุป', chip: 'chip-info' },
-    submitted: { label: 'ส่งฝ่ายวิชาการแล้ว', chip: 'chip-warning' },
-    returned: { label: 'ส่งกลับให้แก้ไข', chip: 'chip-danger' },
-    approved: { label: 'รับรองแล้ว', chip: 'chip-success' },
+    submitted: { label: 'ส่งแล้ว ผู้ปกครองเห็นได้', chip: 'chip-success' },
+    returned: { label: 'ฝ่ายวิชาการขอให้แก้', chip: 'chip-danger' },
 };
+
+/** ผลที่ส่งแล้วจะแสดงกับนักเรียนและผู้ปกครอง แถวเก่าที่เคยรับรองไว้ถือว่าส่งแล้วเช่นกัน */
+export const PUBLISHED_STATUSES = ['submitted', 'approved'];
+
+export function isPublishedDecision(row) {
+    return PUBLISHED_STATUSES.includes(row?.decision_status);
+}
 
 /** คีย์ของผลหนึ่งรายการ ใช้ชื่อด้านแบบมาตรฐาน ชื่อเดิมกับชื่อใหม่ของด้านเดียวกันจึงไม่แยกเป็นสองรายการ */
 export function decisionKey(studentId, area) {
     return `${studentId}:${normalizeCompetencyArea(area)}`;
-}
-
-/** ผลที่รับรองแล้วแก้ไม่ได้ จนกว่าฝ่ายวิชาการจะส่งกลับ */
-export function isLockedDecision(row) {
-    return Boolean(row && (row.is_locked || row.decision_status === 'approved'));
 }
 
 /** ผ่านเกณฑ์เมื่อได้ระดับพัฒนาขึ้นไป N/A ยังไม่ตัดสิน */
@@ -71,15 +73,14 @@ export function summaryProgress(studentIds, areas, valuesByKey) {
 
 /**
  * สถานะของทั้งห้องจากแถวผลในฐานข้อมูล
- * expectedCount คือจำนวนนักเรียน × จำนวนด้าน ใช้บอกว่าส่งหรือรับรองครบทั้งห้องแล้วหรือยัง
+ * expectedCount คือจำนวนนักเรียน × จำนวนด้าน ใช้บอกว่าส่งครบทั้งห้องแล้วหรือยัง
  */
 export function roomStatus(rows, expectedCount) {
     const list = (rows || []).filter(Boolean);
     if (!list.length) return 'empty';
     if (list.some(row => row.decision_status === 'returned')) return 'returned';
     const enough = list.length >= (expectedCount || 0);
-    if (enough && list.every(row => row.decision_status === 'approved')) return 'approved';
-    if (enough && list.every(row => ['submitted', 'approved'].includes(row.decision_status))) return 'submitted';
+    if (enough && list.every(isPublishedDecision)) return 'submitted';
     return 'draft';
 }
 

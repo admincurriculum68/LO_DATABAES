@@ -25,8 +25,8 @@ export default function ParentReportSheet({ school, report, academicYear, semest
             <article className="mx-auto mb-8 flex min-h-[297mm] max-w-[210mm] flex-col bg-white p-10 font-sarabun-new text-[15pt] leading-[1.35] text-black shadow-2xl print:mb-0 print:min-h-0 print:p-0 print:shadow-none sm:p-12">
                 <SchoolReportHeader school={school} title="รายงานผลการพัฒนาความสามารถของผู้เรียน" subtitle={termLabel} compact />
 
-                {!report.allApproved && (
-                    <p className="mt-3 border-2 border-dashed border-black px-3 py-1 text-center text-[13pt] font-bold">ฉบับร่าง · ผลบางด้านยังไม่ผ่านการรับรองของฝ่ายวิชาการ</p>
+                {!report.allPublished && (
+                    <p className="mt-3 border-2 border-dashed border-black px-3 py-1 text-center text-[13pt] font-bold">ฉบับร่าง · ครูประจำชั้นยังไม่ได้ส่งผลบางด้าน</p>
                 )}
 
                 <dl className="mt-4 grid grid-cols-[auto_1fr_auto_1fr] gap-x-3 gap-y-1">

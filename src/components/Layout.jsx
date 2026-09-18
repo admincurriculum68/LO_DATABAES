@@ -91,7 +91,7 @@ export default function Layout({ children, title, onActionClick, actionText, act
                 },
                 { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
                 { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
-                { label: 'รับรองผล', path: '/admin/approval' },
+                { label: 'ตรวจผลรายด้าน', path: '/admin/approval' },
             ],
         },
         {

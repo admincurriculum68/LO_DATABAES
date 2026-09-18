@@ -23,6 +23,7 @@ import { calculateCompletion, isReviewableWorkflow } from '../lib/evaluationProg
 import { buildLoResolver } from '../lib/loByRoom';
 import { loadRoomMappings, loadSubjectAssignments } from '../lib/loByRoomApi';
 import { formatRoomRange, teachersWithRooms } from '../lib/teacherAccess';
+import { isPublishedDecision } from '../lib/homeroomSummary';
 
 const LEVELS = ['เริ่มต้น', 'พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
 const PASSING_LEVELS = ['พัฒนา', 'ชำนาญ', 'เชี่ยวชาญ'];
@@ -36,10 +37,10 @@ const levelTone = {
 
 const submissionMeta = {
     draft: { label: 'ครูยังไม่ส่ง', className: 'bg-slate-100 text-slate-700 border-line' },
-    submitted: { label: 'ส่งให้วิชาการแล้ว', className: 'bg-blue-50 text-blue-800 border-blue-200' },
-    under_review: { label: 'วิชาการกำลังตรวจ', className: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
-    returned: { label: 'ส่งกลับให้แก้ไข', className: 'bg-rose-50 text-rose-800 border-rose-200' },
-    approved: { label: 'รับรองผลแล้ว', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    submitted: { label: 'ครูยืนยันว่าบันทึกครบ', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    under_review: { label: 'ครูยืนยันว่าบันทึกครบ', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    returned: { label: 'ครูยังไม่ส่ง', className: 'bg-slate-100 text-slate-700 border-line' },
+    approved: { label: 'ครูยืนยันว่าบันทึกครบ', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
 };
 
 const teacherName = teacher => (teacher ? `${teacher.prefix || ''}${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() : 'ยังไม่กำหนดครูผู้สอน');
@@ -181,7 +182,7 @@ export default function ExecutiveDashboard() {
         const filledCells = subjectRows.reduce((sum, row) => sum + row.filled, 0);
         const overallPercent = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
 
-        // 2. คอขวดการรับรองผล นับเป็นคู่ ผู้เรียน x ด้านความสามารถ
+        // 2. ความคืบหน้าของผลรายด้าน นับเป็นคู่ ผู้เรียน x ด้านความสามารถ
         const pairKeys = new Set();
         // ผลที่ครูประจำชั้นสรุปแล้วทุกสถานะนับเป็นงานที่รอหรือผ่านการรับรอง
         data.decisions.forEach(item => pairKeys.add(`${item.student_id}:${item.competency_area}`));
@@ -198,23 +199,23 @@ export default function ExecutiveDashboard() {
         });
 
         const decisionByPair = new Map(data.decisions.map(item => [`${item.student_id}:${item.competency_area}`, item]));
-        let approvedCount = 0;
+        let publishedCount = 0;
         let returnedCount = 0;
         pairKeys.forEach(key => {
-            const status = decisionByPair.get(key)?.decision_status;
-            if (status === 'approved') approvedCount += 1;
-            else if (status === 'returned') returnedCount += 1;
+            const row = decisionByPair.get(key);
+            if (isPublishedDecision(row)) publishedCount += 1;
+            else if (row?.decision_status === 'returned') returnedCount += 1;
         });
         const certification = {
             total: pairKeys.size,
-            approved: approvedCount,
+            published: publishedCount,
             returned: returnedCount,
-            pending: Math.max(0, pairKeys.size - approvedCount - returnedCount),
+            pending: Math.max(0, pairKeys.size - publishedCount - returnedCount),
         };
 
-        // 3. ผลแยกตามด้านความสามารถ ใช้เฉพาะผลที่รับรองแล้ว
+        // 3. ผลแยกตามด้านความสามารถ ใช้เฉพาะผลที่ครูประจำชั้นส่งแล้ว
         const areaMap = new Map();
-        data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
+        data.decisions.filter(isPublishedDecision).forEach(item => {
             const area = item.competency_area || 'ไม่ระบุด้านความสามารถ';
             if (!areaMap.has(area)) areaMap.set(area, { area, total: 0, passed: 0, counts: { เริ่มต้น: 0, พัฒนา: 0, ชำนาญ: 0, เชี่ยวชาญ: 0 } });
             const entry = areaMap.get(area);
@@ -244,7 +245,7 @@ export default function ExecutiveDashboard() {
             if (!enrollment || !item.evidence_note?.trim()) return;
             ensureRoom(studentById.get(enrollment.student_id)?.current_room || 'ไม่ระบุห้อง').filled += 1;
         });
-        data.decisions.filter(item => item.decision_status === 'approved').forEach(item => {
+        data.decisions.filter(isPublishedDecision).forEach(item => {
             const room = studentById.get(item.student_id)?.current_room;
             if (!room) return;
             const entry = ensureRoom(room);
@@ -267,7 +268,7 @@ export default function ExecutiveDashboard() {
         let draftTotal = 0;
         data.decisions.forEach(item => {
             if (!item.final_level) return;
-            if (['submitted', 'approved'].includes(item.decision_status)) {
+            if (isPublishedDecision(item)) {
                 if (confirmedCounts[item.final_level] !== undefined) {
                     confirmedCounts[item.final_level] += 1;
                     confirmedTotal += 1;
@@ -347,14 +348,14 @@ export default function ExecutiveDashboard() {
                     {/* 1. คอขวดของกระบวนการ */}
                     <SectionCard
                         icon={ClipboardCheck}
-                        title="สถานะการรับรองผลลัพธ์การเรียนรู้"
+                        title="สถานะผลลัพธ์การเรียนรู้รายด้าน"
                         description="นับเป็นคู่ ผู้เรียน × ด้านความสามารถที่ครูส่งตรวจแล้ว ตัวเลขนี้เป็นขั้นหลังจากการบันทึกข้อความ LO จึงอาจมีร้อยละต่างกัน"
                     >
                         <div className="grid grid-cols-2 divide-line border-b border-line sm:grid-cols-4 sm:divide-x">
                             {[
-                                { label: 'รอฝ่ายวิชาการรับรอง', value: view.certification.pending, tone: 'text-amber-700' },
-                                { label: 'รับรองแล้ว', value: view.certification.approved, tone: 'text-emerald-700' },
-                                { label: 'ส่งกลับให้แก้ไข', value: view.certification.returned, tone: 'text-rose-700' },
+                                { label: 'ครูประจำชั้นยังไม่ส่ง', value: view.certification.pending, tone: 'text-amber-700' },
+                                { label: 'ส่งแล้ว ผู้ปกครองเห็นได้', value: view.certification.published, tone: 'text-emerald-700' },
+                                { label: 'ฝ่ายวิชาการขอให้แก้', value: view.certification.returned, tone: 'text-rose-700' },
                                 { label: 'ทั้งหมด', value: view.certification.total, tone: 'text-slate-900' },
                             ].map(item => (
                                 <div key={item.label} className="px-5 py-4">
@@ -366,11 +367,11 @@ export default function ExecutiveDashboard() {
                         {view.certification.total > 0 && (
                             <div className="px-5 py-4 lg:px-6">
                                 <div aria-hidden="true" className="flex h-3 overflow-hidden rounded-full bg-slate-200">
-                                    <div className="bg-emerald-500" style={{ width: `${(view.certification.approved / view.certification.total) * 100}%` }} />
+                                    <div className="bg-emerald-500" style={{ width: `${(view.certification.published / view.certification.total) * 100}%` }} />
                                     <div className="bg-rose-500" style={{ width: `${(view.certification.returned / view.certification.total) * 100}%` }} />
                                 </div>
                                 <p className="mt-2.5 text-sm font-semibold text-slate-600">
-                                    รับรองแล้ว {Math.round((view.certification.approved / view.certification.total) * 100)}% ของรายการที่ครูประเมินไว้
+                                    ส่งแล้ว {Math.round((view.certification.published / view.certification.total) * 100)}% ของรายการที่ครูประเมินไว้
                                 </p>
                             </div>
                         )}
@@ -440,7 +441,7 @@ export default function ExecutiveDashboard() {
                     {/* 3. ผลรายด้านความสามารถ */}
                     <SectionCard
                         icon={FileBarChart2}
-                        title="ผลรายด้านความสามารถที่ฝ่ายวิชาการรับรองแล้ว"
+                        title="ผลรายด้านความสามารถที่ครูประจำชั้นส่งแล้ว"
                         description="เรียงจากด้านที่ผู้เรียนผ่านเกณฑ์น้อยที่สุด ใช้กำหนดทิศทางการพัฒนาคุณภาพของสถานศึกษา"
                         action={
                             <button
@@ -452,7 +453,7 @@ export default function ExecutiveDashboard() {
                         }
                     >
                         {view.competencyAreas.length === 0 ? (
-                            <EmptyRow>ยังไม่มีผลที่ฝ่ายวิชาการรับรอง จึงยังไม่สามารถสรุปรายด้านความสามารถได้</EmptyRow>
+                            <EmptyRow>ยังไม่มีผลที่ครูประจำชั้นส่ง จึงยังไม่สามารถสรุปรายด้านได้</EmptyRow>
                         ) : (
                             <ul className="divide-y divide-line">
                                 {view.competencyAreas.map(area => (
@@ -461,7 +462,7 @@ export default function ExecutiveDashboard() {
                                             <p className="font-bold text-slate-900">{area.area}</p>
                                             <p className="text-sm font-semibold text-slate-600">
                                                 ผ่านเกณฑ์ <strong className={area.passPercent >= 80 ? 'text-emerald-700' : area.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}>{area.passPercent}%</strong>
-                                                <span className="ml-1 text-slate-500">({area.passed}/{area.total} ผลการรับรอง)</span>
+                                                <span className="ml-1 text-slate-500">({area.passed}/{area.total} ผลที่ส่งแล้ว)</span>
                                             </p>
                                         </div>
                                         <div aria-hidden="true" className="mt-2.5 flex h-3 overflow-hidden rounded-full bg-slate-100">
@@ -512,7 +513,7 @@ export default function ExecutiveDashboard() {
                                                     <td className="px-4 py-3 text-center font-bold text-slate-800">{room.progressPercent}%</td>
                                                     <td className="px-4 py-3 text-center">
                                                         {room.passPercent === null ? (
-                                                            <span className="text-xs font-semibold text-slate-500">ยังไม่รับรอง</span>
+                                                            <span className="text-xs font-semibold text-slate-500">ยังไม่ส่ง</span>
                                                         ) : (
                                                             <span className={`font-bold ${room.passPercent >= 80 ? 'text-emerald-700' : room.passPercent >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>
                                                                 {room.passPercent}%

@@ -5,6 +5,7 @@ import AcademicReportShell from '../components/AcademicReportShell';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568, normalizeCompetencyArea } from '../constants/curriculum2568';
+import { PUBLISHED_STATUSES } from '../lib/homeroomSummary';
 
 // ─── Competency levels ──────────────────────────────────────────────────────
 const LEVELS = CBE_LEVELS_2568;
@@ -95,7 +96,7 @@ export default function PhaseReportAdmin() {
                 .eq('school_id', currentUser.school_id)
                 .eq('student_id', studentId)
                 .eq('academic_year', year)
-                .eq('decision_status', 'approved')
+                .in('decision_status', PUBLISHED_STATUSES)
                 .order('semester', { ascending: false }),
         ]);
         if (error) throw error;
