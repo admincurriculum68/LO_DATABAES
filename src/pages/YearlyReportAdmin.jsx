@@ -44,7 +44,6 @@ export default function YearlyReportAdmin() {
     const [competencies, setCompetencies] = useState([]); // yearly_competencies
     const [behaviorTemplates, setBehaviorTemplates] = useState([]); // yearly_behavior_templates
     const [achievedLevels, setAchievedLevels] = useState({}); // { competency_id: 'ชำนาญ' }
-    const [attendancePercent, setAttendancePercent] = useState('');
     const [learnerActivities, setLearnerActivities] = useState('ผ่าน');
     const [desirableChars, setDesirableChars] = useState('ผ่าน');
     const [existingResultId, setExistingResultId] = useState(null);
@@ -124,7 +123,6 @@ export default function YearlyReportAdmin() {
 
         if (result) {
             setExistingResultId(result.result_id);
-            setAttendancePercent(result.attendance_percent?.toString() || '');
             setLearnerActivities(result.learner_activities || 'ผ่าน');
             setDesirableChars(result.desirable_chars || 'ผ่าน');
             (result.student_yearly_competency_evaluations || []).forEach(ev => {
@@ -132,7 +130,6 @@ export default function YearlyReportAdmin() {
             });
         } else {
             setExistingResultId(null);
-            setAttendancePercent('');
             setLearnerActivities('ผ่าน');
             setDesirableChars('ผ่าน');
         }
@@ -167,7 +164,6 @@ export default function YearlyReportAdmin() {
                 student_id: selectedStudent.student_id,
                 academic_year: academicYear,
                 grade_level: selectedGrade,
-                attendance_percent: parseFloat(attendancePercent) || null,
                 learner_activities: learnerActivities,
                 desirable_chars: desirableChars,
             };
@@ -301,15 +297,8 @@ export default function YearlyReportAdmin() {
                             </div>
                         </div>
 
-                        {/* Attendance & Activities */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <div>
-                                <label htmlFor="yearly-attendance" className="block text-sm font-bold text-slate-600 mb-2">การเข้าชั้นเรียน (%)</label>
-                                <input id="yearly-attendance" type="number" min="0" max="100" value={attendancePercent}
-                                    onChange={e => setAttendancePercent(e.target.value)}
-                                    placeholder="เช่น 100"
-                                    className="w-full border border-field rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                            </div>
+                        {/* Activities */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             <div>
                                 <label htmlFor="yearly-activities" className="block text-sm font-bold text-slate-600 mb-2">กิจกรรมพัฒนาผู้เรียน</label>
                                 <select id="yearly-activities" value={learnerActivities} onChange={e => setLearnerActivities(e.target.value)}
@@ -386,7 +375,6 @@ export default function YearlyReportAdmin() {
                                 </h1>
                                 <div className="flex justify-center gap-8 mt-3 text-base font-medium text-slate-700">
                                     <span>ชื่อ – สกุล <strong>{studentName}</strong></span>
-                                    <span>การเข้าชั้นเรียน <strong>{attendancePercent || '—'}%</strong></span>
                                 </div>
                             </div>
 

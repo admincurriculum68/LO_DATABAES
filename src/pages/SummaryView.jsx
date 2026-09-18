@@ -43,17 +43,18 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scoped
     const roomHours = singleRoom ? hoursForRoom(subject, roomFilter) : null;
     const hoursText = singleRoom ? (roomHours === null ? '' : `${roomHours} ชั่วโมง`) : summarizeRoomHours(subject, rooms);
     return (
-        <article className="summary-print-only hidden min-h-[270mm] font-sarabun-new text-black">
+        <article className="summary-print-only summary-cover hidden h-[272mm] flex-col justify-between font-sarabun-new text-black">
             <SchoolReportHeader
                 school={school}
                 title={['แฟ้มหลักฐาน', 'การประเมินผลลัพธ์การเรียนรู้']}
-                subtitle="หลักฐานข้อความสะท้อนพฤติกรรมรายวิชา"
+                subtitle="หลักฐานข้อความสะท้อนพฤติกรรม"
+                variant="cover"
             />
-            <div className="flex min-h-[190mm] flex-col items-center justify-center text-center">
+            <div className="flex flex-col items-center text-center">
                 <p className="text-2xl">{learningFormatLabel(subject?.learning_format || 'subject')}</p>
-                <h2 className="mt-4 max-w-[160mm] text-5xl font-bold leading-tight">{subject?.subject_name || '-'}</h2>
-                {subject?.subject_code && <p className="mt-3 text-2xl">รหัสวิชา {subject.subject_code}</p>}
-                <dl className="mt-12 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-4 border-y border-black py-6 text-left text-xl">
+                <h2 className="mt-3 max-w-[160mm] text-5xl font-bold leading-tight">{subject?.subject_name || '-'}</h2>
+                {subject?.subject_code && <p className="mt-2 text-2xl">รหัสวิชา {subject.subject_code}</p>}
+                <dl className="mt-8 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-3 text-left text-xl">
                     <dt className="font-bold">ระดับชั้น</dt><dd>{subject?.grade_level || '-'}</dd>
                     <dt className="font-bold">ห้องเรียน</dt><dd>{formatRoomRange(scopedRooms) || '-'}</dd>
                     <dt className="font-bold">ภาคเรียน/ปีการศึกษา</dt><dd>{subject?.semester || '-'} / {subject?.academic_year || '-'}</dd>
@@ -61,7 +62,7 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scoped
                     <dt className="font-bold">ครูผู้สอน</dt><dd>{teacherNames.length ? teacherNames.join(', ') : '-'}</dd>
                 </dl>
             </div>
-            <SignatureRow className="mt-auto px-8" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} />
+            <SignatureRow className="break-inside-avoid px-6" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} size="small" />
         </article>
     );
 }
@@ -300,6 +301,8 @@ export default function SummaryView() {
                     .summary-controls { display: none !important; }
                     .summary-screen-only { display: none !important; }
                     .summary-print-only { display: block !important; }
+                    /* ปกต้องอยู่หน้าเดียว จึงต้องเป็นกล่องยืดหยุ่นเพื่อดันช่องลงชื่อไปท้ายหน้า */
+                    .summary-cover { display: flex !important; }
                     .summary-document { border: 0 !important; box-shadow: none !important; }
                     .summary-table { font-size: 10px !important; }
                     body { background: white !important; }

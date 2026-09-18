@@ -15,6 +15,7 @@ import {
 import { syncTeacherRoles } from '../lib/peopleApi';
 import { normalizeCitizenInput, sanitizeCitizenId } from '../lib/importSanitizers';
 import { LEAVE_STATUS, placementSummary, planStudentPlacement } from '../lib/studentPlacement';
+import { gradeOfRoom } from '../lib/teacherAccess';
 import {
     applyStudentPlacement, createStudent, findCitizenOwner, loadRoomSubjects, loadStudentTermEnrollments,
 } from '../lib/studentPlacementApi';
@@ -29,8 +30,6 @@ const BLANK_STUDENT = {
     citizen_id: '', dob: '', student_code: '', prefix: '', first_name: '', last_name: '',
     current_grade_level: '', current_room: '', student_status: 'active',
 };
-// ป.4/1 → ป.4 ใช้เมื่อไม่ได้กรอกชั้นเอง
-const gradeFromRoom = room => String(room || '').match(/^(.*\d+)\s*\/\s*\d+$/)?.[1]?.trim() || '';
 
 function Field({ label, hint, error, errorId, children }) {
     return (
@@ -264,7 +263,7 @@ export default function PeopleManager() {
                 prefix: draft.prefix.trim(),
                 first_name: draft.first_name.trim(),
                 last_name: draft.last_name.trim(),
-                current_grade_level: draft.current_grade_level.trim() || gradeFromRoom(room),
+                current_grade_level: draft.current_grade_level.trim() || gradeOfRoom(room),
                 current_room: room,
             },
         });

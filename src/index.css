@@ -91,6 +91,17 @@
     letter-spacing: -0.01em;
   }
 
+  /* เอกสารที่พิมพ์ออกกระดาษใช้ THSarabunNew ทั้งฉบับ หัวเรื่องต้องไม่หลุดไปใช้ฟอนต์หัวข้อของระบบ */
+  .font-sarabun-new h1,
+  .font-sarabun-new h2,
+  .font-sarabun-new h3,
+  .font-sarabun-new h4,
+  .font-sarabun-new h5,
+  .font-sarabun-new h6 {
+    font-family: var(--font-sarabun-new);
+    letter-spacing: 0;
+  }
+
   /* ตัวเลขในตารางและสถิติต้องกว้างเท่ากันทุกหลัก ไม่ขยับเวลาค่าเปลี่ยน */
   table, .tabular {
     font-variant-numeric: tabular-nums;

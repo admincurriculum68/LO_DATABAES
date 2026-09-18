@@ -45,7 +45,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                             <th className="w-[26%] border border-black px-2 py-1.5">ด้านความสามารถ</th>
                             {report.hasExpected && <th className="w-[12%] border border-black px-2 py-1.5">ระดับที่คาดหวัง</th>}
                             <th className="w-[12%] border border-black px-2 py-1.5">ระดับที่ได้</th>
-                            <th className="border border-black px-2 py-1.5">คำบรรยายจากครูประจำชั้น</th>
+                            <th className="border border-black px-2 py-1.5">คำบรรยายความสามารถ</th>
                         </tr>
                     </thead>
                     <tbody>

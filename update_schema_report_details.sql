@@ -28,6 +28,11 @@ ALTER TABLE subjects
 
 COMMENT ON COLUMN subjects.learning_format IS 'ประเภทของรายการเรียนรู้: subject | learning_unit | project | activity (ว่าง = วิชา)';
 
+-- 3) ตารางกิจกรรมพัฒนาผู้เรียนและคุณลักษณะอันพึงประสงค์เปิด RLS ไว้ตั้งแต่ตอนสร้าง
+--    และ policy ให้สิทธิ์เฉพาะ role authenticated ซึ่งระบบนี้ไม่ได้ใช้ ครูจึงบันทึกผลไม่ได้เลย
+--    ปรับให้เหมือนตารางอื่นในระบบ
+ALTER TABLE student_year_evaluations DISABLE ROW LEVEL SECURITY;
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;

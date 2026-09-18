@@ -10,6 +10,7 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { formalLevelLabel } from '../lib/terminology';
 import { shortAreaName } from '../lib/loMapping';
 import { loadRoomMappings } from '../lib/loByRoomApi';
+import { loadCompetencyAreas } from '../lib/competencyAreasApi';
 import { ROOM_STATUS, SUMMARY_LEVELS, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus } from '../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../lib/homeroomSummaryApi';
 
@@ -152,7 +153,8 @@ export default function AcademicApprovalCenter() {
                         .select('enrollment_id, lo_id, evidence_note').in('enrollment_id', batch).range(from, to)),
                 ]);
                 if (!active) return;
-                const { areas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations);
+                const areaNames = await loadCompetencyAreas({ schoolId: currentUser.school_id, grades: [selected?.grade] }).catch(() => []);
+                const { areas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations, { areas: areaNames });
                 setEvidence({ room: selectedRoomName, areas, notesByKey, loading: false, enrollmentIds: enrollments.map(item => item.enrollment_id) });
             } catch (error) {
                 if (active) {

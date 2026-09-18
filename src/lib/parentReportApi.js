@@ -4,9 +4,10 @@ import { buildParentReport } from './parentReport';
 import { homeroomSummarySupported } from './homeroomSummaryApi';
 import { loadRoomMappings } from './loByRoomApi';
 import { loadSchoolProfile } from './schoolProfile';
+import { loadCompetencyAreas } from './competencyAreasApi';
 
 const fullName = person => `${person?.prefix || ''}${person?.first_name || ''} ${person?.last_name || ''}`.trim();
-const ENROLLMENT_SELECT = 'enrollment_id, student_id, subject_id, room, attendance_percent, users_students!inner(student_id, school_id, student_code, prefix, first_name, last_name, current_grade_level, current_room), subjects!inner(subject_name, grade_level, academic_year, semester, school_id)';
+const ENROLLMENT_SELECT = 'enrollment_id, student_id, subject_id, room, users_students!inner(student_id, school_id, student_code, prefix, first_name, last_name, current_grade_level, current_room), subjects!inner(subject_name, grade_level, academic_year, semester, school_id)';
 
 /**
  * โหลดข้อมูลรายงานผู้ปกครองของนักเรียนคนเดียว (studentId) หรือทั้งห้อง (room)
@@ -45,7 +46,7 @@ export async function loadParentReports({ schoolId, academicYear, semester, stud
     const decisionColumns = `student_id, competency_area, final_level, decision_status${hasSummary ? ', summary_text' : ''}`;
     const grades = [...new Set(enrollments.map(item => item.users_students?.current_grade_level || item.subjects?.grade_level).filter(Boolean))];
 
-    const [mappings, evaluations, decisions, activities, teachers, yearly] = await Promise.all([
+    const [mappings, evaluations, decisions, activities, teachers, yearly, areaNames] = await Promise.all([
         loadRoomMappings(subjectIds, { withLo: true }),
         fetchAllByIn(enrollments.map(item => item.enrollment_id), (batch, from, to) => supabase.from('lo_evaluations')
             .select('enrollment_id, lo_id, evidence_note').in('enrollment_id', batch).range(from, to)),
@@ -61,6 +62,8 @@ export async function loadParentReports({ schoolId, academicYear, semester, stud
             ? supabase.from('yearly_competencies').select('grade_level, competency_area, expected_level').eq('school_id', schoolId).in('grade_level', grades)
                 .then(({ data, error }) => (error ? [] : data || []))
             : Promise.resolve([]),
+        // ด้านที่ต้องรายงานมาจากคลัง LO ของชั้น ไม่ใช่เฉพาะด้านที่ครูผูก LO ไว้แล้ว
+        loadCompetencyAreas({ schoolId, grades }).catch(() => []),
     ]);
 
     const teachersByRoom = new Map();
@@ -86,6 +89,7 @@ export async function loadParentReports({ schoolId, academicYear, semester, stud
             activities: activityByStudent.get(id),
             homeroomTeachers: teachersByRoom.get(student.current_room) || [],
             expectedByKey,
+            areaNames,
         });
     }).sort((a, b) => String(a.student.student_code || '').localeCompare(String(b.student.student_code || ''), 'th', { numeric: true }));
 

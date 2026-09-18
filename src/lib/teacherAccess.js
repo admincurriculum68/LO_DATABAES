@@ -42,6 +42,11 @@ export function accessibleRooms(access, rooms) {
     return [...new Set(rooms || [])].filter(room => access.allows(room)).sort(compareRooms);
 }
 
+/** ชั้นของห้อง เช่น ป.4/2 → ป.4 ใช้หาคลัง LO และชั้นของนักเรียนใหม่ */
+export function gradeOfRoom(room) {
+    return String(room || '').match(/^(.*\d+)\s*\/\s*\d+$/)?.[1]?.trim() || '';
+}
+
 export function compareRooms(a, b) {
     return String(a || '').localeCompare(String(b || ''), 'th', { numeric: true });
 }

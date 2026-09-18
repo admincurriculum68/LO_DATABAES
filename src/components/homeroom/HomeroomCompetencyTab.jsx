@@ -40,7 +40,37 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const studentIds = useMemo(() => students.map(student => student.id), [students]);
 
     // ด้านที่ห้องนี้ใช้จริง และข้อความ LO ของนักเรียนแต่ละคนแยกตามด้าน
-    const { areas, notesByKey } = useMemo(() => collectRoomEvidence(data?.enrollments, data?.loData, data?.evalData), [data]);
+    const { areas, notesByKey } = useMemo(
+        () => collectRoomEvidence(data?.enrollments, data?.loData, data?.evalData, { areas: data?.areaNames }),
+        [data],
+    );
+
+    // ชั้นที่มีหลายด้าน ตารางจะกว้างเกินจอ จึงมีปุ่มเลื่อนให้กดแทนการลากอย่างเดียว
+    const scrollRef = useRef(null);
+    const [canScroll, setCanScroll] = useState(false);
+    useEffect(() => {
+        const box = scrollRef.current;
+        if (!box) { setCanScroll(false); return undefined; }
+        const update = () => setCanScroll(box.scrollWidth - box.clientWidth > 8);
+        update();
+        // วัดอีกครั้งหลังเบราว์เซอร์จัดตารางเสร็จ ตอน effect ทำงานความกว้างจริงอาจยังไม่นิ่ง
+        const timer = setTimeout(update, 300);
+        const observer = new ResizeObserver(update);
+        observer.observe(box);
+        // ความกว้างของกล่องไม่เปลี่ยนตอนคอลัมน์เพิ่ม จึงต้องเฝ้าดูตารางด้วย
+        if (box.firstElementChild) observer.observe(box.firstElementChild);
+        window.addEventListener('resize', update);
+        return () => {
+            clearTimeout(timer);
+            observer.disconnect();
+            window.removeEventListener('resize', update);
+        };
+    }, [view, areas.length, students.length, loading]);
+    // ตั้งค่า scrollLeft ตรง ๆ ความนุ่มมาจาก CSS scroll-smooth เบราว์เซอร์ที่ไม่รองรับก็ยังเลื่อนได้
+    const scrollAreas = direction => {
+        const box = scrollRef.current;
+        if (box) box.scrollLeft += direction * 220;
+    };
 
     const load = useCallback(async () => {
         if (!currentUser?.school_id || !room || !academicYear || !semester) return;
@@ -292,6 +322,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const selectedIndex = students.findIndex(student => student.id === selectedStudentId);
     const selectedStudent = students[selectedIndex];
     const printRoom = () => navigate(`/batch-report/${encodeURIComponent(room)}/${academicYear}/${semester}`);
+    const printStudent = studentId => navigate(`/report/${studentId}/${academicYear}/${semester}`);
 
     return (
         <div className="space-y-5">
@@ -320,6 +351,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                         <button type="button" onClick={draftAllNarratives} disabled={!emptyNarratives.length} className="btn-secondary"><Sparkles className="h-4 w-4" aria-hidden="true" />ร่างคำบรรยายจาก LO ({emptyNarratives.length})</button>
                         <button type="button" onClick={printRoom} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครองทั้งห้อง</button>
                         <button type="button" onClick={submitRoom} disabled={saving || progress.leveled === 0} className="btn-primary"><Send className="h-4 w-4" aria-hidden="true" />ส่งผลสรุป</button>
+                        <p className="text-xs leading-5 text-slate-600 sm:max-w-56">ส่งผลสรุปแล้วผู้ปกครองและนักเรียนเห็นผลทันที และฝ่ายวิชาการเห็นว่าห้องนี้สรุปเสร็จแล้ว แก้ไขได้ตลอด</p>
                     </div>
                 </div>
                 {returnedRows.length > 0 && (
@@ -337,8 +369,19 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
             {view === 'table' && (
                 <section className="overflow-hidden rounded-2xl border border-line bg-white" aria-label="ตารางระดับทั้งห้อง">
                     <p className="border-b border-line px-4 py-3 text-sm text-slate-700 sm:px-6">ช่องในตารางคือ<strong className="font-bold text-slate-900">ระดับความสามารถ</strong>ของนักเรียนแต่ละคน ช่องบนหัวคอลัมน์ใช้เติมระดับให้คนที่ยังว่างทั้งด้านรวดเดียว ส่วนคำบรรยายกดที่ไอคอนดินสอหรือชื่อนักเรียนเพื่อเขียน</p>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse text-sm">
+                    {canScroll && (
+                        <div className="flex items-center justify-end gap-2 border-b border-line px-4 py-2 sm:px-6">
+                            <span className="mr-auto text-xs text-slate-600">เลื่อนดูด้านอื่นได้</span>
+                            <button type="button" onClick={() => scrollAreas(-1)} aria-label="เลื่อนไปด้านก่อนหน้า" className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
+                                <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                            <button type="button" onClick={() => scrollAreas(1)} aria-label="เลื่อนไปด้านถัดไป" className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
+                                <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                        </div>
+                    )}
+                    <div ref={scrollRef} className="overflow-x-auto">
+                        <table className="min-w-full border-collapse text-sm" style={{ minWidth: `${15 + areas.length * 9.5}rem` }}>
                             <caption className="sr-only">ระดับความสามารถรายด้านของนักเรียนห้อง {room}</caption>
                             <thead className="bg-slate-50 text-slate-700">
                                 <tr>
@@ -434,7 +477,8 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                 <h3 id="homeroom-student-title" className="text-lg font-bold text-slate-950">{selectedIndex + 1}. {fullName(selectedStudent.info)}</h3>
                                 <p className="text-sm text-slate-600">รหัส {selectedStudent.info.student_code || '-'} · ห้อง {room}</p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={() => printStudent(selectedStudent.id)} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครองของคนนี้</button>
                                 <button type="button" onClick={() => setSelectedStudentId(students[selectedIndex - 1]?.id)} disabled={selectedIndex <= 0} className="btn-secondary" aria-label="นักเรียนคนก่อน"><ChevronLeft className="h-4 w-4" aria-hidden="true" />คนก่อน</button>
                                 <button type="button" onClick={() => setSelectedStudentId(students[selectedIndex + 1]?.id)} disabled={selectedIndex >= students.length - 1} className="btn-secondary" aria-label="นักเรียนคนถัดไป">คนถัดไป<ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                                 <button type="button" onClick={() => navigate(`/report/${selectedStudent.id}/${academicYear}/${semester}`)} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" /><span className="hidden sm:inline">รายงานผู้ปกครอง</span></button>
@@ -471,7 +515,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                             </label>
                                             <div>
                                                 <div className="mb-1.5 flex items-center justify-between gap-2">
-                                                    <label htmlFor={fieldId} className="text-xs font-bold text-slate-700">คำบรรยายของครูประจำชั้น</label>
+                                                    <label htmlFor={fieldId} className="text-xs font-bold text-slate-700">คำบรรยาย</label>
                                                     {notes.length > 0 && (
                                                         <button type="button" onClick={() => setValue(selectedStudent.id, area, { summary: buildNarrativeDraft(notes) })} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-bold text-indigo-800 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />ร่างใหม่จาก LO</button>
                                                     )}

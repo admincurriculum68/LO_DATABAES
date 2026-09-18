@@ -71,3 +71,17 @@ test('collectRoomEvidence รวมข้อความ LO ของทุก�
     assert.deepEqual(notesByKey.get(decisionKey('s1', 'ความสามารถด้านการอ่าน')).map(note => `${note.subject}:${note.text}`), ['ภาษาไทย:อ่านคล่อง', 'วรรณกรรม:เล่าเรื่องได้']);
     assert.equal(notesByKey.has(decisionKey('s1', 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต')), false);
 });
+
+test('collectRoomEvidence แสดงด้านครบตามคลัง LO ของชั้น แม้ด้านนั้นยังไม่มีวิชาผูก LO', () => {
+    const enrollments = [{ enrollment_id: 'e1', student_id: 's1', subject_id: 'thai', room: 'ป.4/1', subjects: { subject_name: 'ภาษาไทย' } }];
+    const mappings = [{ subject_id: 'thai', room_name: null, learning_outcomes: { lo_id: 'lo1', lo_code: 'LO1', ability_no: 1, competency_area: 'ความสามารถด้านภาษาและการสื่อสาร' } }];
+    const evaluations = [{ enrollment_id: 'e1', lo_id: 'lo1', evidence_note: 'อ่านคล่อง' }];
+    const required = ['ความสามารถด้านภาษาและการสื่อสาร', 'ความสามารถด้านการคิดคำนวณ', 'ความสามารถด้านเศรษฐกิจและการเงิน'];
+
+    const withBank = collectRoomEvidence(enrollments, mappings, evaluations, { areas: required });
+    assert.deepEqual(withBank.areas, required);
+    assert.equal(withBank.notesByKey.get(decisionKey('s1', 'ความสามารถด้านภาษาและการสื่อสาร')).length, 1);
+
+    // ไม่ส่งคลังมาให้ ใช้เฉพาะด้านที่มี LO ผูกอยู่เหมือนเดิม
+    assert.deepEqual(collectRoomEvidence(enrollments, mappings, evaluations).areas, ['ความสามารถด้านภาษาและการสื่อสาร']);
+});

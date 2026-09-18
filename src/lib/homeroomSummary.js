@@ -6,6 +6,7 @@
 // ไฟล์นี้ต้องไม่เรียกฐานข้อมูล เพื่อให้ node --test นำเข้าไปทดสอบได้โดยตรง
 
 import { normalizeCompetencyArea } from '../constants/curriculum2568.js';
+import { mergeAreaLists } from './competencyAreas.js';
 import { groupLearningOutcomesByArea } from './loMapping.js';
 import { buildLoResolver } from './loByRoom.js';
 
@@ -89,13 +90,16 @@ export function roomStatus(rows, expectedCount) {
  * enrollments: [{ enrollment_id, student_id, subject_id, room, subjects: { subject_name } }]
  * mappings: [{ subject_id, room_name, learning_outcomes: { lo_id, lo_code, ability_no, competency_area } }]
  * evaluations: [{ enrollment_id, lo_id, evidence_note }]
+ * areas: ด้านที่ต้องสรุปของชั้นนั้น (จากคลัง LO ของโรงเรียน) ถ้าไม่ส่งมาจะใช้เฉพาะด้านที่มี LO ผูกอยู่
  * LO ของแต่ละวิชาขึ้นกับห้องของนักเรียน ห้องที่ไม่มีชุดของตัวเองใช้ชุดทั้งวิชา
  */
-export function collectRoomEvidence(enrollments, mappings, evaluations) {
+export function collectRoomEvidence(enrollments, mappings, evaluations, { areas: requiredAreas } = {}) {
     const resolver = buildLoResolver((mappings || []).filter(item => item?.learning_outcomes));
     const losFor = enrollment => resolver.rowsFor(enrollment.subject_id, enrollment.room).map(row => row.learning_outcomes);
     const uniqueLos = [...new Map((enrollments || []).flatMap(losFor).map(lo => [lo.lo_id, lo])).values()];
-    const areas = groupLearningOutcomesByArea(uniqueLos).map(group => group.area);
+    // ครูประจำชั้นต้องสรุปครบทุกด้านของชั้น แม้ด้านนั้นยังไม่มีวิชาไหนผูก LO ไว้
+    const areasWithLo = groupLearningOutcomesByArea(uniqueLos).map(group => group.area);
+    const areas = requiredAreas?.length ? mergeAreaLists(requiredAreas, areasWithLo) : areasWithLo;
     const noteByEnrollmentLo = new Map((evaluations || [])
         .filter(item => normalizeText(item.evidence_note))
         .map(item => [`${item.enrollment_id}:${item.lo_id}`, normalizeText(item.evidence_note)]));

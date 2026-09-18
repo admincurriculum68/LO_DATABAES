@@ -33,3 +33,19 @@ test('buildParentReport ใช้ผลของครูประจำชั�
     const draft = buildParentReport({ student, enrollments, mappings, evaluations, decisions: decisions.map(row => ({ ...row, decision_status: 'draft' })) });
     assert.equal(draft.allPublished, false);
 });
+
+test('buildParentReport ใส่แถวให้ครบทุกด้านของชั้น ด้านที่ยังไม่มีผลสรุปเว้นว่างไว้', () => {
+    const student = { student_id: 's1', current_grade_level: 'ป.4', current_room: 'ป.4/2' };
+    const areaNames = ['ความสามารถด้านภาษาและการสื่อสาร', 'ความสามารถด้านการคิดคำนวณ', 'ความสามารถด้านเศรษฐกิจและการเงิน'];
+    const report = buildParentReport({
+        student,
+        enrollments: [],
+        mappings: [],
+        evaluations: [],
+        decisions: [{ competency_area: 'ความสามารถด้านการคิดคำนวณ', final_level: 'ชำนาญ', summary_text: 'คิดเลขคล่อง', decision_status: 'submitted' }],
+        areaNames,
+    });
+    assert.deepEqual(report.rows.map(row => row.area), areaNames);
+    assert.deepEqual(report.rows.map(row => row.level), ['', 'ชำนาญ', '']);
+    assert.equal(report.allPublished, false);
+});

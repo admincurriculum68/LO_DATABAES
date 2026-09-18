@@ -23,6 +23,8 @@ import HomeroomCompetencyTab from '../components/homeroom/HomeroomCompetencyTab'
 import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { buildLoResolver } from '../lib/loByRoom';
 import { loadRoomMappings } from '../lib/loByRoomApi';
+import { loadCompetencyAreas } from '../lib/competencyAreasApi';
+import { gradeOfRoom } from '../lib/teacherAccess';
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
@@ -96,7 +98,7 @@ export default function HomeroomView() {
                 .eq('subjects.semester', semester)
                 .range(from, to));
             if (!enrollments.length) {
-                setData({ enrollments: [], loData: [], evalData: [] });
+                setData({ enrollments: [], loData: [], evalData: [], areaNames: [] });
                 setActivityData({});
                 return;
             }
@@ -126,10 +128,17 @@ export default function HomeroomView() {
                 };
             });
 
+            // ด้านที่ต้องสรุปมาจากคลัง LO ของชั้น ไม่ใช่เฉพาะด้านที่ครูผูก LO ไว้แล้ว
+            const areaNames = await loadCompetencyAreas({
+                schoolId: currentUser.school_id,
+                grades: [gradeOfRoom(normalizedRoom)],
+            }).catch(() => []);
+
             const nextData = {
                 enrollments,
                 loData: mappings.filter(item => item.learning_outcomes),
                 evalData: evaluations,
+                areaNames,
             };
             const firstLoId = nextData.loData[0]?.learning_outcomes?.lo_id || '';
             setData(nextData);

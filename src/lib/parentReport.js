@@ -18,8 +18,8 @@ export function toThaiDigits(value) {
  * decisions: แถว competency_area_final_decisions ของนักเรียนคนนี้
  * expectedByKey: Map "ชั้น:ด้าน" → ระดับที่คาดหวัง จาก yearly_competencies (ถ้ามี)
  */
-export function buildParentReport({ student, enrollments, mappings, evaluations, decisions, activities, homeroomTeachers, expectedByKey }) {
-    const { areas: evidenceAreas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations);
+export function buildParentReport({ student, enrollments, mappings, evaluations, decisions, activities, homeroomTeachers, expectedByKey, areaNames }) {
+    const { areas: evidenceAreas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations, { areas: areaNames });
     const decisionByArea = new Map((decisions || []).map(row => [normalizeCompetencyArea(row.competency_area), row]));
     const areas = [...evidenceAreas, ...[...decisionByArea.keys()].filter(area => !evidenceAreas.includes(area))];
     const grade = student?.current_grade_level || enrollments?.[0]?.subjects?.grade_level || '';
