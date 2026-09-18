@@ -13,13 +13,6 @@ export function toThaiDigits(value) {
     return String(value ?? '').replace(/\d/g, digit => THAI_DIGITS[Number(digit)]);
 }
 
-/** เวลาเรียนเฉลี่ยจากทุกวิชา ปัดเป็นจำนวนเต็ม ถ้าไม่มีข้อมูลเลยคืน null ไม่เดาว่า 100 */
-export function averageAttendance(enrollments) {
-    const values = (enrollments || []).map(item => item.attendance_percent).filter(value => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
-    if (!values.length) return null;
-    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
 /**
  * ประกอบข้อมูลรายงานของนักเรียนหนึ่งคน
  * decisions: แถว competency_area_final_decisions ของนักเรียนคนนี้
@@ -47,7 +40,6 @@ export function buildParentReport({ student, enrollments, mappings, evaluations,
         student,
         grade,
         room: student?.current_room || enrollments?.[0]?.room || '',
-        attendance: averageAttendance(enrollments),
         homeroomTeachers: homeroomTeachers || [],
         rows,
         evidence,

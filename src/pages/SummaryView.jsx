@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildLoResolver, sameSetAcrossRooms } from '../lib/loByRoom';
 import { LO_FIELDS, mappingSelect } from '../lib/loByRoomApi';
-import { compareRooms, teacherRoomAccess } from '../lib/teacherAccess';
+import { compareRooms, formatRoomRange, teacherRoomAccess, teachersWithRooms } from '../lib/teacherAccess';
+import { learningFormatLabel } from '../lib/terminology';
+import SignatureRow from '../components/reports/SignatureRow';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
     AlertCircle,
@@ -35,7 +37,7 @@ const levelMeta = {
 
 const studentName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
-function SubjectCover({ school, subject, teacherNames, rooms, roomFilter }) {
+function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scopedRooms }) {
     // วิชาเดียวกันเรียนไม่เท่ากันได้ตามห้อง พิมพ์เฉพาะห้องใช้ชั่วโมงของห้องนั้น พิมพ์ทุกห้องสรุปทุกช่วงห้อง
     const singleRoom = roomFilter && roomFilter !== 'all';
     const roomHours = singleRoom ? hoursForRoom(subject, roomFilter) : null;
@@ -44,24 +46,22 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter }) {
         <article className="summary-print-only hidden min-h-[270mm] font-sarabun-new text-black">
             <SchoolReportHeader
                 school={school}
-                title="แฟ้มหลักฐานการประเมินผลลัพธ์การเรียนรู้"
+                title={['แฟ้มหลักฐาน', 'การประเมินผลลัพธ์การเรียนรู้']}
                 subtitle="หลักฐานข้อความสะท้อนพฤติกรรมรายวิชา"
             />
             <div className="flex min-h-[190mm] flex-col items-center justify-center text-center">
-                <p className="text-2xl">รายวิชา</p>
+                <p className="text-2xl">{learningFormatLabel(subject?.learning_format || 'subject')}</p>
                 <h2 className="mt-4 max-w-[160mm] text-5xl font-bold leading-tight">{subject?.subject_name || '-'}</h2>
                 {subject?.subject_code && <p className="mt-3 text-2xl">รหัสวิชา {subject.subject_code}</p>}
                 <dl className="mt-12 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-4 border-y border-black py-6 text-left text-xl">
                     <dt className="font-bold">ระดับชั้น</dt><dd>{subject?.grade_level || '-'}</dd>
+                    <dt className="font-bold">ห้องเรียน</dt><dd>{formatRoomRange(scopedRooms) || '-'}</dd>
                     <dt className="font-bold">ภาคเรียน/ปีการศึกษา</dt><dd>{subject?.semester || '-'} / {subject?.academic_year || '-'}</dd>
                     <dt className="font-bold">จำนวนชั่วโมงเรียน</dt><dd>{hoursText || '-'}</dd>
                     <dt className="font-bold">ครูผู้สอน</dt><dd>{teacherNames.length ? teacherNames.join(', ') : '-'}</dd>
                 </dl>
             </div>
-            <div className="mt-auto grid grid-cols-2 gap-16 px-10 text-center text-xl">
-                <div><p>(........................................................)</p><p className="mt-2 font-bold">ครูผู้สอน</p></div>
-                <div><p>(........................................................)</p><p className="mt-2 font-bold">ผู้ตรวจสอบฝ่ายวิชาการ</p></div>
-            </div>
+            <SignatureRow className="mt-auto px-8" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} />
         </article>
     );
 }
@@ -92,6 +92,7 @@ function SubjectEvidenceReport({ school, subject, teacherNames, enrollments, lea
                 <thead><tr><th className="w-10 border border-black px-2 py-2">ที่</th><th className="w-36 border border-black px-2 py-2">ผู้เรียน</th><th className="w-24 border border-black px-2 py-2">LO</th><th className="border border-black px-2 py-2">ข้อความสะท้อนพฤติกรรม</th></tr></thead>
                 <tbody>{rows.map(row => <tr key={row.key} className="break-inside-avoid"><td className="border border-black px-2 py-2 text-center">{row.loIndex === 0 ? row.studentIndex + 1 : ''}</td><td className="border border-black px-2 py-2 align-top">{row.loIndex === 0 ? <><strong>{studentName(row.enrollment.users_students)}</strong><br /><span>{row.enrollment.users_students?.student_code || '-'} · {row.enrollment.room || '-'}</span></> : ''}</td><td className="border border-black px-2 py-2 align-top"><strong>{row.lo.lo_code || `LO ${row.lo.ability_no}`}</strong><br /><span>{row.lo.competency_area || 'ไม่ระบุด้าน'}</span></td><td className="border border-black px-2 py-2 align-top">{row.evidence || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}</td></tr>)}</tbody>
             </table>
+            <SignatureRow className="mt-8 break-inside-avoid" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} size="small" />
         </article>
     );
 }
@@ -210,14 +211,27 @@ export default function SummaryView() {
         setDistributionLo(current => (learningOutcomes.some(lo => lo.lo_id === current) ? current : learningOutcomes[0]?.lo_id || ''));
     }, [learningOutcomes]);
     const scopedEnrollments = useMemo(() => (roomFilter === 'all' ? data.enrollments : data.enrollments.filter(item => item.room === roomFilter)), [data.enrollments, roomFilter]);
-    // ครูผู้สอนบนปกและรายงาน: ห้องเดียวแสดงเฉพาะครูของห้องนั้น
+    // ห้องที่อยู่ในขอบเขตของเอกสารจริง ใช้ทั้งบรรทัดห้องเรียนบนปกและการเลือกชื่อครู
+    const scopedRooms = useMemo(
+        () => [...new Set(scopedEnrollments.map(item => item.room).filter(Boolean))].sort(compareRooms),
+        [scopedEnrollments],
+    );
+    // ครูผู้สอนบนปกและรายงาน: เอาเฉพาะครูของห้องที่พิมพ์ ห้องอื่นของวิชาเดียวกันต้องไม่ติดมาด้วย
     const teacherNames = useMemo(() => {
         const { assignments, names, primaryId } = teacherInfo;
-        const ids = !assignments.length
-            ? [primaryId]
-            : assignments.filter(row => roomFilter === 'all' || !row.room_name || row.room_name === roomFilter).map(row => row.teacher_id);
-        return [...new Set(ids.filter(Boolean))].map(id => names.get(id)).filter(Boolean);
-    }, [roomFilter, teacherInfo]);
+        if (!assignments.length) return [names.get(primaryId)].filter(Boolean);
+        const inScope = assignments.filter(row => !row.room_name || !scopedRooms.length || scopedRooms.includes(row.room_name));
+        const entries = teachersWithRooms({ teacher_id: primaryId }, inScope);
+        const manyRooms = scopedRooms.length > 1;
+        return entries
+            .map(entry => {
+                const name = names.get(entry.teacherId);
+                if (!name) return '';
+                const roomsOfTeacher = entry.rooms.filter(room => scopedRooms.includes(room));
+                return manyRooms && roomsOfTeacher.length ? `${name} (${formatRoomRange(roomsOfTeacher)})` : name;
+            })
+            .filter(Boolean);
+    }, [scopedRooms, teacherInfo]);
     const totalExpected = scopedEnrollments.length * learningOutcomes.length;
     const totalEvaluated = scopedEnrollments.reduce((total, enrollment) => total + learningOutcomes.filter(lo => evaluationMap.get(`${enrollment.enrollment_id}:${lo.lo_id}`)).length, 0);
     const { missing: missingCount, percent } = calculateCompletion(totalEvaluated, totalExpected);
@@ -297,7 +311,11 @@ export default function SummaryView() {
             <div className="mx-auto w-full max-w-[1800px]">
                 <header className="summary-controls mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div><button onClick={() => navigate('/')} className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"><ArrowLeft className="h-4 w-4" /> กลับไปงานของฉัน</button><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><FileBarChart2 className="h-4 w-4" /> รายงานผลรายวิชา</div><h1 className="mt-1 text-2xl font-bold text-slate-950">{subject?.subject_name || 'กำลังโหลดรายวิชา'}</h1><p className="mt-1 text-sm text-slate-600">ตารางที่ 1 · ผลลัพธ์การเรียนรู้ระดับรายวิชา · ชั้น {subject?.grade_level || '-'} · ภาคเรียนที่ {subject?.semester || '-'}/{subject?.academic_year || '-'}</p></div>
-                    <div className="flex flex-wrap gap-2"><button onClick={() => navigate(`/eval/${subjectId}`, { state: { subject } })} className="action-primary inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold"><ClipboardCheck className="h-4 w-4" />กลับไปประเมินผล</button><button onClick={exportExcel} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" />Excel</button><button onClick={() => printDocument('cover')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><BookOpen className="h-4 w-4" />พิมพ์ปกรายวิชา</button><button onClick={() => printDocument('evidence')} disabled={!printableEnrollments.length || !learningOutcomes.length} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer className="h-4 w-4" />พิมพ์ข้อความ LO</button></div>
+                    <div className="flex flex-wrap gap-2"><button onClick={() => navigate(`/eval/${subjectId}${roomFilter !== 'all' ? `?room=${encodeURIComponent(roomFilter)}` : ''}`, { state: { subject } })} className="action-primary inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold"><ClipboardCheck className="h-4 w-4" />กลับไปบันทึกข้อความ</button><button onClick={exportExcel} title="ดาวน์โหลดตารางข้อความ LO ของนักเรียนตามห้องและตัวกรองที่เลือก" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" />ดาวน์โหลด Excel</button><button onClick={() => printDocument('cover')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><BookOpen className="h-4 w-4" />พิมพ์ปกรายวิชา</button><button onClick={() => printDocument('evidence')} disabled={!printableEnrollments.length || !learningOutcomes.length} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Printer className="h-4 w-4" />พิมพ์ข้อความ LO</button>
+                        <p className="w-full text-xs leading-5 text-slate-600">
+                            ดาวน์โหลด Excel คือตารางข้อความ LO ของนักเรียนตามห้องและตัวกรองที่เลือก เปิดแก้ต่อในโปรแกรม Excel ได้ · พิมพ์ปกรายวิชาและพิมพ์ข้อความ LO ใช้ทำแฟ้มหลักฐาน
+                        </p>
+                    </div>
                 </header>
 
                 {loadError ? (
@@ -306,7 +324,7 @@ export default function SummaryView() {
                     <div className="space-y-5"><div className="h-24 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>
                 ) : (
                     <>
-                        {printMode === 'cover' && <SubjectCover school={school} subject={subject} teacherNames={teacherNames} rooms={rooms} roomFilter={roomFilter} />}
+                        {printMode === 'cover' && <SubjectCover school={school} subject={subject} teacherNames={teacherNames} rooms={rooms} roomFilter={roomFilter} scopedRooms={scopedRooms} />}
                         {printMode === 'evidence' && <SubjectEvidenceReport school={school} subject={subject} teacherNames={teacherNames} enrollments={printableEnrollments} learningOutcomes={learningOutcomes} evaluationMap={evaluationMap} roomLabel={printableRoomLabel} />}
                         <div className="summary-screen-only">
                         <div className="hidden print:block mb-5"><h1 className="text-base font-bold">ตารางที่ 1 รายงานผลลัพธ์การเรียนรู้ระดับรายวิชา</h1><p className="mt-1 text-sm">รายวิชา {subject?.subject_name} · ชั้น {subject?.grade_level} · ภาคเรียนที่ {subject?.semester}/{subject?.academic_year}</p></div>

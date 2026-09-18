@@ -302,7 +302,12 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                             <h2 id="homeroom-summary-title" className="text-lg font-bold text-slate-950">สรุปความสามารถรายด้าน · ห้อง {room}</h2>
                             <span className={`chip ${ROOM_STATUS[status].chip}`}>{ROOM_STATUS[status].label}</span>
                         </div>
-                        <p className="mt-1 text-sm text-slate-600">เลือกระดับและเขียนคำบรรยายด้านละหนึ่งข้อความ ระบบร่างคำบรรยายจากข้อความ LO ของครูผู้สอนทุกวิชาให้ กดส่งแล้วผู้ปกครองเห็นผลทันที</p>
+                        <ol className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
+                            <li><strong className="text-slate-900">1)</strong> เลือกระดับของแต่ละด้าน</li>
+                            <li><strong className="text-slate-900">2)</strong> เขียนคำบรรยายของแต่ละด้าน (แบบ สพฐ. ต้องมีคำบรรยาย)</li>
+                            <li><strong className="text-slate-900">3)</strong> กดส่งผลสรุป ผู้ปกครองเห็นผลทันที</li>
+                        </ol>
+                        <p className="mt-1 text-sm text-slate-600">ระบบร่างคำบรรยายจากข้อความ LO ของครูผู้สอนทุกวิชาให้ได้ แล้วครูประจำชั้นแก้เพิ่มเองได้</p>
                         <div className="mt-3 flex items-center gap-3">
                             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.complete} aria-label="สรุปครบแล้ว">
                                 <div className="h-full rounded-full bg-emerald-600" style={{ width: `${percent}%` }} />
@@ -331,13 +336,16 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
 
             {view === 'table' && (
                 <section className="overflow-hidden rounded-2xl border border-line bg-white" aria-label="ตารางระดับทั้งห้อง">
-                    <p className="border-b border-line px-4 py-3 text-sm text-slate-700 sm:px-6">เลือกระดับของแต่ละคนในแต่ละด้าน ช่องหัวคอลัมน์ใช้เติมระดับให้คนที่ยังว่างทั้งด้าน กดชื่อนักเรียนเพื่อเขียนคำบรรยาย</p>
+                    <p className="border-b border-line px-4 py-3 text-sm text-slate-700 sm:px-6">ช่องในตารางคือ<strong className="font-bold text-slate-900">ระดับความสามารถ</strong>ของนักเรียนแต่ละคน ช่องบนหัวคอลัมน์ใช้เติมระดับให้คนที่ยังว่างทั้งด้านรวดเดียว ส่วนคำบรรยายกดที่ไอคอนดินสอหรือชื่อนักเรียนเพื่อเขียน</p>
                     <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-sm">
                             <caption className="sr-only">ระดับความสามารถรายด้านของนักเรียนห้อง {room}</caption>
                             <thead className="bg-slate-50 text-slate-700">
                                 <tr>
-                                    <th scope="col" className="sticky left-0 z-10 min-w-[11rem] border-b border-line bg-slate-50 px-3 py-3 text-left font-bold sm:min-w-[15rem] sm:px-4">นักเรียน</th>
+                                    <th scope="col" className="sticky left-0 z-10 min-w-[11rem] border-b border-line bg-slate-50 px-3 py-3 text-left font-bold sm:min-w-[15rem] sm:px-4">
+                                        นักเรียน
+                                        <span className="mt-0.5 block text-xs font-normal text-slate-600">ระดับความสามารถรายด้าน</span>
+                                    </th>
                                     {areas.map(area => (
                                         <th key={area} scope="col" className="min-w-[8.5rem] border-b border-line px-2 py-2 text-left align-bottom text-xs font-bold">
                                             <span className="block leading-5">{shortAreaName(area)}</span>
@@ -358,7 +366,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                                 <button type="button" onClick={() => { setSelectedStudentId(student.id); setView('student'); setMobileDetailOpen(true); }} className="text-left font-bold text-indigo-900 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
                                                     {index + 1}. {fullName(student.info)}
                                                 </button>
-                                                <span className={`mt-1 block text-xs tabular-nums ${done === areas.length ? 'font-bold text-emerald-700' : 'text-slate-600'}`}>ครบ {done}/{areas.length} ด้าน</span>
+                                                <span className={`mt-1 block text-xs tabular-nums ${done === areas.length ? 'font-bold text-emerald-700' : 'text-slate-600'}`}>ครบ {done}/{areas.length} ด้าน (ระดับ + คำบรรยาย)</span>
                                             </th>
                                             {areas.map(area => {
                                                 const key = decisionKey(student.id, area);
@@ -372,7 +380,15 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                                                 <option value="">—</option>
                                                                 {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                                                             </select>
-                                                            {<PenLine className={`h-3.5 w-3.5 shrink-0 ${value.summary?.trim() ? 'text-emerald-700' : 'text-slate-400'}`} aria-label={value.summary?.trim() ? 'มีคำบรรยายแล้ว' : 'ยังไม่มีคำบรรยาย'} />}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => { setSelectedStudentId(student.id); setView('student'); setMobileDetailOpen(true); }}
+                                                                title={value.summary?.trim() ? 'มีคำบรรยายแล้ว แก้ไขได้' : 'ยังไม่มีคำบรรยาย กดเพื่อเขียน'}
+                                                                aria-label={`${value.summary?.trim() ? 'แก้คำบรรยาย' : 'เขียนคำบรรยาย'} ${shortAreaName(area)} ของ ${fullName(student.info)}`}
+                                                                className={`shrink-0 rounded-md p-1 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 ${value.summary?.trim() ? 'text-emerald-700' : 'text-amber-700'}`}
+                                                            >
+                                                                <PenLine className="h-4 w-4" aria-hidden="true" />
+                                                            </button>
                                                         </div>
                                                     </td>
                                                 );
@@ -385,7 +401,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                     </div>
                     <p className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-xs text-slate-600 sm:px-6">
                         <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />มีคำบรรยายแล้ว</span>
-                        <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />ยังไม่มีคำบรรยาย</span>
+                        <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5 text-amber-700" aria-hidden="true" />ยังไม่มีคำบรรยาย กดเพื่อเขียน</span>
                         <span className="inline-flex items-center gap-1"><span className="h-3 w-5 rounded bg-rose-100" aria-hidden="true" />ฝ่ายวิชาการขอให้แก้</span>
                     </p>
                 </section>

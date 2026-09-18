@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { averageAttendance, buildParentReport, toThaiDigits } from '../src/lib/parentReport.js';
+import { buildParentReport, toThaiDigits } from '../src/lib/parentReport.js';
 
-test('toThaiDigits และ averageAttendance ไม่เดาเวลาเรียนเมื่อไม่มีข้อมูล', () => {
+test('toThaiDigits แปลงเลขอารบิกเป็นเลขไทยสำหรับเอกสารราชการ', () => {
     assert.equal(toThaiDigits('ป.1/2 95%'), 'ป.๑/๒ ๙๕%');
-    assert.equal(averageAttendance([{ attendance_percent: 90 }, { attendance_percent: 95 }, { attendance_percent: null }]), 93);
-    assert.equal(averageAttendance([{ attendance_percent: null }]), null);
 });
 
 test('buildParentReport ใช้ผลของครูประจำชั้นรายด้าน ระดับที่คาดหวังตามชั้น และบอกว่ารับรองครบหรือยัง', () => {
@@ -29,7 +27,6 @@ test('buildParentReport ใช้ผลของครูประจำชั�
     ]);
     assert.equal(report.allPublished, true);
     assert.equal(report.hasExpected, true);
-    assert.equal(report.attendance, 100);
     assert.deepEqual(report.evidence.map(item => `${item.subject}:${item.text}`), ['ภาษาไทย:อ่านคล่อง']);
 
     // ฉบับร่างของครูประจำชั้นยังไม่ออกสู่ผู้ปกครอง

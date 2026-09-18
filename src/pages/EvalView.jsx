@@ -77,7 +77,7 @@ export default function EvalView() {
                 const [enrolls, { data: mappedLOs, error: mappingError }] = await Promise.all([
                     fetchAllRows((from, to) => supabase.from('student_enrollments')
                         .select(`
-              enrollment_id, room, attendance_percent,
+              enrollment_id, room,
               users_students(student_id, student_code, prefix, first_name, last_name)
             `).eq('subject_id', subjectId).eq('enrollment_status', 'active').range(from, to)),
                     supabase.from('subject_lo_mapping')
@@ -123,13 +123,6 @@ export default function EvalView() {
                         .filter(row => isPublishedDecision(row) && areasOfThisSubject.has(row.competency_area))
                         .map(row => row.competency_area))]);
                 }
-
-                // Track attendance state separately for easy upsert
-                const initialAtt = {};
-                formatEnrolls.forEach(e => {
-                    initialAtt[e.enrollment_id] = e.attendance_percent ?? 100;
-                });
-                setAttendance(initialAtt);
 
             } catch (err) {
                 toast.error('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
@@ -181,17 +174,6 @@ export default function EvalView() {
         };
     }, [isDirty, saving]);
 
-    const [attendance, setAttendance] = useState({});
-
-    const handleAttendanceChange = (enrollmentId, val) => {
-        let num = parseFloat(val);
-        if (isNaN(num)) num = 0;
-        if (num < 0) num = 0;
-        if (num > 100) num = 100;
-        setAttendance(prev => ({ ...prev, [enrollmentId]: num }));
-        setIsDirty(true);
-    };
-
     const handleEvidenceChange = (enrollmentId, loId, evidenceNote) => {
         setEvaluations(prev => {
             const existing = prev.find(e => e.enrollment_id === enrollmentId && e.lo_id === loId);
@@ -218,8 +200,6 @@ export default function EvalView() {
     const saveEvaluations = async (showSuccessToast = true) => {
         setSaving(true);
         try {
-            // Updated to also save attendance. Upserting both is possible, but attendance is on student_enrollments
-
             // 1. Save Evaluations
             if (evaluations.length > 0) {
                 const { error: evalErr } = await supabase
@@ -228,26 +208,7 @@ export default function EvalView() {
                 if (evalErr) throw evalErr;
             }
 
-            // 2. Save Attendance
-            const attUpdates = Object.entries(attendance);
-
-            if (attUpdates.length > 0) {
-                // Update existing enrollments instead of upserting partial rows.
-                // The enrollment table has required student/subject/room fields;
-                // a partial upsert can fail its NOT NULL checks before conflict handling.
-                const attendanceResults = await Promise.all(
-                    attUpdates.map(([enrollmentId, attendancePercent]) => (
-                        supabase
-                            .from('student_enrollments')
-                            .update({ attendance_percent: attendancePercent })
-                            .eq('enrollment_id', enrollmentId)
-                    ))
-                );
-                const failedAttendance = attendanceResults.find(result => result.error);
-                if (failedAttendance?.error) throw failedAttendance.error;
-            }
-
-            // 3. แก้ผลหลังส่งตรวจแล้ว ต้องดึงสถานะกลับเป็นฉบับร่าง ไม่เช่นนั้นฝ่ายวิชาการจะเห็นว่ายังส่งอยู่ทั้งที่ผลเปลี่ยนไปแล้ว
+            // 2. แก้ผลหลังส่งตรวจแล้ว ต้องดึงสถานะกลับเป็นฉบับร่าง ไม่เช่นนั้นฝ่ายวิชาการจะเห็นว่ายังส่งอยู่ทั้งที่ผลเปลี่ยนไปแล้ว
             if (submission && submission.status !== 'draft') {
                 const { data: revertedSubmission, error: submissionErr } = await supabase
                     .from('assessment_submissions')
@@ -261,7 +222,7 @@ export default function EvalView() {
 
             setIsDirty(false);
             setLastSaved(new Date());
-            if (showSuccessToast) toast.success('บันทึกผลการประเมิน เวลาเรียน และหลักฐานแล้ว');
+            if (showSuccessToast) toast.success('บันทึกข้อความแล้ว');
             return true;
         } catch (err) {
             toast.error('บันทึกไม่สำเร็จ: ' + err.message);
@@ -405,7 +366,7 @@ export default function EvalView() {
     };
 
     const confirmed = ['submitted', 'under_review', 'approved'].includes(submissionStatus);
-    const statusTone = confirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-line bg-slate-50 text-slate-600';
+    const statusTone = confirmed ? 'text-emerald-700' : 'text-slate-600';
     const StatusIcon = ClipboardCheck;
 
     // ช่องหลักฐานราย LO ใช้ทั้งในตาราง (จอกว้าง) และในการ์ดรายคน (จอเล็ก)
@@ -451,9 +412,9 @@ export default function EvalView() {
                     </div>
                     {/* Auto-save / Save state indicator */}
                     <div className="flex flex-wrap items-center gap-3">
-                        <span className={`hidden md:inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold ${statusTone}`}>
+                        <span className={`hidden md:inline-flex items-center gap-1.5 text-xs font-bold ${statusTone}`}>
                             <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                            {submissionLabel}
+                            สถานะ: {submissionLabel}
                         </span>
                         {isDirty && !saving && (
                             <span className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
@@ -480,7 +441,7 @@ export default function EvalView() {
                             className="btn-secondary hidden md:inline-flex"
                         >
                             {saving ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
-                            {saving ? 'กำลังบันทึกผล...' : 'บันทึกผลการประเมิน'}
+                            {saving ? 'กำลังบันทึก...' : 'บันทึกข้อความ'}
                         </button>
                         <button
                             onClick={submitForReview}
@@ -496,6 +457,14 @@ export default function EvalView() {
             </header>
 
             <main className="flex-grow max-w-[1600px] mx-auto w-full px-4 sm:px-6 pt-8 pb-40 md:pb-8">
+                {/* บอกวิธีทำงานแบบค่อย ๆ เขียน ครูไม่ต้องกรอกให้ครบในครั้งเดียว */}
+                {!loading && enrollments.length > 0 && (
+                    <p className="mb-5 rounded-2xl border border-line bg-white px-4 py-3 text-sm leading-6 text-slate-700">
+                        เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก 30 วินาที และกดปุ่ม "บันทึกข้อความ" เองได้ตลอด ปิดหน้าไปแล้วกลับมาเขียนต่อได้
+                        {lastSaved && <span className="font-bold text-emerald-800"> · บันทึกล่าสุด {lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>}
+                    </p>
+                )}
+
                 {/* แก้ข้อความได้ตลอด แต่ถ้าครูประจำชั้นสรุปรายด้านไปแล้ว ต้องบอกให้สรุปใหม่ */}
                 {!loading && summarizedAreas.length > 0 && (
                     <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -583,18 +552,6 @@ export default function EvalView() {
                                             <h2 className="text-base font-bold text-slate-900">{i + 1}. {st.prefix || ''}{st.first_name} {st.last_name}</h2>
                                             <span className="shrink-0 font-mono text-xs text-slate-600">{st.student_code}</span>
                                         </div>
-                                        <label className="flex items-center justify-between gap-3 text-sm font-bold text-slate-700">
-                                            <span>เวลาเรียน (ร้อยละ)<span className="sr-only"> ของ {st.first_name}</span></span>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="100"
-                                                inputMode="decimal"
-                                                value={attendance[enroll.enrollment_id] ?? 100}
-                                                onChange={(e) => handleAttendanceChange(enroll.enrollment_id, e.target.value)}
-                                                className="min-h-11 w-20 rounded-lg border border-field px-2 text-center text-base font-bold focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                            />
-                                        </label>
                                         {learningOutcomes.map(lo => renderEvidence(enroll, st, lo, true))}
                                     </li>
                                 );
@@ -607,7 +564,6 @@ export default function EvalView() {
                                         <th scope="col" className="sticky left-0 z-20 w-16 min-w-16 bg-slate-50 px-3 py-4 text-center text-xs font-bold uppercase tracking-wider">เลขที่</th>
                                         <th scope="col" className="sticky left-16 z-20 w-24 min-w-24 bg-slate-50 px-3 py-4 text-left text-xs font-bold uppercase tracking-wider">รหัส</th>
                                         <th scope="col" className="sticky left-40 z-20 min-w-[200px] border-r border-line bg-slate-50 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)]">ชื่อ-นามสกุล</th>
-                                        <th scope="col" className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider w-24 border-r border-line">เวลาเรียน (%)</th>
                                         {learningOutcomes.map(lo => (
                                             <th key={lo.lo_id} scope="col" className="min-w-[220px] bg-indigo-50/50 px-4 py-4 text-center text-xs font-bold uppercase text-indigo-900" title={lo.lo_description}>
                                                 <div>{lo.lo_code ? lo.lo_code : `LO ข้อ ${lo.ability_no}`}</div>
@@ -627,17 +583,6 @@ export default function EvalView() {
                                                 <th scope="row" className="sticky left-40 z-10 min-w-[200px] border-r border-line bg-white px-4 py-2 text-left text-sm font-bold text-slate-800 shadow-[10px_0_10px_-10px_rgba(0,0,0,0.05)] group-hover:bg-slate-50">
                                                     {st.prefix || ''}{st.first_name} {st.last_name}
                                                 </th>
-                                                <td className="px-4 py-2 text-center border-r border-line bg-slate-50/50">
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max="100"
-                                                        value={attendance[enroll.enrollment_id] ?? 100}
-                                                        aria-label={`เวลาเรียนของ ${st.first_name} ${st.last_name} (ร้อยละ)`}
-                                                        onChange={(e) => handleAttendanceChange(enroll.enrollment_id, e.target.value)}
-                                                        className="min-h-11 w-16 px-2 text-center text-sm font-bold rounded-lg border border-field focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
-                                                    />
-                                                </td>
                                                 {learningOutcomes.map(lo => (
                                                     <td key={lo.lo_id} className="px-2 py-2 text-center">{renderEvidence(enroll, st, lo)}</td>
                                                 ))}
@@ -655,8 +600,8 @@ export default function EvalView() {
             {!loading && enrollments.length > 0 && (
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-300 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden">
                     <div className="mb-2 flex items-center justify-between gap-2 text-xs font-bold">
-                        <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ${statusTone}`}>
-                            <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />{submissionLabel}
+                        <span className={`inline-flex items-center gap-1.5 ${statusTone}`}>
+                            <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />สถานะ: {submissionLabel}
                         </span>
                         <span className="text-right text-slate-700" aria-live="polite">
                             {saving ? 'กำลังบันทึก...' : isDirty ? 'บันทึกอัตโนมัติภายใน 30 วินาที' : lastSaved ? `บันทึกแล้ว ${lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : `กรอกแล้ว ${filledCells}/${totalCells}`}

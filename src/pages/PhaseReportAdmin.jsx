@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchAllRows, supabase } from '../lib/supabase';
 import { useAuth } from '../AuthContext';
 import AcademicReportShell from '../components/AcademicReportShell';
+import SignatureRow from '../components/reports/SignatureRow';
+import { HOMEROOM_ROLE } from '../lib/reportSigners';
+import { loadSchoolProfile } from '../lib/schoolProfile';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568, normalizeCompetencyArea } from '../constants/curriculum2568';
@@ -31,6 +34,8 @@ export default function PhaseReportAdmin() {
     const { currentUser } = useAuth();
 
     // ─── State ──────────────────────────────────────────────────────────────
+    // ชื่อผู้ลงนามท้ายเอกสารมาจากข้อมูลโรงเรียน
+    const [school, setSchool] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [allStudents, setAllStudents] = useState([]);
     const [selectedStudent, setSelectedStudent] = useState(null);
@@ -49,6 +54,10 @@ export default function PhaseReportAdmin() {
     const [loadingBehaviors, setLoadingBehaviors] = useState(false);
 
     // ─── Load students ───────────────────────────────────────────────────────
+    useEffect(() => {
+        loadSchoolProfile(currentUser?.school_id).then(setSchool).catch(() => setSchool(null));
+    }, [currentUser?.school_id]);
+
     useEffect(() => {
         const load = async () => {
             const data = await fetchAllRows((from, to) => supabase.from('users_students')
@@ -390,20 +399,8 @@ export default function PhaseReportAdmin() {
                                     </tr>
                                 </tbody>
                             </table>
-
                             {/* Signatures */}
-                            <div className="flex justify-between mt-8 mb-10 text-sm text-slate-700">
-                                <div className="text-center">
-                                    <div className="w-56 border-b border-slate-400 mb-1 mx-auto mt-8"></div>
-                                    <p>(..................................................)</p>
-                                    <p className="font-bold mt-1">ครูประจำชั้น</p>
-                                </div>
-                                <div className="text-center">
-                                    <div className="w-56 border-b border-slate-400 mb-1 mx-auto mt-8"></div>
-                                    <p>(..................................................)</p>
-                                    <p className="font-bold mt-1">ผู้อำนวยการ</p>
-                                </div>
-                            </div>
+                            <SignatureRow className="mt-8 mb-10 text-sm text-slate-700" school={school} teacherRole={HOMEROOM_ROLE} size="small" />
 
                             {/* ─── Table 2: Behavior Descriptions (สพฐ. central data) ─── */}
                             {hasBehaviors && (

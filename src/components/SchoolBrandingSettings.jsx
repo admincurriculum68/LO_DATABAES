@@ -7,7 +7,7 @@ import { loadSchoolProfile, resizeSchoolLogo, saveSchoolProfile } from '../lib/s
 export default function SchoolBrandingSettings() {
     const { currentUser, updateCurrentUser } = useAuth();
     const fileRef = useRef(null);
-    const [profile, setProfile] = useState({ school_name: '', logo_data_url: '', logoReady: true });
+    const [profile, setProfile] = useState({ school_name: '', logo_data_url: '', academic_head_name: '', academic_deputy_name: '', director_name: '', logoReady: true, signersReady: true });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -68,6 +68,37 @@ export default function SchoolBrandingSettings() {
                         {profile.logo_data_url && <button type="button" onClick={() => setProfile(previous => ({ ...previous, logo_data_url: '' }))} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" />นำออก</button>}
                     </div>
                     <button type="button" onClick={save} disabled={loading || saving || !profile.logoReady} className="action-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold disabled:opacity-50"><Save className="h-4 w-4" />{saving ? 'กำลังบันทึก' : 'บันทึกข้อมูลรายงาน'}</button>
+                </div>
+            </div>
+
+            {/* ชื่อผู้ลงนามท้ายเอกสาร พิมพ์ในปกแฟ้มรายวิชา รายงานผู้ปกครอง และ ปพ.6 */}
+            <div className="mt-5 border-t border-line pt-5">
+                <h3 className="font-bold text-slate-950">ชื่อผู้ลงนามท้ายเอกสาร</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                    ระบบจะพิมพ์ชื่อเหล่านี้ในช่องลงชื่อของทุกเอกสาร ช่องที่เว้นว่างไว้จะพิมพ์เป็นจุดไข่ปลาให้เซ็นเอง ส่วนชื่อครูผู้สอนและครูประจำชั้นระบบใส่ให้จากข้อมูลวิชา
+                </p>
+                {!profile.signersReady && (
+                    <p className="surface-warning mt-2 rounded-lg px-3 py-2 text-xs font-bold text-amber-900">
+                        ฐานข้อมูลยังไม่มีช่องเก็บชื่อผู้ลงนาม กรุณารัน update_schema_report_details.sql ก่อน
+                    </p>
+                )}
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    {[
+                        ['academic_head_name', 'หัวหน้าฝ่ายวิชาการ'],
+                        ['academic_deputy_name', 'รองผู้อำนวยการฝ่ายวิชาการ'],
+                        ['director_name', 'ผู้อำนวยการโรงเรียน'],
+                    ].map(([key, label]) => (
+                        <label key={key} className="block">
+                            <span className="mb-1 block text-xs font-bold text-slate-700">{label}</span>
+                            <input
+                                value={profile[key] || ''}
+                                onChange={event => setProfile(previous => ({ ...previous, [key]: event.target.value }))}
+                                disabled={loading || !profile.signersReady}
+                                placeholder="เช่น นางวราภรณ์ ตั้งมั่น"
+                                className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-500 disabled:bg-slate-100"
+                            />
+                        </label>
+                    ))}
                 </div>
             </div>
         </section>

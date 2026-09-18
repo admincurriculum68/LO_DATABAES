@@ -1,4 +1,6 @@
 import SchoolReportHeader from '../SchoolReportHeader';
+import SignatureRow from './SignatureRow';
+import { HOMEROOM_ROLE } from '../../lib/reportSigners';
 import { toThaiDigits } from '../../lib/parentReport';
 
 // แผ่นรายงานผลการพัฒนาความสามารถสำหรับผู้ปกครอง ขนาด A4
@@ -33,7 +35,6 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                     <dt className="font-bold">ชื่อ-สกุล</dt><dd>{fullName(student) || '-'}</dd>
                     <dt className="font-bold">เลขประจำตัว</dt><dd>{toThaiDigits(student?.student_code || '-')}</dd>
                     <dt className="font-bold">ชั้น/ห้อง</dt><dd>{toThaiDigits(report.room || report.grade || '-')}</dd>
-                    <dt className="font-bold">เวลาเรียนเฉลี่ย</dt><dd>{report.attendance === null ? '-' : `ร้อยละ ${toThaiDigits(report.attendance)}`}</dd>
                     <dt className="font-bold">ครูประจำชั้น</dt><dd className="col-span-3">{homeroomName || '-'}</dd>
                 </dl>
 
@@ -68,11 +69,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                         <tr><td className="border border-black px-2 py-1.5 font-bold">คุณลักษณะอันพึงประสงค์</td><td className="border border-black px-2 py-1.5"><CheckBox checked={activities?.character_status === 'ผ่าน'} label="ผ่าน" /><CheckBox checked={activities?.character_status === 'ไม่ผ่าน'} label="ไม่ผ่าน" /></td></tr>
                     </tbody>
                 </table>
-
-                <div className="mt-auto grid grid-cols-2 gap-10 pt-10 text-center text-[14pt]">
-                    <div><p>ลงชื่อ ..................................................</p><p className="mt-1">({homeroomName || '..................................................'})</p><p className="font-bold">ครูประจำชั้น</p></div>
-                    <div><p>ลงชื่อ ..................................................</p><p className="mt-1">(..................................................)</p><p className="font-bold">ผู้อำนวยการโรงเรียน</p></div>
-                </div>
+                <SignatureRow className="mt-auto pt-10" school={school} teacherName={homeroomName} teacherRole={HOMEROOM_ROLE} size="small" />
                 <section className="mt-6 border-t-2 border-black pt-3 text-[14pt]" aria-label="ส่วนของผู้ปกครอง">
                     <p className="font-bold">ส่วนของผู้ปกครอง</p>
                     <p className="mt-1">ข้าพเจ้าได้รับทราบผลการพัฒนาความสามารถของ {fullName(student) || 'นักเรียน'} แล้ว</p>

@@ -142,9 +142,10 @@ export default function HomeroomView() {
         }
     }, [academicYear, currentUser?.school_id, semester]);
 
+    // โหลดเองทุกบทบาท เดิมโหลดเฉพาะครูประจำชั้น ฝ่ายวิชาการจึงเปิดมาเจอหน้าว่างจนกว่าจะกดปุ่ม
     useEffect(() => {
-        if (isRoomLocked && room && academicYear && semester) loadHomeroom(room);
-    }, [academicYear, isRoomLocked, loadHomeroom, room, semester]);
+        if (room && academicYear && semester) loadHomeroom(room);
+    }, [academicYear, loadHomeroom, room, semester]);
 
     const students = useMemo(() => {
         if (!data) return [];
@@ -304,7 +305,7 @@ export default function HomeroomView() {
                             <button onClick={() => loadHomeroom(room)} disabled={loading || !room} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50">{loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" /> : <RefreshCw className="h-4 w-4" />} โหลดข้อมูลล่าสุด</button>
                         </section>
 
-                        {loadError ? <section className="surface-danger rounded-2xl border border-rose-200 p-6" role="alert"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดข้อมูลไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={() => loadHomeroom(room)} className="action-danger mt-3 min-h-11 rounded-lg px-4 text-sm font-bold">ลองอีกครั้ง</button></div></div></section> : loading ? <LoadingState /> : data && students.length === 0 ? <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><UsersRound className="mx-auto h-10 w-10 text-slate-500" /><h3 className="mt-3 font-bold text-slate-800">ยังไม่มีนักเรียนในห้อง {room}</h3><p className="mt-1 text-sm text-slate-600">ฝ่ายวิชาการต้องจัดนักเรียนเข้ากลุ่มเรียนในภาคเรียนที่ {semester}/{academicYear} ก่อน</p></section> : data && (
+                        {loadError ? <section className="surface-danger rounded-2xl border border-rose-200 p-6" role="alert"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดข้อมูลไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={() => loadHomeroom(room)} className="action-danger mt-3 min-h-11 rounded-lg px-4 text-sm font-bold">ลองอีกครั้ง</button></div></div></section> : loading ? <LoadingState /> : data && students.length === 0 ? <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><UsersRound className="mx-auto h-10 w-10 text-slate-500" /><h3 className="mt-3 font-bold text-slate-800">ยังไม่มีนักเรียนในห้อง {room}</h3><p className="mt-1 text-sm text-slate-600">ฝ่ายวิชาการต้องจัดนักเรียนเข้ากลุ่มเรียนในภาคเรียนที่ {semester}/{academicYear} ก่อน</p></section> : data ? (
                             <>
                                 <section className="mb-5 grid overflow-hidden rounded-2xl border border-line bg-white sm:grid-cols-2 xl:grid-cols-4" aria-label="ภาพรวมงานประจำชั้น">
                                     {[
@@ -318,6 +319,12 @@ export default function HomeroomView() {
                                 <nav className="mb-5 overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกงานประจำชั้น"><div className="flex min-w-max gap-1"><button onClick={() => setActiveTab('summary')} aria-pressed={activeTab === 'summary'} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'summary' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><PenLine className="mr-2 inline h-4 w-4" />สรุปความสามารถรายด้าน</button><button onClick={() => setActiveTab('academic')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'academic' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><BookOpen className="mr-2 inline h-4 w-4" />ผลราย LO จากรายวิชา</button><button onClick={() => setActiveTab('activity')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'activity' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><Star className="mr-2 inline h-4 w-4" />กิจกรรมและคุณลักษณะ {savedActivityStudents < students.length && <span className={`ml-1 rounded-lg px-1.5 py-0.5 text-xs ${activeTab === 'activity' ? 'bg-white/20 text-white' : 'surface-warning text-amber-800'}`}>{students.length - savedActivityStudents} ค้าง</span>}</button></div></nav>
                                 {activeTab === 'summary' ? <HomeroomCompetencyTab room={room} students={students} data={data} academicYear={academicYear} semester={semester} /> : activeTab === 'academic' ? renderAcademicTable() : renderActivityTable()}
                             </>
+                        ) : (
+                            <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+                                <UsersRound className="mx-auto h-10 w-10 text-slate-400" aria-hidden="true" />
+                                <h3 className="mt-3 font-bold text-slate-800">เลือกห้องเรียนเพื่อเริ่มงานประจำชั้น</h3>
+                                <p className="mt-1 text-sm text-slate-600">เลือกห้องด้านบน ระบบจะดึงข้อมูลนักเรียนและข้อความ LO ของทุกวิชาให้เอง</p>
+                            </section>
                         )}
                     </>
                 )}

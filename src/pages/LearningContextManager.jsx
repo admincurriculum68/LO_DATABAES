@@ -36,6 +36,7 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { LEARNING_FORMATS, LEARNING_FORMAT_ORDER, learningFormatLabel } from '../lib/terminology';
 import { loadSubjectAssignments } from '../lib/loByRoomApi';
+import { learningFormatSupported } from '../lib/learningFormatApi';
 import { formatRoomRange, teachersWithRooms } from '../lib/teacherAccess';
 import { ACTIVITY_CATEGORIES_51, CBE_SUBJECT_GROUPS_ALL_2568, CBE_SUBJECT_GROUPS_BY_PHASE_2568 } from '../constants/curriculum2568';
 
@@ -146,6 +147,8 @@ export default function LearningContextManager() {
     const [showSelectedOnly, setShowSelectedOnly] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    // ตอนนำเข้า ทุกอย่างถูกเก็บเป็นวิชา บางรายการเป็นโครงงานหรือหน่วยการเรียนรู้ จึงให้แก้ประเภทได้
+    const [formatFieldReady, setFormatFieldReady] = useState(false);
     const [mappingSaving, setMappingSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -183,7 +186,7 @@ export default function LearningContextManager() {
                     key: itemKey('subject', subject.subject_id),
                     source: 'subject',
                     recordId: subject.subject_id,
-                    context_type: 'subject',
+                    context_type: subject.learning_format || 'subject',
                     context_name: subject.subject_name,
                     subject_group: subject.subject_group || '',
                     description: subject.description || (subject.subject_group ? `กลุ่มวิชา: ${subject.subject_group}` : ''),
@@ -235,6 +238,7 @@ export default function LearningContextManager() {
     }, [academicYear, currentUser?.school_id, semester]);
 
     useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => { learningFormatSupported().then(setFormatFieldReady); }, []);
     useEffect(() => { setSelectedLOs(mappedByItem[selectedItemKey] || []); }, [mappedByItem, selectedItemKey]);
 
     const selectedItem = learningFormats.find(item => item.key === selectedItemKey) || null;
@@ -489,6 +493,7 @@ export default function LearningContextManager() {
                 grade_level: form.grade_level,
                 subject_group: form.subject_group.trim() || null,
                 teaching_hours: form.teaching_hours ? Number(form.teaching_hours) : null,
+                ...(formatFieldReady ? { learning_format: form.context_type || 'subject' } : {}),
             }
             : {
                 context_name: form.context_name.trim(),
@@ -1022,6 +1027,21 @@ export default function LearningContextManager() {
                                                     />
                                                     {formErrors.context_name && <p id="lcm-context-name-error" className="text-xs font-bold text-rose-700">{formErrors.context_name}</p>}
                                                 </div>
+
+                                                {viewMode === 'edit' && selectedItem?.source === 'subject' && formatFieldReady && (
+                                                    <div className="space-y-1">
+                                                        <label htmlFor="lcm-learning-format" className="text-xs font-bold text-slate-800">ประเภทของรายการ</label>
+                                                        <select
+                                                            id="lcm-learning-format"
+                                                            value={form.context_type}
+                                                            onChange={e => updateForm('context_type', e.target.value)}
+                                                            className="w-full rounded-2xl border border-field bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                                                        >
+                                                            {LEARNING_FORMAT_ORDER.map(type => <option key={type} value={type}>{LEARNING_FORMATS[type].label}</option>)}
+                                                        </select>
+                                                        <p className="text-xs text-slate-600">ตอนนำเข้าไฟล์ทุกอย่างถูกเก็บเป็นวิชา ถ้ารายการนี้เป็นโครงงานหรือหน่วยการเรียนรู้ เลือกให้ถูก แล้วเอกสารที่พิมพ์จะใช้คำนี้</p>
+                                                    </div>
+                                                )}
 
                                                 <div className="space-y-1">
                                                     <label htmlFor="lcm-grade-level" className="text-xs font-bold text-slate-800">ระดับชั้น <span className="text-rose-600">*</span></label>
