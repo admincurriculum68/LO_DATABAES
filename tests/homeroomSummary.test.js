@@ -14,8 +14,9 @@ test('buildNarrativeDraft รวมข้อความทุกวิชา �
     assert.equal(buildNarrativeDraft([]), '');
 });
 
-test('decisionKey ถือชื่อด้านสุขภาพเดิมกับใหม่เป็นด้านเดียวกัน', () => {
-    assert.equal(decisionKey('s1', 'ความสามารถด้านสุขภาพกายและจิต'), decisionKey('s1', 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต'));
+test('decisionKey ตัดช่องว่างของชื่อด้าน และแยกชื่อด้านของคนละช่วงชั้น', () => {
+    assert.equal(decisionKey('s1', ' ความสามารถด้านสุขภาพกายและจิต '), decisionKey('s1', 'ความสามารถด้านสุขภาพกายและจิต'));
+    assert.notEqual(decisionKey('s1', 'ความสามารถด้านสุขภาพกายและจิต'), decisionKey('s1', 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต'));
 });
 
 test('summaryProgress นับรายการที่ครบเมื่อมีทั้งระดับและคำบรรยาย', () => {
@@ -67,9 +68,9 @@ test('collectRoomEvidence รวมข้อความ LO ของทุก�
         { enrollment_id: 'e1', lo_id: 'h1', evidence_note: '   ' },
     ];
     const { areas, notesByKey } = collectRoomEvidence(enrollments, mappings, evaluations);
-    assert.deepEqual(areas, ['ความสามารถด้านการอ่าน', 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต']);
+    assert.deepEqual(areas, ['ความสามารถด้านการอ่าน', 'ความสามารถด้านสุขภาพกายและจิต']);
     assert.deepEqual(notesByKey.get(decisionKey('s1', 'ความสามารถด้านการอ่าน')).map(note => `${note.subject}:${note.text}`), ['ภาษาไทย:อ่านคล่อง', 'วรรณกรรม:เล่าเรื่องได้']);
-    assert.equal(notesByKey.has(decisionKey('s1', 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต')), false);
+    assert.equal(notesByKey.has(decisionKey('s1', 'ความสามารถด้านสุขภาพกายและจิต')), false);
 });
 
 test('collectRoomEvidence แสดงด้านครบตามคลัง LO ของชั้น แม้ด้านนั้นยังไม่มีวิชาผูก LO', () => {

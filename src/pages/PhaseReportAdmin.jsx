@@ -7,7 +7,7 @@ import { HOMEROOM_ROLE } from '../lib/reportSigners';
 import { loadSchoolProfile } from '../lib/schoolProfile';
 import { Search, Printer, Save, XCircle, Loader, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_2568, normalizeCompetencyArea } from '../constants/curriculum2568';
+import { CBE_LEVELS_2568, PHASE_END_CAPABILITY_GROUPS_BY_PHASE_2568, normalizeCompetencyArea } from '../constants/curriculum2568';
 import { PUBLISHED_STATUSES } from '../lib/homeroomSummary';
 
 // ─── Competency levels ──────────────────────────────────────────────────────
@@ -17,11 +17,11 @@ const LEVELS = CBE_LEVELS_2568;
 const PHASE_CONFIG = {
     'ตอนต้น': {
         label: 'ประถมศึกษาตอนต้น (ป.1 – ป.3)',
-        groups: PHASE_END_CAPABILITY_GROUPS_2568,
+        groups: PHASE_END_CAPABILITY_GROUPS_BY_PHASE_2568['ป.ต้น'],
     },
     'ตอนปลาย': {
         label: 'ประถมศึกษาตอนปลาย (ป.4 – ป.6)',
-        groups: PHASE_END_CAPABILITY_GROUPS_2568,
+        groups: PHASE_END_CAPABILITY_GROUPS_BY_PHASE_2568['ป.ปลาย'],
     }
 };
 

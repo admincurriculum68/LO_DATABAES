@@ -1,14 +1,11 @@
-// ด้านสุขภาพตามหลักสูตร 2568 ชื่อ "ความสามารถด้านสุขภาพกายและสุขภาวะจิต"
-// ข้อมูลที่นำเข้าก่อนแก้ชื่อ รวมถึงคลังกลางคำบรรยาย ยังใช้ "สุขภาพกายและจิต" จึงต้องถือเป็นด้านเดียวกัน
-const COMPETENCY_AREA_ALIASES = {
-    'ความสามารถด้านสุขภาพกายและจิต': 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต',
-    'สุขภาพกายและจิต': 'สุขภาพกายและสุขภาวะจิต',
-};
+// ชื่อด้านความสามารถต่างกันตามช่วงชั้น
+//   ป.ต้น  ใช้ "ความสามารถด้านการคิดคำนวณ" และ "ความสามารถด้านสุขภาพกายและจิต"
+//   ป.ปลาย ใช้ "ความสามารถด้านคณิตศาสตร์" และ "ความสามารถด้านสุขภาพกายและสุขภาวะจิต"
+// จึงไม่แปลงชื่อข้ามกัน เหลือเพียงตัดช่องว่างหัวท้ายก่อนเทียบ
 
 /** ชื่อด้านความสามารถในรูปมาตรฐาน ใช้ทุกครั้งที่เทียบชื่อด้านจากคนละแหล่ง เช่น LO กับคลังกลางหรือแบบรายงาน */
 export function normalizeCompetencyArea(name) {
-    const text = String(name ?? '').trim();
-    return COMPETENCY_AREA_ALIASES[text] || text;
+    return String(name ?? '').trim();
 }
 
 export const CBE_CAPABILITIES_2568 = [
@@ -16,10 +13,12 @@ export const CBE_CAPABILITIES_2568 = [
     { key: 'writing', name: 'ความสามารถด้านการเขียน', expectedAtPhaseEnd: 'ชำนาญ' },
     { key: 'language_communication', name: 'ความสามารถด้านภาษาและการสื่อสาร', expectedAtPhaseEnd: 'ชำนาญ' },
     { key: 'numeracy', name: 'ความสามารถด้านการคิดคำนวณ', expectedAtPhaseEnd: 'ชำนาญ' },
+    { key: 'mathematics', name: 'ความสามารถด้านคณิตศาสตร์', expectedAtPhaseEnd: 'ชำนาญ' },
     { key: 'science_environment_technology', name: 'ความสามารถด้านวิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี', expectedAtPhaseEnd: 'พัฒนา' },
     { key: 'society_citizenship', name: 'ความสามารถด้านสังคมและความเป็นพลเมือง', expectedAtPhaseEnd: 'พัฒนา' },
     { key: 'economics_finance', name: 'ความสามารถด้านเศรษฐกิจและการเงิน', expectedAtPhaseEnd: 'พัฒนา' },
     { key: 'physical_mental_health', name: 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต', expectedAtPhaseEnd: 'พัฒนา' },
+    { key: 'physical_mental_health_early', name: 'ความสามารถด้านสุขภาพกายและจิต', expectedAtPhaseEnd: 'พัฒนา' },
     { key: 'arts_culture_aesthetics', name: 'ความสามารถด้านศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ', expectedAtPhaseEnd: 'พัฒนา' },
 ];
 
@@ -44,7 +43,7 @@ export const CBE_SUBJECT_GROUPS_BY_PHASE_2568 = {
                 'วิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี',
                 'สังคมและความเป็นพลเมือง',
                 'เศรษฐกิจและการเงิน',
-                'สุขภาพกายและสุขภาวะจิต',
+                'สุขภาพกายและจิต',
                 'ศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ',
             ],
         },
@@ -52,7 +51,7 @@ export const CBE_SUBJECT_GROUPS_BY_PHASE_2568 = {
     'ป.ปลาย': [
         {
             groupName: 'กลุ่มด้านเครื่องมือการเรียนรู้',
-            items: ['ภาษาและการสื่อสาร', 'การคิดคำนวณ'],
+            items: ['ภาษาและการสื่อสาร', 'คณิตศาสตร์'],
         },
         {
             groupName: 'กลุ่มด้านความสามารถในการประยุกต์ใช้',
@@ -72,35 +71,57 @@ export const CBE_SUBJECT_GROUPS_ALL_2568 = [
     'การเขียน',
     'ภาษาและการสื่อสาร',
     'การคิดคำนวณ',
+    'คณิตศาสตร์',
     'วิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี',
     'สังคมและความเป็นพลเมือง',
     'เศรษฐกิจและการเงิน',
     'สุขภาพกายและสุขภาวะจิต',
+    'สุขภาพกายและจิต',
     'ศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ',
     'บูรณาการหลายกลุ่มวิชา',
     'กิจกรรมพัฒนาผู้เรียน',
 ];
 
-export const PHASE_END_CAPABILITY_GROUPS_2568 = [
-    {
-        groupName: 'ความสามารถพื้นฐานด้านการเรียนรู้',
-        abilities: [
-            { key: 'reading', name: 'ความสามารถด้านการอ่าน', expected: 'ชำนาญ' },
-            { key: 'writing', name: 'ความสามารถด้านการเขียน', expected: 'ชำนาญ' },
-            { key: 'numeracy', name: 'ความสามารถด้านการคิดคำนวณ', expected: 'ชำนาญ' },
-        ],
-    },
-    {
-        groupName: 'ความสามารถด้านการประยุกต์ใช้ในชีวิตประจำวัน',
-        abilities: [
-            { key: 'science_environment_technology', name: 'ความสามารถด้านวิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี', expected: 'พัฒนา' },
-            { key: 'society_citizenship', name: 'ความสามารถด้านสังคมและความเป็นพลเมือง', expected: 'พัฒนา' },
-            { key: 'economics_finance', name: 'ความสามารถด้านเศรษฐกิจและการเงิน', expected: 'พัฒนา' },
-            { key: 'physical_mental_health', name: 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต', expected: 'พัฒนา' },
-            { key: 'arts_culture_aesthetics', name: 'ความสามารถด้านศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ', expected: 'พัฒนา' },
-        ],
-    },
+const APPLIED_ABILITIES = healthName => [
+    { key: 'science_environment_technology', name: 'ความสามารถด้านวิทยาศาสตร์ สิ่งแวดล้อม และเทคโนโลยี', expected: 'พัฒนา' },
+    { key: 'society_citizenship', name: 'ความสามารถด้านสังคมและความเป็นพลเมือง', expected: 'พัฒนา' },
+    { key: 'economics_finance', name: 'ความสามารถด้านเศรษฐกิจและการเงิน', expected: 'พัฒนา' },
+    { key: 'physical_mental_health', name: healthName, expected: 'พัฒนา' },
+    { key: 'arts_culture_aesthetics', name: 'ความสามารถด้านศิลปะและวัฒนธรรมเพื่อสุนทรียภาพ', expected: 'พัฒนา' },
 ];
+
+// ด้านที่ใช้ในแบบรายงานจบช่วงชั้น ชื่อด้านคำนวณและด้านสุขภาพต่างกันตามช่วงชั้น
+export const PHASE_END_CAPABILITY_GROUPS_BY_PHASE_2568 = {
+    'ป.ต้น': [
+        {
+            groupName: 'ความสามารถพื้นฐานด้านการเรียนรู้',
+            abilities: [
+                { key: 'reading', name: 'ความสามารถด้านการอ่าน', expected: 'ชำนาญ' },
+                { key: 'writing', name: 'ความสามารถด้านการเขียน', expected: 'ชำนาญ' },
+                { key: 'numeracy', name: 'ความสามารถด้านการคิดคำนวณ', expected: 'ชำนาญ' },
+            ],
+        },
+        {
+            groupName: 'ความสามารถด้านการประยุกต์ใช้ในชีวิตประจำวัน',
+            abilities: APPLIED_ABILITIES('ความสามารถด้านสุขภาพกายและจิต'),
+        },
+    ],
+    'ป.ปลาย': [
+        {
+            groupName: 'ความสามารถพื้นฐานด้านการเรียนรู้',
+            abilities: [
+                { key: 'language_communication', name: 'ความสามารถด้านภาษาและการสื่อสาร', expected: 'ชำนาญ' },
+                { key: 'mathematics', name: 'ความสามารถด้านคณิตศาสตร์', expected: 'ชำนาญ' },
+            ],
+        },
+        {
+            groupName: 'ความสามารถด้านการประยุกต์ใช้ในชีวิตประจำวัน',
+            abilities: APPLIED_ABILITIES('ความสามารถด้านสุขภาพกายและสุขภาวะจิต'),
+        },
+    ],
+};
+
+export const PHASE_END_CAPABILITY_GROUPS_2568 = PHASE_END_CAPABILITY_GROUPS_BY_PHASE_2568['ป.ต้น'];
 
 // จัดกลุ่มด้านความสามารถตามช่วงชั้น สำหรับหน้ารับรองผลของฝ่ายวิชาการ
 export const APPROVAL_COMPETENCY_GROUPS = {
@@ -143,10 +164,14 @@ export const APPROVAL_COMPETENCY_GROUPS = {
             groupName: 'กลุ่มด้านเครื่องมือการเรียนรู้',
             competencyAreas: [
                 'ความสามารถด้านภาษาและการสื่อสาร',
-                'ความสามารถด้านการคิดคำนวณ',
+                'ความสามารถด้านคณิตศาสตร์',
                 'ภาษาและการสื่อสาร',
-                'การคิดคำนวณ',
+                'คณิตศาสตร์',
                 'ด้านภาษาและการสื่อสาร',
+                'ด้านคณิตศาสตร์',
+                // ชื่อเดิมก่อนแยกชื่อด้านตามช่วงชั้น
+                'ความสามารถด้านการคิดคำนวณ',
+                'การคิดคำนวณ',
                 'ด้านการคิดคำนวณ',
             ],
         },

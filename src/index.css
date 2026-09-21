@@ -1,17 +1,21 @@
 @import "tailwindcss";
 
-/* ฟอนต์สำหรับเอกสาร ปพ. ที่ต้องพิมพ์ออกกระดาษ */
+/* ฟอนต์ TH Sarabun New สำหรับเอกสาร ปพ. ที่ต้องพิมพ์ออกกระดาษ
+   เก็บไฟล์ไว้ในโปรเจกต์เอง เพราะแหล่งภายนอกที่เคยใช้ (thai-web-fonts) ถูกถอดไฟล์ออกไปแล้ว
+   ตอบ 404 มาตลอด เอกสารจึงเคยตกไปใช้ฟอนต์สำรองโดยไม่มีใครรู้ */
 @font-face {
   font-family: 'THSarabunNew';
-  src: url('https://cdn.jsdelivr.net/gh/lazywasabi/thai-web-fonts@master/fonts/ThSarabunNew/THSarabunNew.woff2') format('woff2');
+  src: url('/fonts/thsarabunnew-webfont.woff') format('woff');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: 'THSarabunNew';
-  src: url('https://cdn.jsdelivr.net/gh/lazywasabi/thai-web-fonts@master/fonts/ThSarabunNew/THSarabunNew_Bold.woff2') format('woff2');
+  src: url('/fonts/thsarabunnew_bold-webfont.woff') format('woff');
   font-weight: bold;
   font-style: normal;
+  font-display: swap;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -23,7 +27,7 @@
 @theme {
   --font-sans: "Sarabun", sans-serif;
   --font-display: "IBM Plex Sans Thai", "Sarabun", sans-serif;
-  --font-sarabun-new: "THSarabunNew", serif;
+  --font-sarabun-new: "THSarabunNew", "TH Sarabun New", serif;
 
   /* ภาษาไทยมีสระบนล่างและวรรณยุกต์ ระยะบรรทัดตั้งต้นของ Tailwind แน่นเกินไป */
   --text-xs--line-height: 1.6;

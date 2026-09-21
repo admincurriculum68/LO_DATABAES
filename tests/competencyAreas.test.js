@@ -21,17 +21,17 @@ test('areasFromLoBank เรียงด้านตาม ability_no และ�
     assert.deepEqual(areasFromLoBank([]), []);
 });
 
-test('areasFromLoBank รวมชื่อด้านสุขภาพแบบเก่ากับแบบใหม่เป็นด้านเดียว และดันแถวที่ไม่มีลำดับไปท้าย', () => {
+test('areasFromLoBank ตัดด้านซ้ำ ข้ามแถวที่ชื่อว่าง และดันแถวที่ไม่มีลำดับไปท้าย', () => {
     const areas = areasFromLoBank([
         { competency_area: 'ความสามารถด้านสุขภาพกายและจิต', ability_no: 6 },
-        { competency_area: 'ความสามารถด้านสุขภาพกายและสุขภาวะจิต', ability_no: 6 },
+        { competency_area: ' ความสามารถด้านสุขภาพกายและจิต ', ability_no: 6 },
         { competency_area: 'ความสามารถด้านภาษาจีน', ability_no: null },
         { competency_area: 'ความสามารถด้านการอ่าน', ability_no: 1 },
         { competency_area: '  ', ability_no: 2 },
     ]);
     assert.deepEqual(areas, [
         'ความสามารถด้านการอ่าน',
-        'ความสามารถด้านสุขภาพกายและสุขภาวะจิต',
+        'ความสามารถด้านสุขภาพกายและจิต',
         'ความสามารถด้านภาษาจีน',
     ]);
 });
@@ -44,7 +44,7 @@ test('mergeAreaLists ต่อท้ายด้านที่มีข้อ�
     assert.deepEqual(merged, [
         'ความสามารถด้านการอ่าน',
         'ความสามารถด้านการเขียน',
-        'ความสามารถด้านสุขภาพกายและสุขภาวะจิต',
+        'ความสามารถด้านสุขภาพกายและจิต',
     ]);
     assert.deepEqual(mergeAreaLists(null, null), []);
 });

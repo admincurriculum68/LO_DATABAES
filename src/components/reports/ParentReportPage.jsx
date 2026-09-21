@@ -14,6 +14,8 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
     const { currentUser } = useAuth();
     const [state, setState] = useState({ loading: true, error: '', school: null, reports: [] });
     const [includeEvidence, setIncludeEvidence] = useState(false);
+    // พิมพ์ทีละคนจากหน้าพิมพ์ทั้งห้อง ครูไม่ต้องกลับไปหาปุ่มในหน้างานประจำชั้น
+    const [soloStudentId, setSoloStudentId] = useState('');
 
     useEffect(() => {
         let active = true;
@@ -36,7 +38,10 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
         );
     }
 
-    const draftCount = state.reports.filter(report => !report.allPublished).length;
+    const soloReport = state.reports.find(report => report.student.student_id === soloStudentId) || null;
+    const visibleReports = soloReport ? [soloReport] : state.reports;
+    const draftCount = visibleReports.filter(report => !report.allPublished).length;
+    const studentName = report => `${report.student?.prefix || ''}${report.student?.first_name || ''} ${report.student?.last_name || ''}`.trim();
 
     return (
         <main className="min-h-screen bg-slate-200 py-6 font-sans text-slate-900 print:bg-white print:py-0">
@@ -46,12 +51,22 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800">
                         <input type="checkbox" checked={includeEvidence} onChange={event => setIncludeEvidence(event.target.checked)} className="h-5 w-5 accent-indigo-700" />
-                        แนบข้อความพฤติกรรมรายวิชา
+                        แนบหน้าข้อความพฤติกรรมรายวิชา (ไม่บังคับ)
                     </label>
-                    <button type="button" onClick={() => window.print()} disabled={!state.reports.length} className="btn-primary"><Printer className="h-4 w-4" aria-hidden="true" />{isRoom ? `พิมพ์ทั้งห้อง (${state.reports.length} คน)` : 'พิมพ์รายงาน'}</button>
+                    <button type="button" onClick={() => window.print()} disabled={!visibleReports.length} className="btn-primary"><Printer className="h-4 w-4" aria-hidden="true" />{soloReport ? `พิมพ์ของ ${studentName(soloReport)}` : isRoom ? `พิมพ์ทั้งห้อง (${state.reports.length} คน)` : 'พิมพ์รายงาน'}</button>
                 </div>
             </div>
 
+            <p className="mx-4 mb-4 max-w-[210mm] text-xs leading-5 text-slate-600 sm:mx-auto print:hidden">
+                ช่อง "แนบหน้าข้อความพฤติกรรมรายวิชา" ไม่ติ๊กก็พิมพ์ได้ครับ ติ๊กเมื่อต้องการแนบหน้าข้อความราย LO ที่ครูผู้สอนเขียนไว้ ต่อท้ายใบรายงานของนักเรียนแต่ละคน
+                {isRoom && ' · ถ้าต้องการพิมพ์ทีละคน กดปุ่ม "พิมพ์เฉพาะคนนี้" เหนือใบรายงานของคนนั้น'}
+            </p>
+            {soloReport && (
+                <div className="mx-4 mb-4 flex max-w-[210mm] items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-bold text-indigo-950 sm:mx-auto print:hidden">
+                    <span>กำลังเตรียมพิมพ์เฉพาะ {studentName(soloReport)}</span>
+                    <button type="button" onClick={() => setSoloStudentId('')} className="btn-secondary">กลับไปทั้งห้อง</button>
+                </div>
+            )}
             {state.error && <p className="mx-4 mb-4 max-w-[210mm] rounded-xl border border-rose-200 sm:mx-auto bg-rose-50 p-4 text-sm font-bold text-rose-900 print:hidden" role="alert">{state.error}</p>}
             {draftCount > 0 && (
                 <p className="mx-4 mb-4 flex max-w-[210mm] gap-2 rounded-xl border border-amber-300 sm:mx-auto bg-amber-50 p-3 text-sm text-amber-950 print:hidden">
@@ -61,16 +76,24 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
 
             {!state.error && state.reports.length === 0 ? (
                 <p className="mx-4 max-w-[210mm] rounded-2xl bg-white p-16 sm:mx-auto text-center font-bold text-slate-600">ไม่พบข้อมูลนักเรียน{isRoom ? `ในห้อง ${room}` : ''} ในภาคเรียนที่ {semester}/{academicYear}</p>
-            ) : state.reports.map((report, index) => (
-                <ParentReportSheet
-                    key={report.student.student_id}
-                    school={state.school}
-                    report={report}
-                    academicYear={academicYear}
-                    semester={semester}
-                    includeEvidence={includeEvidence}
-                    isLast={index === state.reports.length - 1}
-                />
+            ) : visibleReports.map((report, index) => (
+                <div key={report.student.student_id}>
+                    {isRoom && !soloReport && (
+                        <div className="mx-4 mb-2 flex max-w-[210mm] justify-end sm:mx-auto print:hidden">
+                            <button type="button" onClick={() => setSoloStudentId(report.student.student_id)} className="btn-secondary">
+                                <Printer className="h-4 w-4" aria-hidden="true" />พิมพ์เฉพาะคนนี้
+                            </button>
+                        </div>
+                    )}
+                    <ParentReportSheet
+                        school={state.school}
+                        report={report}
+                        academicYear={academicYear}
+                        semester={semester}
+                        includeEvidence={includeEvidence}
+                        isLast={index === visibleReports.length - 1}
+                    />
+                </div>
             ))}
         </main>
     );
