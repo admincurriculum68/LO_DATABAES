@@ -11,6 +11,7 @@ import { buildLoResolver, sameSetAcrossRooms } from '../lib/loByRoom';
 import { LO_FIELDS, mappingSelect } from '../lib/loByRoomApi';
 import { compareRooms, teacherRoomAccess } from '../lib/teacherAccess';
 import { isPublishedDecision } from '../lib/homeroomSummary';
+import { AUTOSAVE_MS, AUTOSAVE_SECONDS } from '../lib/autosave';
 
 export default function EvalView() {
     const { subjectId } = useParams();
@@ -29,6 +30,8 @@ export default function EvalView() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
+    // นับการแก้ทุกครั้ง ถ้าครูพิมพ์ต่อระหว่างกำลังบันทึก ต้องยังถือว่ามีการแก้ค้างอยู่
+    const editVersionRef = useRef(0);
     const [lastSaved, setLastSaved] = useState(null);
     const [showMissingOnly, setShowMissingOnly] = useState(false);
     const roomParam = new URLSearchParams(location.search).get('room');
@@ -156,7 +159,7 @@ export default function EvalView() {
         return () => window.removeEventListener('beforeunload', handler);
     }, [isDirty]);
 
-    // บันทึกอัตโนมัติ 30 วินาทีหลังเริ่มแก้ ไม่แสดงตัวเลขนับถอยหลังทุกวินาทีเหมือนเดิมแล้ว
+    // บันทึกอัตโนมัติ AUTOSAVE_SECONDS วินาทีหลังเริ่มแก้ ไม่แสดงตัวเลขนับถอยหลังทุกวินาทีเหมือนเดิมแล้ว
     // เพราะข้อความที่เปลี่ยนเองเกิน 5 วินาทีโดยหยุดไม่ได้ รบกวนคนที่ใช้โปรแกรมอ่านหน้าจอ
     // และคนที่ต้องมีสมาธิขณะเขียนหลักฐาน (WCAG 2.2.2)
     const autoSaveTimerRef = useRef(null);
@@ -166,8 +169,8 @@ export default function EvalView() {
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
         if (isDirty && !saving) {
             autoSaveTimerRef.current = setTimeout(() => {
-                saveEvaluationsRef.current?.();
-            }, 30000);
+                saveEvaluationsRef.current?.(false);
+            }, AUTOSAVE_MS);
         }
         return () => {
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -194,10 +197,12 @@ export default function EvalView() {
                 updated_at: new Date().toISOString()
             }];
         });
+        editVersionRef.current += 1;
         setIsDirty(true);
     };
 
     const saveEvaluations = async (showSuccessToast = true) => {
+        const versionAtStart = editVersionRef.current;
         setSaving(true);
         try {
             // 1. Save Evaluations
@@ -220,7 +225,8 @@ export default function EvalView() {
                 setSubmission(revertedSubmission);
             }
 
-            setIsDirty(false);
+            // แก้ต่อระหว่างบันทึก ข้อความใหม่ยังไม่ถูกบันทึก ต้องค้างสถานะแก้ไขไว้ให้บันทึกรอบถัดไป
+            if (editVersionRef.current === versionAtStart) setIsDirty(false);
             setLastSaved(new Date());
             if (showSuccessToast) toast.success('บันทึกข้อความแล้ว');
             return true;
@@ -269,6 +275,7 @@ export default function EvalView() {
             });
             return next;
         });
+        editVersionRef.current += 1;
         setIsDirty(true);
         toast.success(`เติมข้อความ ${lo.lo_code || `LO ${lo.ability_no}`} ให้รายการที่แสดงแล้ว`);
     };
@@ -419,7 +426,7 @@ export default function EvalView() {
                         {isDirty && !saving && (
                             <span className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
                                 <Clock className="w-3.5 h-3.5" />
-                                มีการแก้ไข · บันทึกอัตโนมัติภายใน 30 วินาที
+                                มีการแก้ไข · บันทึกอัตโนมัติภายใน {AUTOSAVE_SECONDS} วินาที
                             </span>
                         )}
                         {!isDirty && lastSaved && (
@@ -460,7 +467,7 @@ export default function EvalView() {
                 {/* บอกวิธีทำงานแบบค่อย ๆ เขียน ครูไม่ต้องกรอกให้ครบในครั้งเดียว */}
                 {!loading && enrollments.length > 0 && (
                     <p className="mb-5 rounded-2xl border border-line bg-white px-4 py-3 text-sm leading-6 text-slate-700">
-                        เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก 30 วินาที และกดปุ่ม "บันทึกข้อความ" เองได้ตลอด ปิดหน้าไปแล้วกลับมาเขียนต่อได้
+                        เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก {AUTOSAVE_SECONDS} วินาที และกดปุ่ม "บันทึกข้อความ" เองได้ตลอด ปิดหน้าไปแล้วกลับมาเขียนต่อได้
                         {lastSaved && <span className="font-bold text-emerald-800"> · บันทึกล่าสุด {lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span>}
                     </p>
                 )}
@@ -604,7 +611,7 @@ export default function EvalView() {
                             <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />สถานะ: {submissionLabel}
                         </span>
                         <span className="text-right text-slate-700" aria-live="polite">
-                            {saving ? 'กำลังบันทึก...' : isDirty ? 'บันทึกอัตโนมัติภายใน 30 วินาที' : lastSaved ? `บันทึกแล้ว ${lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : `กรอกแล้ว ${filledCells}/${totalCells}`}
+                            {saving ? 'กำลังบันทึก...' : isDirty ? `บันทึกอัตโนมัติภายใน ${AUTOSAVE_SECONDS} วินาที` : lastSaved ? `บันทึกแล้ว ${lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : `กรอกแล้ว ${filledCells}/${totalCells}`}
                         </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">

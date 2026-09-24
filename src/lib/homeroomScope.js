@@ -37,3 +37,16 @@ export function canEditArea(editableAreas, area) {
     if (!editableAreas) return true;
     return editableAreas.has(normalizeCompetencyArea(area));
 }
+
+/**
+ * ด้านที่ปุ่มส่งผลสรุปจะส่ง
+ * ครูประจำชั้นและฝ่ายวิชาการส่งทั้งห้อง (คืน null) ครูรายวิชาส่งเฉพาะด้านของวิชาตัวเอง
+ * คืนชื่อด้านแบบเดียวกับที่บันทึกในฐานข้อมูล เพื่อใช้กรองแถวตอนส่ง
+ */
+export function areasToSubmit(editableAreas, areas = []) {
+    if (!editableAreas) return null;
+    return [...new Set((areas || [])
+        .filter(area => canEditArea(editableAreas, area))
+        .map(normalizeCompetencyArea)
+        .filter(Boolean))];
+}

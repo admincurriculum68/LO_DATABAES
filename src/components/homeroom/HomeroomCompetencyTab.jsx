@@ -8,17 +8,19 @@ import { useDialog } from '../../lib/dialogContext';
 import { normalizeCompetencyArea } from '../../constants/curriculum2568';
 import { shortAreaName } from '../../lib/loMapping';
 import {
-    ROOM_STATUS, SUMMARY_LEVELS, buildNarrativeDraft, collectRoomEvidence, decisionKey, passStatusFor, roomStatus, summaryProgress,
+    ROOM_STATUS, SUMMARY_LEVELS, buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus, summaryProgress,
 } from '../../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../../lib/homeroomSummaryApi';
-import { canEditArea } from '../../lib/homeroomScope';
+import { areasToSubmit, canEditArea } from '../../lib/homeroomScope';
+import { AUTOSAVE_MS, AUTOSAVE_SECONDS } from '../../lib/autosave';
 
 // สรุปความสามารถรายด้านของห้องเรียน
 // ครูผู้สอนแต่ละวิชาเขียนข้อความพฤติกรรมราย LO ไว้แล้ว หน้านี้รวมข้อความของทุกวิชามาให้คนที่สรุป
 // เลือกระดับและเขียนคำบรรยายด้านละหนึ่งข้อความ แล้วกดส่ง ผลออกสู่นักเรียนและผู้ปกครองทันที แก้ได้ตลอด
 // ห้องหนึ่งมีได้ถึง 40 คน × 10 ด้าน จึงมีทั้งตารางทั้งห้องสำหรับเลือกระดับรวดเดียว และหน้ารายคนสำหรับเขียนคำบรรยาย
 // editableAreas = null คือแก้ได้ทุกด้าน (ครูประจำชั้นและฝ่ายวิชาการ) หรือ Set ของด้านที่ครูรายวิชานั้นรับผิดชอบ
-// ระบบบันทึกฉบับร่างให้อัตโนมัติ 30 วินาทีหลังแก้ครั้งล่าสุด และมีปุ่มบันทึกให้กดเองได้ตลอด
+// ครูรายวิชากดส่งผลสรุปได้เฉพาะด้านของตัวเอง ครูประจำชั้นส่งทั้งห้อง
+// ระบบบันทึกฉบับร่างให้อัตโนมัติ (AUTOSAVE_SECONDS) และมีปุ่มบันทึกให้กดเองได้ตลอด
 
 const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, submitted_at';
 const fullName = info => `${info?.prefix || ''}${info?.first_name || ''} ${info?.last_name || ''}`.trim();
@@ -164,6 +166,10 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         return map;
     }, [myAreas, studentIds, valueOf]);
     const progress = summaryProgress(studentIds, myAreas, valuesByKey);
+    const publishedByArea = useMemo(() => new Map(areas.map(area => [
+        area,
+        studentIds.filter(studentId => isPublishedDecision(rows.get(decisionKey(studentId, area)))).length,
+    ])), [areas, rows, studentIds]);
     const roomRows = useMemo(() => studentIds.flatMap(studentId => myAreas.map(area => rows.get(decisionKey(studentId, area)))).filter(Boolean), [myAreas, rows, studentIds]);
     const status = roomStatus(roomRows, studentIds.length * myAreas.length);
     const returnedRows = roomRows.filter(row => row.decision_status === 'returned');
@@ -200,6 +206,8 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const saveDrafts = async ({ quiet = false } = {}) => {
         const keys = [...dirtyKeys];
         if (!keys.length) return true;
+        // จำค่าที่ส่งไปบันทึก ถ้าครูแก้ช่องเดิมระหว่างรอ ค่าใหม่ต้องยังค้างเป็นฉบับร่างรอบันทึกรอบถัดไป
+        const sentValues = new Map(keys.map(key => [key, drafts.get(key)]));
         setSaving(true);
         try {
             const now = new Date().toISOString();
@@ -235,7 +243,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 saved.forEach(row => map.set(decisionKey(row.student_id, row.competency_area), row));
                 return map;
             });
-            setDrafts(previous => new Map([...previous].filter(([key]) => !keys.includes(key))));
+            setDrafts(previous => new Map([...previous].filter(([key, value]) => sentValues.get(key) !== value)));
             setLastSaved(new Date());
             if (!quiet) toast.success(`บันทึกฉบับร่าง ${keys.length} รายการแล้ว`);
             return true;
@@ -247,7 +255,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         }
     };
 
-    // บันทึกฉบับร่างให้อัตโนมัติ 30 วินาทีหลังแก้ครั้งล่าสุด ครูเขียนทีละคนได้ไม่ต้องเสร็จในครั้งเดียว
+    // บันทึกฉบับร่างให้อัตโนมัติทุก AUTOSAVE_SECONDS วินาทีที่มีการแก้ ครูเขียนทีละคนได้ไม่ต้องเสร็จในครั้งเดียว
     // ไม่นับถอยหลังให้เห็นทุกวินาที เพราะข้อความที่เปลี่ยนเองรบกวนคนที่ต้องมีสมาธิและโปรแกรมอ่านหน้าจอ (WCAG 2.2.2)
     const saveDraftsRef = useRef(null);
     saveDraftsRef.current = saveDrafts;
@@ -255,21 +263,25 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     useEffect(() => {
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
         if (dirtyKeys.length && !saving) {
-            autoSaveTimerRef.current = setTimeout(() => saveDraftsRef.current?.({ quiet: true }), 30000);
+            autoSaveTimerRef.current = setTimeout(() => saveDraftsRef.current?.({ quiet: true }), AUTOSAVE_MS);
         }
         return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
     }, [dirtyKeys.length, saving]);
 
     const submitRoom = async () => {
         const missing = progress.missing;
+        // ครูรายวิชาส่งเฉพาะด้านของวิชาตัวเอง ด้านอื่นของห้องไม่ถูกแตะ
+        const scopedAreas = areasToSubmit(editableAreas, myAreas);
+        if (scopedAreas && !scopedAreas.length) return;
         const confirmed = await dialog.confirm({
-            title: `ส่งผลสรุปห้อง ${room}`,
+            title: scopedAreas ? `ส่งผลสรุป ${scopedAreas.length} ด้านของคุณ · ห้อง ${room}` : `ส่งผลสรุปห้อง ${room}`,
             message: [
+                scopedAreas ? `ส่งเฉพาะด้าน${scopedAreas.map(shortAreaName).join(' · ')} ด้านอื่นของห้องครูท่านอื่นหรือครูประจำชั้นเป็นผู้ส่ง` : '',
                 missing > 0
                     ? `ยังไม่ครบ ${missing} รายการ (ต้องมีทั้งระดับและคำบรรยาย) รายการที่ยังไม่มีระดับจะไม่ถูกส่ง`
                     : `ครบทั้ง ${progress.total} รายการ`,
-                'ส่งแล้วนักเรียนและผู้ปกครองเห็นผลทันที ไม่ต้องรอฝ่ายวิชาการรับรอง และยังแก้ไขได้ตลอด',
-            ].join('\n'),
+                'ส่งแล้วนักเรียนและผู้ปกครองเห็นผลทันที ไม่ต้องรอฝ่ายวิชาการรับรอง และยังแก้ไขได้ตลอด ถ้าแก้หลังส่งให้กดส่งอีกครั้ง',
+            ].filter(Boolean).join('\n'),
             confirmLabel: 'ส่งผลสรุป',
         });
         if (!confirmed) return;
@@ -280,11 +292,12 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
             const now = new Date().toISOString();
             const updated = [];
             for (const batch of chunk(studentIds, 150)) {
-                const { data: updatedRows, error } = await supabase.from('competency_area_final_decisions')
+                let query = supabase.from('competency_area_final_decisions')
                     .update({ decision_status: 'submitted', submitted_at: now, updated_at: now })
                     .eq('school_id', currentUser.school_id).eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
-                    .in('student_id', batch).in('decision_status', ['draft', 'returned', 'pending']).not('final_level', 'is', null)
-                    .select(DECISION_SELECT);
+                    .in('student_id', batch).in('decision_status', ['draft', 'returned', 'pending']).not('final_level', 'is', null);
+                if (scopedAreas) query = query.in('competency_area', scopedAreas);
+                const { data: updatedRows, error } = await query.select(DECISION_SELECT);
                 if (error) throw error;
                 updated.push(...(updatedRows || []));
             }
@@ -297,11 +310,16 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 school_id: currentUser.school_id,
                 actor_id: currentUser.teacher_id || currentUser.id,
                 actor_role: currentUser.role,
-                action: 'submit_homeroom_competency_summary',
+                action: scopedAreas ? 'submit_subject_competency_summary' : 'submit_homeroom_competency_summary',
                 entity_type: 'homeroom',
-                detail: { room, academic_year: Number(academicYear), semester: Number(semester), submitted_count: updated.length },
+                detail: {
+                    room, academic_year: Number(academicYear), semester: Number(semester), submitted_count: updated.length,
+                    ...(scopedAreas ? { areas: scopedAreas } : {}),
+                },
             });
-            toast.success(`ส่งผลสรุปแล้ว ${updated.length} รายการ นักเรียนและผู้ปกครองเห็นผลได้ทันที`);
+            toast.success(updated.length
+                ? `ส่งผลสรุปแล้ว ${updated.length} รายการ นักเรียนและผู้ปกครองเห็นผลได้ทันที`
+                : 'ไม่มีรายการใหม่ให้ส่ง รายการที่มีระดับแล้วถูกส่งไปก่อนหน้านี้แล้ว');
         } catch (error) {
             toast.error('ส่งไม่สำเร็จ: ' + error.message);
         } finally {
@@ -366,17 +384,17 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                         <ol className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
                             <li><strong className="text-slate-900">1)</strong> เลือกระดับของแต่ละด้าน</li>
                             <li><strong className="text-slate-900">2)</strong> เขียนคำบรรยายของแต่ละด้าน (แบบ สพฐ. ต้องมีคำบรรยาย)</li>
-                            {canSubmitRoom && <li><strong className="text-slate-900">3)</strong> กดส่งผลสรุป ผู้ปกครองเห็นผลทันที</li>}
+                            <li><strong className="text-slate-900">3)</strong> {canSubmitRoom ? 'กดส่งผลสรุป ผู้ปกครองเห็นผลทันที' : 'กดส่งผลสรุปด้านของคุณ ผู้ปกครองเห็นผลด้านนั้นทันที'}</li>
                         </ol>
                         <p className="mt-1 text-sm text-slate-600">ระบบร่างคำบรรยายจากข้อความ LO ของครูผู้สอนทุกวิชาให้ได้ แล้วแก้เพิ่มเองได้</p>
                         <p className="mt-1 text-sm text-slate-700">
-                            เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก 30 วินาที และกดปุ่ม “บันทึก” เองได้ตลอด
+                            เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก {AUTOSAVE_SECONDS} วินาที และกดปุ่ม “บันทึก” เองได้ตลอด
                             {savedAtLabel && <span className="font-bold text-emerald-800"> · บันทึกล่าสุด {savedAtLabel} น.</span>}
                         </p>
                         {!canSubmitRoom && (myAreas.length ? (
                             <p className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm leading-6 text-indigo-950">
                                 คุณสรุปได้ {myAreas.length} ด้านจากวิชาที่คุณสอน: {myAreas.map(shortAreaName).join(' · ')} ด้านอื่นในตารางเป็นของครูท่านอื่น จะแก้ไม่ได้
-                                <span className="mt-1 block">ครูประจำชั้นเป็นผู้กดส่งผลสรุปของห้องเมื่อทุกด้านครบแล้ว</span>
+                                <span className="mt-1 block">สรุปครบแล้วกด “ส่งผลสรุป” ระบบส่งเฉพาะด้านของคุณ ผู้ปกครองเห็นผลด้านนั้นทันที ครูประจำชั้นดูได้ว่าด้านไหนส่งแล้วที่หัวคอลัมน์</span>
                             </p>
                         ) : (
                             <p className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
@@ -398,8 +416,12 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                         </button>
                         <button type="button" onClick={draftAllNarratives} disabled={!emptyNarratives.length} className="btn-secondary"><Sparkles className="h-4 w-4" aria-hidden="true" />ร่างคำบรรยายจาก LO ({emptyNarratives.length})</button>
                         {canSubmitRoom && <button type="button" onClick={printRoom} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครองทั้งห้อง</button>}
-                        {canSubmitRoom && <button type="button" onClick={submitRoom} disabled={saving || progress.leveled === 0} className="btn-primary"><Send className="h-4 w-4" aria-hidden="true" />ส่งผลสรุป</button>}
-                        {canSubmitRoom && <p className="text-xs leading-5 text-slate-600 sm:max-w-56">ส่งผลสรุปแล้วผู้ปกครองและนักเรียนเห็นผลทันที และฝ่ายวิชาการเห็นว่าห้องนี้สรุปเสร็จแล้ว แก้ไขได้ตลอด</p>}
+                        <button type="button" onClick={submitRoom} disabled={saving || progress.leveled === 0 || !myAreas.length} className="btn-primary"><Send className="h-4 w-4" aria-hidden="true" />ส่งผลสรุป</button>
+                        <p className="text-xs leading-5 text-slate-600 sm:max-w-56">
+                            {canSubmitRoom
+                                ? 'ส่งผลสรุปแล้วผู้ปกครองและนักเรียนเห็นผลทันที และฝ่ายวิชาการเห็นว่าห้องนี้สรุปเสร็จแล้ว แก้ไขได้ตลอด'
+                                : `ส่งเฉพาะ ${myAreas.length} ด้านของคุณ ผู้ปกครองเห็นผลด้านนั้นทันที แก้ไขได้ตลอด`}
+                        </p>
                     </div>
                 </div>
                 {returnedRows.length > 0 && (
@@ -416,7 +438,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
 
             {view === 'table' && (
                 <section className="overflow-hidden rounded-2xl border border-line bg-white" aria-label="ตารางระดับทั้งห้อง">
-                    <p className="border-b border-line px-4 py-3 text-sm text-slate-700 sm:px-6">ช่องในตารางคือ<strong className="font-bold text-slate-900">ระดับความสามารถ</strong>ของนักเรียนแต่ละคน ช่องบนหัวคอลัมน์ใช้เติมระดับให้คนที่ยังว่างทั้งด้านรวดเดียว ส่วนคำบรรยายกดที่ไอคอนดินสอหรือชื่อนักเรียนเพื่อเขียน</p>
+                    <p className="border-b border-line px-4 py-3 text-sm text-slate-700 sm:px-6">ช่องในตารางคือ<strong className="font-bold text-slate-900">ระดับความสามารถ</strong>ของนักเรียนแต่ละคน ช่องบนหัวคอลัมน์ใช้เติมระดับให้คนที่ยังว่างทั้งด้านรวดเดียว ส่วนคำบรรยายกดที่ไอคอนดินสอหรือชื่อนักเรียนเพื่อเขียน · ใต้ชื่อด้านบอกว่าส่งผลแล้วกี่คน</p>
                     {canScroll && (
                         <div className="flex items-center justify-end gap-2 border-b border-line px-4 py-2 sm:px-6">
                             <span className="mr-auto text-xs text-slate-600">เลื่อนดูด้านอื่นได้</span>
@@ -440,6 +462,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                     {areas.map(area => (
                                         <th key={area} scope="col" className={`min-w-[8.5rem] border-b border-line px-2 py-2 text-left align-bottom text-xs font-bold ${canEdit(area) ? '' : 'bg-slate-100 text-slate-600'}`}>
                                             <span className="block leading-5">{shortAreaName(area)}</span>
+                                            <span className={`block text-[11px] font-semibold tabular-nums ${publishedByArea.get(area) === students.length ? 'text-emerald-700' : 'text-slate-600'}`}>ส่งแล้ว {publishedByArea.get(area) || 0}/{students.length}</span>
                                             {canEdit(area) ? (
                                                 <select aria-label={`เติมระดับให้คนที่ยังว่าง ด้าน${shortAreaName(area)}`} value="" onChange={event => fillAreaLevel(area, event.target.value)} className="mt-1 min-h-9 w-full rounded-lg border border-field bg-white px-2 text-xs font-semibold text-slate-700">
                                                     <option value="">เติมคนที่ว่าง…</option>

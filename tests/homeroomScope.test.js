@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canEditArea, editableAreasFor } from '../src/lib/homeroomScope.js';
+import { areasToSubmit, canEditArea, editableAreasFor } from '../src/lib/homeroomScope.js';
 
 const lo = (loId, area) => ({ lo_id: loId, lo_code: loId, ability_no: 1, competency_area: area });
 const enrollments = [
@@ -46,4 +46,12 @@ test('ห้องที่มีชุด LO ของตัวเอง ใช
     ];
     const areas = editableAreasFor({ enrollments, mappings: roomMappings, canEditSubject: subjectId => subjectId === 'thai' });
     assert.deepEqual([...areas], ['ความสามารถด้านภาษาจีน']);
+});
+
+test('ปุ่มส่งผลสรุปของครูรายวิชาส่งเฉพาะด้านของตัวเอง ครูประจำชั้นส่งทั้งห้อง', () => {
+    const roomAreas = ['ความสามารถด้านการอ่าน', ' ความสามารถด้านการเขียน ', 'ความสามารถด้านการคิดคำนวณ'];
+    assert.equal(areasToSubmit(null, roomAreas), null);
+    const mine = editableAreasFor({ enrollments, mappings, canEditSubject: subjectId => subjectId === 'thai' });
+    assert.deepEqual(areasToSubmit(mine, roomAreas).sort(), ['ความสามารถด้านการเขียน', 'ความสามารถด้านการอ่าน'].sort());
+    assert.deepEqual(areasToSubmit(new Set(), roomAreas), []);
 });
