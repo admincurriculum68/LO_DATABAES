@@ -24,7 +24,9 @@ import { fetchAllByIn, fetchAllRows, supabase } from '../lib/supabase';
 import { buildLoResolver } from '../lib/loByRoom';
 import { loadRoomMappings } from '../lib/loByRoomApi';
 import { loadCompetencyAreas } from '../lib/competencyAreasApi';
-import { gradeOfRoom } from '../lib/teacherAccess';
+import { compareRooms, gradeOfRoom } from '../lib/teacherAccess';
+import { editableAreasFor } from '../lib/homeroomScope';
+import { loadTeachingRooms } from '../lib/homeroomScopeApi';
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 
@@ -40,11 +42,14 @@ function LoadingState() {
 export default function HomeroomView() {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    // ครูที่ไม่ได้ทำงานฝ่ายวิชาการ ดูได้เฉพาะห้องประจำชั้นของตนเอง
-    const isRoomLocked = !hasAnyRole(currentUser, ['admin', 'executive']);
+    // ฝ่ายวิชาการและผู้บริหารเปิดได้ทุกห้อง ครูประจำชั้นได้ห้องตัวเอง
+    // ครูรายวิชาเปิดห้องที่ตัวเองสอนได้ แต่สรุปได้เฉพาะด้านของวิชาตัวเอง
+    const isAcademic = hasAnyRole(currentUser, ['admin', 'executive']);
     const { academicYear, semester } = useAcademic();
     const [room, setRoom] = useState('');
     const [availableRooms, setAvailableRooms] = useState([]);
+    const [roomsReady, setRoomsReady] = useState(false);
+    const [teaching, setTeaching] = useState({ rooms: [], accessBySubject: new Map() });
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState('');
     const [data, setData] = useState(null);
@@ -55,25 +60,39 @@ export default function HomeroomView() {
     const [savingActivity, setSavingActivity] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
         async function fetchRooms() {
             if (!currentUser?.school_id) return;
-            if (hasAnyRole(currentUser, ['admin', 'executive'])) {
+            if (isAcademic) {
                 const { data: students, error } = await supabase
                     .from('users_students')
                     .select('current_room')
                     .eq('school_id', currentUser.school_id);
-                if (error) return;
-                const rooms = [...new Set((students || []).map(item => item.current_room).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
+                if (error || cancelled) return;
+                const rooms = [...new Set((students || []).map(item => item.current_room).filter(Boolean))].sort(compareRooms);
                 setAvailableRooms(rooms);
                 setRoom(current => current || rooms[0] || '');
+                setRoomsReady(true);
                 return;
             }
-            const assignedRoom = currentUser.homeroom || '';
-            setAvailableRooms(assignedRoom ? [assignedRoom] : []);
-            setRoom(assignedRoom);
+            // ครูรายวิชาสรุปด้านของวิชาตัวเองได้ จึงต้องเห็นห้องที่ตัวเองสอน ไม่ใช่เฉพาะห้องประจำชั้น
+            const scope = await loadTeachingRooms({
+                teacherId: currentUser.teacher_id,
+                schoolId: currentUser.school_id,
+                academicYear,
+                semester,
+            }).catch(() => ({ rooms: [], accessBySubject: new Map() }));
+            if (cancelled) return;
+            setTeaching(scope);
+            const homeroom = currentUser.homeroom || '';
+            const rooms = [...new Set([homeroom, ...scope.rooms].filter(Boolean))].sort(compareRooms);
+            setAvailableRooms(rooms);
+            setRoom(current => (rooms.includes(current) ? current : homeroom || rooms[0] || ''));
+            setRoomsReady(true);
         }
         fetchRooms();
-    }, [currentUser]);
+        return () => { cancelled = true; };
+    }, [academicYear, currentUser, isAcademic, semester]);
 
     const loadHomeroom = useCallback(async targetRoom => {
         const normalizedRoom = (targetRoom || '').trim();
@@ -182,6 +201,24 @@ export default function HomeroomView() {
             .forEach(item => { if (item.learning_outcomes) map.set(item.learning_outcomes.lo_id, item.learning_outcomes); }));
         return [...map.values()].sort((a, b) => (a.ability_no || 0) - (b.ability_no || 0) || (a.lo_code || '').localeCompare(b.lo_code || '', 'th'));
     }, [data, loResolver]);
+
+    // ครูประจำชั้นและฝ่ายวิชาการสรุปได้ทุกด้าน ครูรายวิชาสรุปได้เฉพาะด้านของ LO วิชาที่ตัวเองสอนในห้องนี้
+    const canEditAllAreas = isAcademic || (Boolean(currentUser?.homeroom) && currentUser.homeroom === room);
+    const canEditSubjectHere = useCallback(
+        (subjectId, enrollmentRoom) => Boolean(teaching.accessBySubject.get(subjectId)?.allows(enrollmentRoom || room)),
+        [room, teaching],
+    );
+    const editableAreas = useMemo(() => editableAreasFor({
+        canEditAll: canEditAllAreas,
+        enrollments: data?.enrollments || [],
+        mappings: data?.loData || [],
+        canEditSubject: canEditSubjectHere,
+    }), [canEditAllAreas, canEditSubjectHere, data]);
+
+    // แท็บผลราย LO และกิจกรรมเป็นงานของครูประจำชั้น ครูรายวิชาที่เปิดมาต้องไม่ค้างอยู่ที่แท็บที่ไม่มีให้กด
+    useEffect(() => {
+        if (!canEditAllAreas) setActiveTab('summary');
+    }, [canEditAllAreas]);
 
     const selectedLoInfo = learningOutcomes.find(item => item.lo_id === selectedLo) || null;
     const totalAcademicCells = (data?.enrollments || []).reduce((total, enrollment) => {
@@ -298,35 +335,40 @@ export default function HomeroomView() {
     );
 
     return (
-        <Layout title="งานประเมินผลสำหรับครูประจำชั้น">
+        <Layout title={canEditAllAreas ? 'งานประเมินผลสำหรับครูประจำชั้น' : 'สรุปความสามารถรายด้านของวิชาที่สอน'}>
             <div className="mx-auto w-full max-w-[1600px]">
                 <header className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div><div className="flex items-center gap-2 text-sm font-bold text-blue-700"><LayoutDashboard className="h-4 w-4" /> งานครูประจำชั้น</div><h1 className="mt-1 text-2xl font-bold text-slate-950">งานประเมินประจำชั้นเรียน</h1><p className="mt-1 text-sm text-slate-600">สรุปความสามารถรายด้านจากข้อความ LO ของทุกวิชา ประเมินกิจกรรมกับคุณลักษณะ และพิมพ์รายงานผู้ปกครอง</p></div>
+                    <div><div className="flex items-center gap-2 text-sm font-bold text-blue-700"><LayoutDashboard className="h-4 w-4" /> {canEditAllAreas ? 'งานครูประจำชั้น' : 'งานครูผู้สอน'}</div><h1 className="mt-1 text-2xl font-bold text-slate-950">{canEditAllAreas ? 'งานประเมินประจำชั้นเรียน' : 'สรุปความสามารถรายด้านของวิชาที่สอน'}</h1><p className="mt-1 text-sm text-slate-600">{canEditAllAreas ? 'สรุปความสามารถรายด้านจากข้อความ LO ของทุกวิชา ประเมินกิจกรรมกับคุณลักษณะ และพิมพ์รายงานผู้ปกครอง' : 'สรุปเฉพาะด้านที่วิชาของคุณรับผิดชอบ ด้วยบัญชีของคุณเอง ด้านอื่นเป็นของครูท่านอื่น'}</p></div>
                     <div className="rounded-xl border border-line bg-white px-4 py-3 text-sm shadow-sm"><span className="block text-xs font-semibold text-slate-500">รอบการประเมิน</span><strong className="text-slate-900">ภาคเรียนที่ {semester}/{academicYear}</strong></div>
                 </header>
 
-                {!currentUser?.homeroom && isRoomLocked ? (
-                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-amber-800" /><div><h2 className="font-bold text-amber-950">ยังไม่ได้กำหนดห้องประจำชั้น</h2><p className="mt-1 text-sm leading-6 text-amber-900">กรุณาติดต่อฝ่ายวิชาการเพื่อกำหนดห้องประจำชั้นก่อนเริ่มประเมิน</p></div></div></section>
+                {!isAcademic && roomsReady && !availableRooms.length ? (
+                    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-amber-800" /><div><h2 className="font-bold text-amber-950">ยังไม่มีห้องที่คุณรับผิดชอบ</h2><p className="mt-1 text-sm leading-6 text-amber-900">หน้านี้ใช้ได้เมื่อคุณเป็นครูประจำชั้น หรือมีชื่อเป็นครูผู้สอนของวิชาในภาคเรียนที่ {semester}/{academicYear} กรุณาติดต่อฝ่ายวิชาการเพื่อกำหนดห้องประจำชั้นหรือเพิ่มชื่อคุณในรายวิชา</p></div></div></section>
                 ) : (
                     <>
                         <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 shadow-sm sm:flex-row sm:items-end" aria-label="เลือกห้องเรียน">
-                            <label className="flex-1"><span className="mb-1.5 block text-sm font-bold text-slate-800">ห้องเรียนที่รับผิดชอบ</span><select value={room} onChange={event => setRoom(event.target.value)} disabled={isRoomLocked} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-700">{availableRooms.length ? availableRooms.map(item => <option key={item} value={item}>{item}</option>) : <option value="">ไม่มีห้องเรียน</option>}</select></label>
+                            <label className="flex-1"><span className="mb-1.5 block text-sm font-bold text-slate-800">ห้องเรียนที่รับผิดชอบ</span><select value={room} onChange={event => setRoom(event.target.value)} disabled={availableRooms.length <= 1} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-700">{availableRooms.length ? availableRooms.map(item => <option key={item} value={item}>{item}</option>) : <option value="">ไม่มีห้องเรียน</option>}</select></label>
                             <button onClick={() => loadHomeroom(room)} disabled={loading || !room} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50">{loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-700" /> : <RefreshCw className="h-4 w-4" />} โหลดข้อมูลล่าสุด</button>
                         </section>
 
                         {loadError ? <section className="surface-danger rounded-2xl border border-rose-200 p-6" role="alert"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดข้อมูลไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{loadError}</p><button onClick={() => loadHomeroom(room)} className="action-danger mt-3 min-h-11 rounded-lg px-4 text-sm font-bold">ลองอีกครั้ง</button></div></div></section> : loading ? <LoadingState /> : data && students.length === 0 ? <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><UsersRound className="mx-auto h-10 w-10 text-slate-500" /><h3 className="mt-3 font-bold text-slate-800">ยังไม่มีนักเรียนในห้อง {room}</h3><p className="mt-1 text-sm text-slate-600">ฝ่ายวิชาการต้องจัดนักเรียนเข้ากลุ่มเรียนในภาคเรียนที่ {semester}/{academicYear} ก่อน</p></section> : data ? (
                             <>
-                                <section className="mb-5 grid overflow-hidden rounded-2xl border border-line bg-white sm:grid-cols-2 xl:grid-cols-4" aria-label="ภาพรวมงานประจำชั้น">
-                                    {[
+                                <section className={`mb-5 grid overflow-hidden rounded-2xl border border-line bg-white sm:grid-cols-2 ${canEditAllAreas ? 'xl:grid-cols-4' : ''}`} aria-label="ภาพรวมงานประจำชั้น">
+                                    {(canEditAllAreas ? [
                                         { label: 'นักเรียนในห้อง', value: students.length, unit: 'คน', icon: UsersRound, tone: 'bg-indigo-50 text-indigo-700' },
                                         { label: 'ผลลัพธ์การเรียนรู้', value: learningOutcomes.length, unit: 'LO', icon: BookOpen, tone: 'bg-blue-50 text-blue-700' },
                                         { label: 'ความก้าวหน้ารายวิชา', value: academicPercent, unit: '%', icon: ClipboardCheck, tone: 'bg-violet-50 text-violet-700' },
                                         { label: 'กิจกรรมที่บันทึกแล้ว', value: savedActivityStudents, unit: `จาก ${students.length}`, icon: CheckCircle2, tone: 'bg-emerald-50 text-emerald-700' },
-                                    ].map((metric, index) => <div key={metric.label} className={`flex items-center gap-3 border-b border-line p-4 sm:p-5 ${index % 2 === 0 ? 'sm:border-r' : ''} ${index < 2 ? 'xl:border-b-0' : 'sm:border-b-0'} ${index < 3 ? 'xl:border-r' : ''}`}><span className={`flex h-11 w-11 items-center justify-center rounded-xl ${metric.tone}`}><metric.icon className="h-5 w-5" /></span><div><p className="text-sm font-semibold text-slate-600">{metric.label}</p><p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-950">{metric.value} <span className="text-sm font-semibold text-slate-500">{metric.unit}</span></p></div></div>)}
+                                    ] : [
+                                        { label: 'นักเรียนในห้อง', value: students.length, unit: 'คน', icon: UsersRound, tone: 'bg-indigo-50 text-indigo-700' },
+                                        { label: 'ด้านที่คุณสรุปได้', value: editableAreas ? editableAreas.size : 0, unit: `จาก ${data.areaNames?.length || 0} ด้าน`, icon: PenLine, tone: 'bg-blue-50 text-blue-700' },
+                                    ]).map((metric, index) => <div key={metric.label} className={`flex items-center gap-3 border-b border-line p-4 last:border-b-0 sm:p-5 ${index % 2 === 0 ? 'sm:border-r' : ''} ${canEditAllAreas ? (index < 2 ? 'xl:border-b-0' : 'sm:border-b-0') : 'sm:border-b-0'} ${canEditAllAreas && index < 3 ? 'xl:border-r' : ''}`}><span className={`flex h-11 w-11 items-center justify-center rounded-xl ${metric.tone}`}><metric.icon className="h-5 w-5" /></span><div><p className="text-sm font-semibold text-slate-600">{metric.label}</p><p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-950">{metric.value} <span className="text-sm font-semibold text-slate-500">{metric.unit}</span></p></div></div>)}
                                 </section>
 
-                                <nav className="mb-5 overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกงานประจำชั้น"><div className="flex min-w-max gap-1"><button onClick={() => setActiveTab('summary')} aria-pressed={activeTab === 'summary'} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'summary' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><PenLine className="mr-2 inline h-4 w-4" />สรุปความสามารถรายด้าน</button><button onClick={() => setActiveTab('academic')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'academic' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><BookOpen className="mr-2 inline h-4 w-4" />ผลราย LO จากรายวิชา</button><button onClick={() => setActiveTab('activity')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'activity' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><Star className="mr-2 inline h-4 w-4" />กิจกรรมและคุณลักษณะ {savedActivityStudents < students.length && <span className={`ml-1 rounded-lg px-1.5 py-0.5 text-xs ${activeTab === 'activity' ? 'bg-white/20 text-white' : 'surface-warning text-amber-800'}`}>{students.length - savedActivityStudents} ค้าง</span>}</button></div></nav>
-                                {activeTab === 'summary' ? <HomeroomCompetencyTab room={room} students={students} data={data} academicYear={academicYear} semester={semester} /> : activeTab === 'academic' ? renderAcademicTable() : renderActivityTable()}
+                                {canEditAllAreas && (
+                                    <nav className="mb-5 overflow-x-auto rounded-2xl border border-line bg-white p-1.5 shadow-sm" aria-label="เลือกงานประจำชั้น"><div className="flex min-w-max gap-1"><button onClick={() => setActiveTab('summary')} aria-pressed={activeTab === 'summary'} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'summary' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><PenLine className="mr-2 inline h-4 w-4" />สรุปความสามารถรายด้าน</button><button onClick={() => setActiveTab('academic')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'academic' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><BookOpen className="mr-2 inline h-4 w-4" />ผลราย LO จากรายวิชา</button><button onClick={() => setActiveTab('activity')} className={`min-h-11 rounded-xl px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 ${activeTab === 'activity' ? 'action-primary' : 'text-slate-600 hover:bg-slate-100'}`}><Star className="mr-2 inline h-4 w-4" />กิจกรรมและคุณลักษณะ {savedActivityStudents < students.length && <span className={`ml-1 rounded-lg px-1.5 py-0.5 text-xs ${activeTab === 'activity' ? 'bg-white/20 text-white' : 'surface-warning text-amber-800'}`}>{students.length - savedActivityStudents} ค้าง</span>}</button></div></nav>
+                                )}
+                                {activeTab === 'summary' ? <HomeroomCompetencyTab room={room} students={students} data={data} academicYear={academicYear} semester={semester} editableAreas={editableAreas} canSubmitRoom={canEditAllAreas} /> : activeTab === 'academic' ? renderAcademicTable() : renderActivityTable()}
                             </>
                         ) : (
                             <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">

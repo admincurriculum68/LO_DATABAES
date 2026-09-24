@@ -11,18 +11,21 @@ import {
     ROOM_STATUS, SUMMARY_LEVELS, buildNarrativeDraft, collectRoomEvidence, decisionKey, passStatusFor, roomStatus, summaryProgress,
 } from '../../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../../lib/homeroomSummaryApi';
+import { canEditArea } from '../../lib/homeroomScope';
 
-// ครูประจำชั้นสรุปความสามารถรายด้าน
-// ครูผู้สอนแต่ละวิชาเขียนข้อความพฤติกรรมราย LO ไว้แล้ว หน้านี้รวมข้อความของทุกวิชามาให้ครูประจำชั้น
+// สรุปความสามารถรายด้านของห้องเรียน
+// ครูผู้สอนแต่ละวิชาเขียนข้อความพฤติกรรมราย LO ไว้แล้ว หน้านี้รวมข้อความของทุกวิชามาให้คนที่สรุป
 // เลือกระดับและเขียนคำบรรยายด้านละหนึ่งข้อความ แล้วกดส่ง ผลออกสู่นักเรียนและผู้ปกครองทันที แก้ได้ตลอด
 // ห้องหนึ่งมีได้ถึง 40 คน × 10 ด้าน จึงมีทั้งตารางทั้งห้องสำหรับเลือกระดับรวดเดียว และหน้ารายคนสำหรับเขียนคำบรรยาย
+// editableAreas = null คือแก้ได้ทุกด้าน (ครูประจำชั้นและฝ่ายวิชาการ) หรือ Set ของด้านที่ครูรายวิชานั้นรับผิดชอบ
+// ระบบบันทึกฉบับร่างให้อัตโนมัติ 30 วินาทีหลังแก้ครั้งล่าสุด และมีปุ่มบันทึกให้กดเองได้ตลอด
 
 const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, submitted_at';
 const fullName = info => `${info?.prefix || ''}${info?.first_name || ''} ${info?.last_name || ''}`.trim();
 const draftKey = (schoolId, year, semester, room) => `homeroomSummaryDraft:${schoolId}:${year}:${semester}:${room}`;
 const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
 
-export default function HomeroomCompetencyTab({ room, students, data, academicYear, semester }) {
+export default function HomeroomCompetencyTab({ room, students, data, academicYear, semester, editableAreas = null, canSubmitRoom = true }) {
     const navigate = useNavigate();
     const dialog = useDialog();
     const { currentUser } = useAuth();
@@ -35,6 +38,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const [view, setView] = useState('table');
     const [selectedStudentId, setSelectedStudentId] = useState('');
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+    const [lastSaved, setLastSaved] = useState(null);
     const restoredRef = useRef('');
     const storageKey = draftKey(currentUser?.school_id, academicYear, semester, room);
     const studentIds = useMemo(() => students.map(student => student.id), [students]);
@@ -44,6 +48,16 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         () => collectRoomEvidence(data?.enrollments, data?.loData, data?.evalData, { areas: data?.areaNames }),
         [data],
     );
+
+    // ครูรายวิชาเห็นทุกด้านของห้องเพื่อรู้ภาพรวม แต่แก้ได้เฉพาะด้านของวิชาตัวเอง
+    const canEdit = useCallback(area => canEditArea(editableAreas, area), [editableAreas]);
+    const myAreas = useMemo(() => areas.filter(canEdit), [areas, canEdit]);
+    const doneAreasOf = useCallback(studentId => myAreas.filter(area => {
+        const key = decisionKey(studentId, area);
+        const row = rows.get(key);
+        const value = drafts.has(key) ? drafts.get(key) : { level: row?.final_level || '', summary: row?.summary_text || '' };
+        return value.level && value.summary?.trim();
+    }).length, [drafts, myAreas, rows]);
 
     // ชั้นที่มีหลายด้าน ตารางจะกว้างเกินจอ จึงมีปุ่มเลื่อนให้กดแทนการลากอย่างเดียว
     const scrollRef = useRef(null);
@@ -135,6 +149,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     }, [dirtyKeys.length]);
 
     const setValue = (studentId, area, patch) => {
+        if (!canEdit(area)) return;
         const key = decisionKey(studentId, area);
         setDrafts(previous => {
             const map = new Map(previous);
@@ -145,15 +160,15 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
 
     const valuesByKey = useMemo(() => {
         const map = new Map();
-        studentIds.forEach(studentId => areas.forEach(area => map.set(decisionKey(studentId, area), valueOf(studentId, area))));
+        studentIds.forEach(studentId => myAreas.forEach(area => map.set(decisionKey(studentId, area), valueOf(studentId, area))));
         return map;
-    }, [areas, studentIds, valueOf]);
-    const progress = summaryProgress(studentIds, areas, valuesByKey);
-    const roomRows = useMemo(() => studentIds.flatMap(studentId => areas.map(area => rows.get(decisionKey(studentId, area)))).filter(Boolean), [areas, rows, studentIds]);
-    const status = roomStatus(roomRows, studentIds.length * areas.length);
+    }, [myAreas, studentIds, valueOf]);
+    const progress = summaryProgress(studentIds, myAreas, valuesByKey);
+    const roomRows = useMemo(() => studentIds.flatMap(studentId => myAreas.map(area => rows.get(decisionKey(studentId, area)))).filter(Boolean), [myAreas, rows, studentIds]);
+    const status = roomStatus(roomRows, studentIds.length * myAreas.length);
     const returnedRows = roomRows.filter(row => row.decision_status === 'returned');
 
-    const emptyNarratives = studentIds.flatMap(studentId => areas.map(area => ({ studentId, area })))
+    const emptyNarratives = studentIds.flatMap(studentId => myAreas.map(area => ({ studentId, area })))
         .filter(({ studentId, area }) => !valueOf(studentId, area).summary?.trim() && notesByKey.get(decisionKey(studentId, area))?.length);
 
     const draftAllNarratives = () => {
@@ -168,7 +183,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     };
 
     const fillAreaLevel = (area, level) => {
-        if (!level) return;
+        if (!level || !canEdit(area)) return;
         setDrafts(previous => {
             const map = new Map(previous);
             studentIds.forEach(studentId => {
@@ -221,6 +236,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 return map;
             });
             setDrafts(previous => new Map([...previous].filter(([key]) => !keys.includes(key))));
+            setLastSaved(new Date());
             if (!quiet) toast.success(`บันทึกฉบับร่าง ${keys.length} รายการแล้ว`);
             return true;
         } catch (error) {
@@ -230,6 +246,19 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
             setSaving(false);
         }
     };
+
+    // บันทึกฉบับร่างให้อัตโนมัติ 30 วินาทีหลังแก้ครั้งล่าสุด ครูเขียนทีละคนได้ไม่ต้องเสร็จในครั้งเดียว
+    // ไม่นับถอยหลังให้เห็นทุกวินาที เพราะข้อความที่เปลี่ยนเองรบกวนคนที่ต้องมีสมาธิและโปรแกรมอ่านหน้าจอ (WCAG 2.2.2)
+    const saveDraftsRef = useRef(null);
+    saveDraftsRef.current = saveDrafts;
+    const autoSaveTimerRef = useRef(null);
+    useEffect(() => {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        if (dirtyKeys.length && !saving) {
+            autoSaveTimerRef.current = setTimeout(() => saveDraftsRef.current?.({ quiet: true }), 30000);
+        }
+        return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+    }, [dirtyKeys.length, saving]);
 
     const submitRoom = async () => {
         const missing = progress.missing;
@@ -321,6 +350,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const percent = progress.total ? Math.round((progress.complete / progress.total) * 100) : 0;
     const selectedIndex = students.findIndex(student => student.id === selectedStudentId);
     const selectedStudent = students[selectedIndex];
+    const savedAtLabel = lastSaved ? lastSaved.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
     const printRoom = () => navigate(`/batch-report/${encodeURIComponent(room)}/${academicYear}/${semester}`);
     const printStudent = studentId => navigate(`/report/${studentId}/${academicYear}/${semester}`);
 
@@ -336,22 +366,40 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                         <ol className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-700">
                             <li><strong className="text-slate-900">1)</strong> เลือกระดับของแต่ละด้าน</li>
                             <li><strong className="text-slate-900">2)</strong> เขียนคำบรรยายของแต่ละด้าน (แบบ สพฐ. ต้องมีคำบรรยาย)</li>
-                            <li><strong className="text-slate-900">3)</strong> กดส่งผลสรุป ผู้ปกครองเห็นผลทันที</li>
+                            {canSubmitRoom && <li><strong className="text-slate-900">3)</strong> กดส่งผลสรุป ผู้ปกครองเห็นผลทันที</li>}
                         </ol>
-                        <p className="mt-1 text-sm text-slate-600">ระบบร่างคำบรรยายจากข้อความ LO ของครูผู้สอนทุกวิชาให้ได้ แล้วครูประจำชั้นแก้เพิ่มเองได้</p>
+                        <p className="mt-1 text-sm text-slate-600">ระบบร่างคำบรรยายจากข้อความ LO ของครูผู้สอนทุกวิชาให้ได้ แล้วแก้เพิ่มเองได้</p>
+                        <p className="mt-1 text-sm text-slate-700">
+                            เขียนทีละคนได้ ไม่ต้องเสร็จในครั้งเดียว ระบบบันทึกให้อัตโนมัติทุก 30 วินาที และกดปุ่ม “บันทึก” เองได้ตลอด
+                            {savedAtLabel && <span className="font-bold text-emerald-800"> · บันทึกล่าสุด {savedAtLabel} น.</span>}
+                        </p>
+                        {!canSubmitRoom && (myAreas.length ? (
+                            <p className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm leading-6 text-indigo-950">
+                                คุณสรุปได้ {myAreas.length} ด้านจากวิชาที่คุณสอน: {myAreas.map(shortAreaName).join(' · ')} ด้านอื่นในตารางเป็นของครูท่านอื่น จะแก้ไม่ได้
+                                <span className="mt-1 block">ครูประจำชั้นเป็นผู้กดส่งผลสรุปของห้องเมื่อทุกด้านครบแล้ว</span>
+                            </p>
+                        ) : (
+                            <p className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                                วิชาที่คุณสอนในห้อง {room} ยังไม่ได้เลือก LO จึงยังไม่มีด้านให้คุณสรุป เปิดเมนู “งานของฉัน” แล้วกด “แก้ LO” ของวิชานั้นก่อน
+                            </p>
+                        ))}
                         <div className="mt-3 flex items-center gap-3">
                             <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.complete} aria-label="สรุปครบแล้ว">
                                 <div className="h-full rounded-full bg-emerald-600" style={{ width: `${percent}%` }} />
                             </div>
                             <p className="shrink-0 text-sm font-bold text-slate-900 tabular-nums">ครบ {progress.complete} จาก {progress.total} รายการ</p>
                         </div>
-                        <p className="mt-1 text-xs text-slate-600">{students.length} คน × {areas.length} ด้าน · มีระดับแล้ว {progress.leveled} · มีคำบรรยายแล้ว {progress.narrated}</p>
+                        <p className="mt-1 text-xs text-slate-600">{students.length} คน × {myAreas.length} ด้าน{canSubmitRoom ? '' : 'ที่คุณสรุป'} · มีระดับแล้ว {progress.leveled} · มีคำบรรยายแล้ว {progress.narrated}</p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
+                        <button type="button" onClick={() => saveDrafts()} disabled={saving || !dirtyKeys.length} className="btn-primary bg-emerald-700 hover:bg-emerald-800 focus-visible:ring-emerald-700">
+                            <Save className="h-4 w-4" aria-hidden="true" />
+                            {saving ? 'กำลังบันทึก...' : dirtyKeys.length ? `บันทึก (${dirtyKeys.length})` : 'บันทึกแล้ว'}
+                        </button>
                         <button type="button" onClick={draftAllNarratives} disabled={!emptyNarratives.length} className="btn-secondary"><Sparkles className="h-4 w-4" aria-hidden="true" />ร่างคำบรรยายจาก LO ({emptyNarratives.length})</button>
-                        <button type="button" onClick={printRoom} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครองทั้งห้อง</button>
-                        <button type="button" onClick={submitRoom} disabled={saving || progress.leveled === 0} className="btn-primary"><Send className="h-4 w-4" aria-hidden="true" />ส่งผลสรุป</button>
-                        <p className="text-xs leading-5 text-slate-600 sm:max-w-56">ส่งผลสรุปแล้วผู้ปกครองและนักเรียนเห็นผลทันที และฝ่ายวิชาการเห็นว่าห้องนี้สรุปเสร็จแล้ว แก้ไขได้ตลอด</p>
+                        {canSubmitRoom && <button type="button" onClick={printRoom} className="btn-secondary"><Printer className="h-4 w-4" aria-hidden="true" />พิมพ์รายงานผู้ปกครองทั้งห้อง</button>}
+                        {canSubmitRoom && <button type="button" onClick={submitRoom} disabled={saving || progress.leveled === 0} className="btn-primary"><Send className="h-4 w-4" aria-hidden="true" />ส่งผลสรุป</button>}
+                        {canSubmitRoom && <p className="text-xs leading-5 text-slate-600 sm:max-w-56">ส่งผลสรุปแล้วผู้ปกครองและนักเรียนเห็นผลทันที และฝ่ายวิชาการเห็นว่าห้องนี้สรุปเสร็จแล้ว แก้ไขได้ตลอด</p>}
                     </div>
                 </div>
                 {returnedRows.length > 0 && (
@@ -390,26 +438,28 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                         <span className="mt-0.5 block text-xs font-normal text-slate-600">ระดับความสามารถรายด้าน</span>
                                     </th>
                                     {areas.map(area => (
-                                        <th key={area} scope="col" className="min-w-[8.5rem] border-b border-line px-2 py-2 text-left align-bottom text-xs font-bold">
+                                        <th key={area} scope="col" className={`min-w-[8.5rem] border-b border-line px-2 py-2 text-left align-bottom text-xs font-bold ${canEdit(area) ? '' : 'bg-slate-100 text-slate-600'}`}>
                                             <span className="block leading-5">{shortAreaName(area)}</span>
-                                            <select aria-label={`เติมระดับให้คนที่ยังว่าง ด้าน${shortAreaName(area)}`} value="" onChange={event => fillAreaLevel(area, event.target.value)} className="mt-1 min-h-9 w-full rounded-lg border border-field bg-white px-2 text-xs font-semibold text-slate-700">
-                                                <option value="">เติมคนที่ว่าง…</option>
-                                                {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
-                                            </select>
+                                            {canEdit(area) ? (
+                                                <select aria-label={`เติมระดับให้คนที่ยังว่าง ด้าน${shortAreaName(area)}`} value="" onChange={event => fillAreaLevel(area, event.target.value)} className="mt-1 min-h-9 w-full rounded-lg border border-field bg-white px-2 text-xs font-semibold text-slate-700">
+                                                    <option value="">เติมคนที่ว่าง…</option>
+                                                    {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
+                                                </select>
+                                            ) : <span className="mt-1 block text-xs font-semibold text-slate-600">ของครูท่านอื่น</span>}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {students.map((student, index) => {
-                                    const done = areas.filter(area => { const value = valueOf(student.id, area); return value.level && value.summary?.trim(); }).length;
+                                    const done = doneAreasOf(student.id);
                                     return (
                                         <tr key={student.id} className="border-b border-line last:border-b-0">
                                             <th scope="row" className="sticky left-0 z-10 bg-white px-3 py-2 text-left align-middle font-normal sm:px-4">
                                                 <button type="button" onClick={() => { setSelectedStudentId(student.id); setView('student'); setMobileDetailOpen(true); }} className="text-left font-bold text-indigo-900 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
                                                     {index + 1}. {fullName(student.info)}
                                                 </button>
-                                                <span className={`mt-1 block text-xs tabular-nums ${done === areas.length ? 'font-bold text-emerald-700' : 'text-slate-600'}`}>ครบ {done}/{areas.length} ด้าน (ระดับ + คำบรรยาย)</span>
+                                                <span className={`mt-1 block text-xs tabular-nums ${done === myAreas.length ? 'font-bold text-emerald-700' : 'text-slate-600'}`}>ครบ {done}/{myAreas.length} ด้าน (ระดับ + คำบรรยาย)</span>
                                             </th>
                                             {areas.map(area => {
                                                 const key = decisionKey(student.id, area);
@@ -417,18 +467,24 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                                 const value = valueOf(student.id, area);
                                                 const dirty = dirtyKeys.includes(key);
                                                 return (
-                                                    <td key={area} className={`px-2 py-1.5 align-middle ${row?.decision_status === 'returned' ? 'bg-rose-50' : dirty ? 'bg-amber-50' : ''}`}>
+                                                    <td key={area} className={`px-2 py-1.5 align-middle ${!canEdit(area) ? 'bg-slate-50' : row?.decision_status === 'returned' ? 'bg-rose-50' : dirty ? 'bg-amber-50' : ''}`}>
                                                         <div className="flex items-center gap-1.5">
-                                                            <select aria-label={`ระดับ ${shortAreaName(area)} ของ ${fullName(student.info)}`} value={value.level} onChange={event => setValue(student.id, area, { level: event.target.value })} className="min-h-9 w-full min-w-[6rem] rounded-lg border border-field bg-white px-2 text-xs font-bold text-slate-800 disabled:bg-slate-100">
+                                                            <select
+                                                                aria-label={`ระดับ ${shortAreaName(area)} ของ ${fullName(student.info)}${canEdit(area) ? '' : ' (ด้านของครูท่านอื่น แก้ไม่ได้)'}`}
+                                                                value={value.level}
+                                                                disabled={!canEdit(area)}
+                                                                onChange={event => setValue(student.id, area, { level: event.target.value })}
+                                                                className="min-h-9 w-full min-w-[6rem] rounded-lg border border-field bg-white px-2 text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-600"
+                                                            >
                                                                 <option value="">—</option>
                                                                 {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                                                             </select>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => { setSelectedStudentId(student.id); setView('student'); setMobileDetailOpen(true); }}
-                                                                title={value.summary?.trim() ? 'มีคำบรรยายแล้ว แก้ไขได้' : 'ยังไม่มีคำบรรยาย กดเพื่อเขียน'}
-                                                                aria-label={`${value.summary?.trim() ? 'แก้คำบรรยาย' : 'เขียนคำบรรยาย'} ${shortAreaName(area)} ของ ${fullName(student.info)}`}
-                                                                className={`shrink-0 rounded-md p-1 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 ${value.summary?.trim() ? 'text-emerald-700' : 'text-amber-700'}`}
+                                                                title={canEdit(area) ? (value.summary?.trim() ? 'มีคำบรรยายแล้ว แก้ไขได้' : 'ยังไม่มีคำบรรยาย กดเพื่อเขียน') : 'ด้านของครูท่านอื่น กดเพื่อดูข้อความ'}
+                                                                aria-label={`${canEdit(area) ? (value.summary?.trim() ? 'แก้คำบรรยาย' : 'เขียนคำบรรยาย') : 'ดูคำบรรยาย'} ${shortAreaName(area)} ของ ${fullName(student.info)}`}
+                                                                className={`shrink-0 rounded-md p-1 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 ${!canEdit(area) ? 'text-slate-500' : value.summary?.trim() ? 'text-emerald-700' : 'text-amber-700'}`}
                                                             >
                                                                 <PenLine className="h-4 w-4" aria-hidden="true" />
                                                             </button>
@@ -446,6 +502,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                         <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />มีคำบรรยายแล้ว</span>
                         <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5 text-amber-700" aria-hidden="true" />ยังไม่มีคำบรรยาย กดเพื่อเขียน</span>
                         <span className="inline-flex items-center gap-1"><span className="h-3 w-5 rounded bg-rose-100" aria-hidden="true" />ฝ่ายวิชาการขอให้แก้</span>
+                        {!canSubmitRoom && <span className="inline-flex items-center gap-1"><span className="h-3 w-5 rounded bg-slate-100" aria-hidden="true" />ด้านของครูท่านอื่น แก้ไม่ได้</span>}
                     </p>
                 </section>
             )}
@@ -455,14 +512,14 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                     <aside className={`rounded-2xl border border-line bg-white ${mobileDetailOpen ? 'hidden lg:block' : ''}`} aria-label="รายชื่อนักเรียน">
                         <ul className="max-h-[40rem] divide-y divide-line overflow-y-auto">
                             {students.map((student, index) => {
-                                const done = areas.filter(area => { const value = valueOf(student.id, area); return value.level && value.summary?.trim(); }).length;
-                                const returned = areas.some(area => rows.get(decisionKey(student.id, area))?.decision_status === 'returned');
+                                const done = doneAreasOf(student.id);
+                                const returned = myAreas.some(area => rows.get(decisionKey(student.id, area))?.decision_status === 'returned');
                                 const active = student.id === selectedStudentId;
                                 return (
                                     <li key={student.id}>
                                         <button type="button" aria-current={active ? 'true' : undefined} onClick={() => { setSelectedStudentId(student.id); setMobileDetailOpen(true); }} className={`flex min-h-14 w-full items-center justify-between gap-2 px-4 py-2 text-left ${active ? 'surface-selected' : 'hover:bg-slate-50'}`}>
                                             <span className="min-w-0 text-sm"><span className={active ? 'font-bold text-indigo-950' : 'font-semibold text-slate-900'}>{index + 1}. {fullName(student.info)}</span></span>
-                                            <span className={`chip ${returned ? 'chip-danger' : done === areas.length ? 'chip-success' : 'chip-neutral'} shrink-0`}>{returned ? 'ส่งกลับ' : `${done}/${areas.length}`}</span>
+                                            <span className={`chip ${returned ? 'chip-danger' : done === myAreas.length ? 'chip-success' : 'chip-neutral'} shrink-0`}>{returned ? 'ส่งกลับ' : `${done}/${myAreas.length}`}</span>
                                         </button>
                                     </li>
                                 );
@@ -494,7 +551,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                 return (
                                     <div key={area} className={`grid gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.9fr)] ${row?.decision_status === 'returned' ? 'bg-rose-50/60' : ''}`}>
                                         <div className="min-w-0">
-                                            <h4 className="text-sm font-bold text-slate-950">{area}</h4>
+                                            <h4 className="text-sm font-bold text-slate-950">{area}{!canEdit(area) && <span className="chip chip-neutral ml-2 align-middle">ของครูท่านอื่น</span>}</h4>
                                             {row?.decision_status === 'returned' && row.decision_reason && <p className="mt-2 rounded-lg border border-rose-200 bg-white p-2 text-sm text-rose-900"><strong>ฝ่ายวิชาการขอให้แก้:</strong> {row.decision_reason}</p>}
                                             <div className="mt-3 space-y-2">
                                                 {notes.length ? notes.map((note, index) => (
@@ -508,7 +565,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                         <div className="space-y-3">
                                             <label className="block">
                                                 <span className="mb-1.5 block text-xs font-bold text-slate-700">ระดับความสามารถ</span>
-                                                <select value={value.level} onChange={event => setValue(selectedStudent.id, area, { level: event.target.value })} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold disabled:bg-slate-100">
+                                                <select value={value.level} disabled={!canEdit(area)} onChange={event => setValue(selectedStudent.id, area, { level: event.target.value })} className="min-h-11 w-full rounded-xl border border-field bg-white px-3 text-sm font-bold disabled:bg-slate-100 disabled:text-slate-600">
                                                     <option value="">ยังไม่ได้เลือก</option>
                                                     {SUMMARY_LEVELS.map(level => <option key={level} value={level}>{level}</option>)}
                                                 </select>
@@ -516,11 +573,12 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                                             <div>
                                                 <div className="mb-1.5 flex items-center justify-between gap-2">
                                                     <label htmlFor={fieldId} className="text-xs font-bold text-slate-700">คำบรรยาย</label>
-                                                    {notes.length > 0 && (
+                                                    {notes.length > 0 && canEdit(area) && (
                                                         <button type="button" onClick={() => setValue(selectedStudent.id, area, { summary: buildNarrativeDraft(notes) })} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-bold text-indigo-800 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />ร่างใหม่จาก LO</button>
                                                     )}
                                                 </div>
-                                                <textarea id={fieldId} rows={5} value={value.summary} onChange={event => setValue(selectedStudent.id, area, { summary: event.target.value })} placeholder="เขียนคำบรรยายสิ่งที่นักเรียนทำได้ในด้านนี้ หรือกด “ร่างใหม่จาก LO”" className="w-full rounded-xl border border-field p-3 text-sm leading-6 placeholder:text-slate-500 disabled:bg-slate-100" />
+                                                <textarea id={fieldId} rows={5} value={value.summary} readOnly={!canEdit(area)} onChange={event => setValue(selectedStudent.id, area, { summary: event.target.value })} placeholder={canEdit(area) ? 'เขียนคำบรรยายสิ่งที่นักเรียนทำได้ในด้านนี้ หรือกด “ร่างใหม่จาก LO”' : 'ครูที่สอนวิชาของด้านนี้เป็นผู้เขียน'} className="w-full rounded-xl border border-field p-3 text-sm leading-6 placeholder:text-slate-500 read-only:bg-slate-100 read-only:text-slate-700" />
+                                                {!canEdit(area) && <p className="mt-1 text-xs text-slate-600">ด้านนี้ไม่ได้มาจากวิชาที่คุณสอน จึงดูได้แต่แก้ไม่ได้</p>}
                                             </div>
                                             {row?.decision_status === 'submitted' && <p className="text-xs font-bold text-emerald-800">ส่งแล้ว ผู้ปกครองเห็นผลนี้ได้ และยังแก้ได้ตลอด</p>}
                                         </div>

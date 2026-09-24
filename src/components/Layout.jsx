@@ -74,7 +74,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
             visible: hasRole(currentUser, 'teacher'),
             items: [
                 { label: 'งานของฉัน', path: '/', exact: true },
-                ...(currentUser?.homeroom ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
+                // ครูประจำชั้นทำงานทั้งห้อง ครูรายวิชาเข้าหน้าเดียวกันเพื่อสรุปเฉพาะด้านของวิชาตัวเอง
+                { label: currentUser?.homeroom ? 'งานประจำชั้น' : 'สรุปความสามารถรายด้าน', path: '/homeroom' },
             ],
         },
         {
