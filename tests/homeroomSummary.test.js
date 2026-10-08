@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus, summaryProgress } from '../src/lib/homeroomSummary.js';
+import { buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, mergeDraftForSave, passStatusFor, retainUnsent, roomStatus, summaryProgress } from '../src/lib/homeroomSummary.js';
+import { AUTOSAVE_MS, autosaveDelay } from '../src/lib/autosave.js';
 
 test('buildNarrativeDraft รวมข้อความทุกวิชา ตัดข้อความซ้ำและช่องว่างเกิน', () => {
     const draft = buildNarrativeDraft([
@@ -85,4 +86,46 @@ test('collectRoomEvidence แสดงด้านครบตามคลัง
 
     // ไม่ส่งคลังมาให้ ใช้เฉพาะด้านที่มี LO ผูกอยู่เหมือนเดิม
     assert.deepEqual(collectRoomEvidence(enrollments, mappings, evaluations).areas, ['ความสามารถด้านภาษาและการสื่อสาร']);
+});
+
+test('บันทึกอัตโนมัติไม่ดึงผลที่ส่งแล้วหรือถูกขอให้แก้กลับเป็นฉบับร่าง', () => {
+    const draft = { level: 'ชำนาญ', summary: 'แก้คำผิด' };
+    assert.equal(mergeDraftForSave(draft, { decision_status: 'submitted' }).status, 'submitted');
+    assert.equal(mergeDraftForSave(draft, { decision_status: 'approved' }).status, 'approved');
+    assert.equal(mergeDraftForSave(draft, { decision_status: 'returned' }).status, 'returned');
+    assert.equal(mergeDraftForSave(draft, { decision_status: 'draft' }).status, 'draft');
+    assert.equal(mergeDraftForSave(draft, undefined).status, 'draft');
+});
+
+test('ครูที่แก้เฉพาะระดับไม่เขียนทับคำบรรยายที่คนอื่นเพิ่งส่ง', () => {
+    // ครูประจำชั้นโหลดหน้าตอนคำบรรยายยังว่าง ระหว่างนั้นครูภาษาไทยเขียนและส่งไปแล้ว
+    const draft = { level: 'พัฒนา', summary: '', touched: { level: true } };
+    const latest = { final_level: 'เริ่มต้น', summary_text: 'อ่านข้อความสั้นได้', decision_status: 'submitted' };
+    assert.deepEqual(mergeDraftForSave(draft, latest), { level: 'พัฒนา', summary: 'อ่านข้อความสั้นได้', status: 'submitted' });
+    const onlyText = { level: '', summary: 'ใหม่', touched: { summary: true } };
+    assert.equal(mergeDraftForSave(onlyText, latest).level, 'เริ่มต้น');
+});
+
+test('ปุ่มเติมคนที่ว่างไม่ทับระดับที่มีคนเลือกไว้แล้วระหว่างนั้น', () => {
+    const filled = { level: 'พัฒนา', summary: '', touched: { level: true }, fillOnly: true };
+    assert.equal(mergeDraftForSave(filled, { final_level: 'ชำนาญ', decision_status: 'draft' }).level, 'ชำนาญ');
+    assert.equal(mergeDraftForSave(filled, undefined).level, 'พัฒนา');
+    // ฉบับร่างที่กู้จากเครื่อง ไม่มีบันทึกว่าแก้ช่องไหน ถือว่าแก้ทั้งสองช่อง
+    assert.deepEqual(mergeDraftForSave({ level: 'ชำนาญ', summary: 'ก' }, { final_level: 'เริ่มต้น', summary_text: 'ข', decision_status: 'draft' }),
+        { level: 'ชำนาญ', summary: 'ก', status: 'draft' });
+});
+
+test('หลังบันทึก ฉบับร่างที่ครูแก้ซ้ำระหว่างรอยังค้างอยู่ ส่วนที่บันทึกแล้วถูกล้าง', () => {
+    const a = { level: 'พัฒนา' };
+    const b = { level: 'ชำนาญ' };
+    const drafts = new Map([['s1:อ่าน', a], ['s2:อ่าน', b]]);
+    const sent = new Map([['s1:อ่าน', a], ['s2:อ่าน', { level: 'เริ่มต้น' }]]);
+    assert.deepEqual([...retainUnsent(drafts, sent).keys()], ['s2:อ่าน']);
+});
+
+test('บันทึกอัตโนมัติล้มติดกันจะรอนานขึ้นเท่าตัว ไม่เกิน 2 นาที', () => {
+    assert.equal(autosaveDelay(0), AUTOSAVE_MS);
+    assert.equal(autosaveDelay(1), AUTOSAVE_MS * 2);
+    assert.equal(autosaveDelay(2), AUTOSAVE_MS * 4);
+    assert.equal(autosaveDelay(20), 120000);
 });

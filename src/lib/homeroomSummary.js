@@ -118,3 +118,26 @@ export function collectRoomEvidence(enrollments, mappings, evaluations, { areas:
     notesByKey.forEach(list => list.sort((a, b) => a.subject.localeCompare(b.subject, 'th')));
     return { areas, notesByKey };
 }
+
+/** สถานะที่บันทึกฉบับร่างต้องคงไว้ ผลที่ส่งแล้วหรือถูกขอให้แก้ ไม่ถูกดึงกลับเป็นฉบับร่างเงียบ ๆ */
+export const KEEP_STATUSES = ['submitted', 'approved', 'returned'];
+
+/**
+ * ค่าที่จะบันทึกของหนึ่งรายการ รวมสิ่งที่ครูแก้จริงกับค่าล่าสุดในฐานข้อมูล
+ * draft.touched บอกว่าครูแก้ช่องไหน (ไม่มี = แก้ทั้งสองช่อง เช่น ฉบับร่างที่กู้จากเครื่อง)
+ * ช่องที่ครูไม่ได้แก้ใช้ค่าล่าสุดของคนอื่น ไม่เขียนทับด้วยค่าเก่าที่โหลดไว้ตอนเปิดหน้า
+ * draft.fillOnly = ระดับมาจากปุ่มเติมคนที่ว่าง ถ้ามีคนเลือกไว้แล้วในระหว่างนั้นให้เก็บของเขาไว้
+ */
+export function mergeDraftForSave(draft, existing) {
+    const touched = draft?.touched || { level: true, summary: true };
+    let level = touched.level ? (draft.level || '') : (existing?.final_level || '');
+    if (touched.level && draft?.fillOnly && existing?.final_level) level = existing.final_level;
+    const summary = touched.summary ? (draft.summary || '').trim() : (existing?.summary_text || '').trim();
+    const status = KEEP_STATUSES.includes(existing?.decision_status) ? existing.decision_status : 'draft';
+    return { level, summary, status };
+}
+
+/** ฉบับร่างที่ยังต้องค้างไว้หลังบันทึก: เฉพาะรายการที่ครูแก้ซ้ำระหว่างรอบันทึก */
+export function retainUnsent(drafts, sentValues) {
+    return new Map([...drafts].filter(([key, value]) => sentValues.get(key) !== value));
+}

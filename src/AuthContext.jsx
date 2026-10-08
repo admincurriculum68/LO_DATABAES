@@ -57,6 +57,10 @@ export function AuthProvider({ children }) {
     const logoutUser = () => {
         setCurrentUser(null);
         localStorage.removeItem('loUser');
+        // ฉบับร่างสรุปความสามารถที่ยังไม่บันทึกไม่ค้างในเครื่องรวมของโรงเรียน
+        try {
+            Object.keys(sessionStorage).filter(key => key.startsWith('homeroomSummaryDraft:')).forEach(key => sessionStorage.removeItem(key));
+        } catch { /* เบราว์เซอร์ไม่ให้เข้าถึงก็ข้าม */ }
     };
 
     const updateCurrentUser = (updates) => {

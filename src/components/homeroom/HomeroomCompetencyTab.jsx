@@ -8,11 +8,11 @@ import { useDialog } from '../../lib/dialogContext';
 import { normalizeCompetencyArea } from '../../constants/curriculum2568';
 import { shortAreaName } from '../../lib/loMapping';
 import {
-    ROOM_STATUS, SUMMARY_LEVELS, buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, passStatusFor, roomStatus, summaryProgress,
+    ROOM_STATUS, SUMMARY_LEVELS, buildNarrativeDraft, collectRoomEvidence, decisionKey, isPublishedDecision, mergeDraftForSave, passStatusFor, retainUnsent, roomStatus, summaryProgress,
 } from '../../lib/homeroomSummary';
 import { HOMEROOM_SUMMARY_SQL_HINT, homeroomSummarySupported } from '../../lib/homeroomSummaryApi';
 import { areasToSubmit, canEditArea } from '../../lib/homeroomScope';
-import { AUTOSAVE_MS, AUTOSAVE_SECONDS } from '../../lib/autosave';
+import { AUTOSAVE_SECONDS, useAutosave } from '../../lib/autosave';
 
 // สรุปความสามารถรายด้านของห้องเรียน
 // ครูผู้สอนแต่ละวิชาเขียนข้อความพฤติกรรมราย LO ไว้แล้ว หน้านี้รวมข้อความของทุกวิชามาให้คนที่สรุป
@@ -24,7 +24,9 @@ import { AUTOSAVE_MS, AUTOSAVE_SECONDS } from '../../lib/autosave';
 
 const DECISION_SELECT = 'decision_id, student_id, competency_area, final_level, summary_text, decision_status, decision_reason, submitted_at';
 const fullName = info => `${info?.prefix || ''}${info?.first_name || ''} ${info?.last_name || ''}`.trim();
-const draftKey = (schoolId, year, semester, room) => `homeroomSummaryDraft:${schoolId}:${year}:${semester}:${room}`;
+// ฉบับร่างที่ยังไม่บันทึกเก็บแยกตามครู เครื่องรวมของโรงเรียนจะไม่เอาร่างของคนหนึ่งไปบันทึกในชื่ออีกคน
+const draftKey = (schoolId, teacherId, year, semester, room) => `homeroomSummaryDraft:${schoolId}:${teacherId}:${year}:${semester}:${room}`;
+const areaOfKey = key => key.slice(key.indexOf(':') + 1);
 const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size));
 
 export default function HomeroomCompetencyTab({ room, students, data, academicYear, semester, editableAreas = null, canSubmitRoom = true }) {
@@ -42,7 +44,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
     const [lastSaved, setLastSaved] = useState(null);
     const restoredRef = useRef('');
-    const storageKey = draftKey(currentUser?.school_id, academicYear, semester, room);
+    const storageKey = draftKey(currentUser?.school_id, currentUser?.teacher_id || currentUser?.id, academicYear, semester, room);
     const studentIds = useMemo(() => students.map(student => student.id), [students]);
 
     // ด้านที่ห้องนี้ใช้จริง และข้อความ LO ของนักเรียนแต่ละคนแยกตามด้าน
@@ -53,6 +55,8 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
 
     // ครูรายวิชาเห็นทุกด้านของห้องเพื่อรู้ภาพรวม แต่แก้ได้เฉพาะด้านของวิชาตัวเอง
     const canEdit = useCallback(area => canEditArea(editableAreas, area), [editableAreas]);
+    const canEditRef = useRef(canEdit);
+    useEffect(() => { canEditRef.current = canEdit; });
     const myAreas = useMemo(() => areas.filter(canEdit), [areas, canEdit]);
     const doneAreasOf = useCallback(studentId => myAreas.filter(area => {
         const key = decisionKey(studentId, area);
@@ -88,6 +92,11 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         if (box) box.scrollLeft += direction * 220;
     };
 
+    const fetchDecisionRows = useCallback(async ids => fetchAllByIn(ids, (batch, from, to) => supabase.from('competency_area_final_decisions')
+        .select(DECISION_SELECT).eq('school_id', currentUser.school_id)
+        .eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+        .in('student_id', batch).range(from, to)), [academicYear, currentUser?.school_id, semester]);
+
     const load = useCallback(async () => {
         if (!currentUser?.school_id || !room || !academicYear || !semester) return;
         setLoading(true);
@@ -96,10 +105,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
             const ok = await homeroomSummarySupported();
             setSupported(ok);
             if (!ok) return;
-            const decisionRows = await fetchAllByIn(studentIds, (batch, from, to) => supabase.from('competency_area_final_decisions')
-                .select(DECISION_SELECT).eq('school_id', currentUser.school_id)
-                .eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
-                .in('student_id', batch).range(from, to));
+            const decisionRows = await fetchDecisionRows(studentIds);
             const map = new Map(decisionRows.map(row => [decisionKey(row.student_id, row.competency_area), row]));
             setRows(map);
 
@@ -108,7 +114,8 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 restoredRef.current = storageKey;
                 try {
                     const stored = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-                    const restored = new Map(Object.entries(stored || {}));
+                    // กู้เฉพาะด้านที่บัญชีนี้แก้ได้ ฉบับร่างที่เหลือจากสิทธิ์เดิมหรือเครื่องเดิมต้องไม่ถูกบันทึกในชื่อครูคนนี้
+                    const restored = new Map(Object.entries(stored || {}).filter(([key]) => canEditRef.current(areaOfKey(key))));
                     setDrafts(restored);
                     if (restored.size) toast(`กู้รายการที่ยังไม่บันทึกกลับมา ${restored.size} รายการ`, { icon: '↩️' });
                 } catch { setDrafts(new Map()); }
@@ -118,9 +125,28 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         } finally {
             setLoading(false);
         }
-    }, [academicYear, currentUser?.school_id, room, semester, storageKey, studentIds]);
+    }, [academicYear, currentUser?.school_id, fetchDecisionRows, room, semester, storageKey, studentIds]);
 
     useEffect(() => { load(); }, [load]);
+
+    // กลับมาที่แท็บนี้ ดึงค่าล่าสุดมาแสดง ครูประจำชั้นจะเห็น "ส่งแล้ว n/N" ของครูรายวิชาโดยไม่ต้องกดโหลดเอง
+    // ฉบับร่างของเราอยู่แยกต่างหาก ไม่ถูกแตะ
+    useEffect(() => {
+        if (!studentIds.length) return undefined;
+        const refresh = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const latest = await fetchDecisionRows(studentIds);
+                setRows(new Map(latest.map(row => [decisionKey(row.student_id, row.competency_area), row])));
+            } catch { /* ครั้งหน้าลองใหม่ ไม่รบกวนครู */ }
+        };
+        document.addEventListener('visibilitychange', refresh);
+        window.addEventListener('focus', refresh);
+        return () => {
+            document.removeEventListener('visibilitychange', refresh);
+            window.removeEventListener('focus', refresh);
+        };
+    }, [fetchDecisionRows, studentIds]);
     useEffect(() => { setSelectedStudentId(current => (studentIds.includes(current) ? current : studentIds[0] || '')); }, [studentIds]);
 
     const valueOf = useCallback((studentId, area) => {
@@ -131,9 +157,10 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
     }, [drafts, rows]);
 
     const dirtyKeys = useMemo(() => [...drafts.entries()].filter(([key, value]) => {
+        if (!canEdit(areaOfKey(key))) return false;
         const row = rows.get(key);
         return (value.level || '') !== (row?.final_level || '') || (value.summary || '').trim() !== (row?.summary_text || '').trim();
-    }).map(([key]) => key), [drafts, rows]);
+    }).map(([key]) => key), [canEdit, drafts, rows]);
 
     useEffect(() => {
         if (restoredRef.current !== storageKey) return;
@@ -155,7 +182,14 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         const key = decisionKey(studentId, area);
         setDrafts(previous => {
             const map = new Map(previous);
-            map.set(key, { ...valueOf(studentId, area), ...patch });
+            const current = map.get(key);
+            map.set(key, {
+                ...valueOf(studentId, area),
+                ...patch,
+                // จำว่าครูแก้ช่องไหน ตอนบันทึกจะไม่ส่งช่องที่ไม่ได้แตะไปทับค่าของคนอื่น
+                touched: { ...current?.touched, ...Object.fromEntries(Object.keys(patch).map(field => [field, true])) },
+                fillOnly: false,
+            });
             return map;
         });
     };
@@ -181,7 +215,8 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         setDrafts(previous => {
             const map = new Map(previous);
             emptyNarratives.forEach(({ studentId, area }) => {
-                map.set(decisionKey(studentId, area), { ...valueOf(studentId, area), summary: buildNarrativeDraft(notesByKey.get(decisionKey(studentId, area))) });
+                const key = decisionKey(studentId, area);
+                map.set(key, { ...valueOf(studentId, area), summary: buildNarrativeDraft(notesByKey.get(key)), touched: { ...map.get(key)?.touched, summary: true } });
             });
             return map;
         });
@@ -196,7 +231,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 const key = decisionKey(studentId, area);
                 const current = map.get(key) || valueOf(studentId, area);
                 if (current.level) return;
-                map.set(key, { ...current, level });
+                map.set(key, { ...current, level, touched: { ...map.get(key)?.touched, level: true }, fillOnly: true });
             });
             return map;
         });
@@ -211,24 +246,31 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
         setSaving(true);
         try {
             const now = new Date().toISOString();
-            const payload = keys.map(key => {
-                const [studentId, ...areaParts] = key.split(':');
-                const area = normalizeCompetencyArea(areaParts.join(':'));
-                const value = drafts.get(key);
-                return {
+            // ดึงค่าล่าสุดมารวมก่อนเขียน คนอื่นอาจเพิ่งเขียนหรือส่งช่องเดียวกันไป ระหว่างที่หน้านี้เปิดค้างอยู่
+            const latestRows = await fetchDecisionRows([...new Set(keys.map(key => key.split(':')[0]))]);
+            const latest = new Map(latestRows.map(row => [decisionKey(row.student_id, row.competency_area), row]));
+            const payload = [];
+            keys.forEach(key => {
+                const [studentId] = key.split(':');
+                const existing = latest.get(key);
+                const merged = mergeDraftForSave(drafts.get(key), existing);
+                // ค่าตรงกับฐานข้อมูลอยู่แล้ว ไม่ต้องเขียนซ้ำ จะได้ไม่ทับชื่อคนสรุปและเวลาเดิม
+                if (existing && merged.level === (existing.final_level || '') && merged.summary === (existing.summary_text || '').trim()) return;
+                payload.push({
                     school_id: currentUser.school_id,
                     student_id: studentId,
-                    competency_area: area,
+                    competency_area: normalizeCompetencyArea(areaOfKey(key)),
                     academic_year: Number(academicYear),
                     semester: Number(semester),
-                    final_level: value.level || null,
-                    pass_status: passStatusFor(value.level),
-                    summary_text: value.summary?.trim() || null,
-                    decision_status: 'draft',
+                    final_level: merged.level || null,
+                    pass_status: passStatusFor(merged.level),
+                    summary_text: merged.summary || null,
+                    // ผลที่ส่งแล้วยังเป็นส่งแล้วหลังแก้ ผู้ปกครองเห็นข้อความที่แก้ทันที ไม่หายไปเงียบ ๆ
+                    decision_status: merged.status,
                     summarized_by: currentUser.teacher_id || null,
                     summarized_at: now,
                     updated_at: now,
-                };
+                });
             });
             const saved = [];
             for (const part of chunk(payload, 300)) {
@@ -240,15 +282,17 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
             }
             setRows(previous => {
                 const map = new Map(previous);
+                latest.forEach((row, key) => map.set(key, row));
                 saved.forEach(row => map.set(decisionKey(row.student_id, row.competency_area), row));
                 return map;
             });
-            setDrafts(previous => new Map([...previous].filter(([key, value]) => sentValues.get(key) !== value)));
+            setDrafts(previous => retainUnsent(previous, sentValues));
             setLastSaved(new Date());
             if (!quiet) toast.success(`บันทึกฉบับร่าง ${keys.length} รายการแล้ว`);
             return true;
         } catch (error) {
-            toast.error(`บันทึกไม่สำเร็จ: ${error.message} รายการที่แก้ไว้ยังอยู่ ลองบันทึกอีกครั้ง`);
+            // id เดียว บันทึกอัตโนมัติล้มซ้ำก็ขึ้นข้อความเดียว ไม่ซ้อนเป็นแถว
+            toast.error(`บันทึกไม่สำเร็จ: ${error.message} รายการที่แก้ไว้ยังอยู่ ระบบจะลองใหม่เอง`, { id: 'homeroom-save-error' });
             return false;
         } finally {
             setSaving(false);
@@ -257,16 +301,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
 
     // บันทึกฉบับร่างให้อัตโนมัติทุก AUTOSAVE_SECONDS วินาทีที่มีการแก้ ครูเขียนทีละคนได้ไม่ต้องเสร็จในครั้งเดียว
     // ไม่นับถอยหลังให้เห็นทุกวินาที เพราะข้อความที่เปลี่ยนเองรบกวนคนที่ต้องมีสมาธิและโปรแกรมอ่านหน้าจอ (WCAG 2.2.2)
-    const saveDraftsRef = useRef(null);
-    saveDraftsRef.current = saveDrafts;
-    const autoSaveTimerRef = useRef(null);
-    useEffect(() => {
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        if (dirtyKeys.length && !saving) {
-            autoSaveTimerRef.current = setTimeout(() => saveDraftsRef.current?.({ quiet: true }), AUTOSAVE_MS);
-        }
-        return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
-    }, [dirtyKeys.length, saving]);
+    useAutosave({ dirty: dirtyKeys.length > 0, saving, save: () => saveDrafts({ quiet: true }) });
 
     const submitRoom = async () => {
         const missing = progress.missing;
@@ -280,7 +315,7 @@ export default function HomeroomCompetencyTab({ room, students, data, academicYe
                 missing > 0
                     ? `ยังไม่ครบ ${missing} รายการ (ต้องมีทั้งระดับและคำบรรยาย) รายการที่ยังไม่มีระดับจะไม่ถูกส่ง`
                     : `ครบทั้ง ${progress.total} รายการ`,
-                'ส่งแล้วนักเรียนและผู้ปกครองเห็นผลทันที ไม่ต้องรอฝ่ายวิชาการรับรอง และยังแก้ไขได้ตลอด ถ้าแก้หลังส่งให้กดส่งอีกครั้ง',
+                'ส่งแล้วนักเรียนและผู้ปกครองเห็นผลทันที ไม่ต้องรอฝ่ายวิชาการรับรอง และยังแก้ไขได้ตลอด แก้แล้วผู้ปกครองเห็นข้อความใหม่ทันที',
             ].filter(Boolean).join('\n'),
             confirmLabel: 'ส่งผลสรุป',
         });

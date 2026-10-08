@@ -11,7 +11,7 @@ import { buildLoResolver, sameSetAcrossRooms } from '../lib/loByRoom';
 import { LO_FIELDS, mappingSelect } from '../lib/loByRoomApi';
 import { compareRooms, teacherRoomAccess } from '../lib/teacherAccess';
 import { isPublishedDecision } from '../lib/homeroomSummary';
-import { AUTOSAVE_MS, AUTOSAVE_SECONDS } from '../lib/autosave';
+import { AUTOSAVE_SECONDS, useAutosave } from '../lib/autosave';
 
 export default function EvalView() {
     const { subjectId } = useParams();
@@ -30,8 +30,15 @@ export default function EvalView() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
-    // นับการแก้ทุกครั้ง ถ้าครูพิมพ์ต่อระหว่างกำลังบันทึก ต้องยังถือว่ามีการแก้ค้างอยู่
-    const editVersionRef = useRef(0);
+    // ช่องที่ครูแก้และยังไม่บันทึก (enrollment:LO → เลขครั้งที่แก้) บันทึกเฉพาะช่องเหล่านี้
+    // ไม่ส่งทั้งหน้าไปทับข้อความที่ครูอีกคนเพิ่งเขียนในห้องเดียวกัน และถ้าครูพิมพ์ต่อระหว่างบันทึก ช่องนั้นยังค้างอยู่
+    const dirtyCellsRef = useRef(new Map());
+    const editCounterRef = useRef(0);
+    const markDirty = (enrollmentId, loId) => {
+        editCounterRef.current += 1;
+        dirtyCellsRef.current.set(`${enrollmentId}:${loId}`, editCounterRef.current);
+        setIsDirty(true);
+    };
     const [lastSaved, setLastSaved] = useState(null);
     const [showMissingOnly, setShowMissingOnly] = useState(false);
     const roomParam = new URLSearchParams(location.search).get('room');
@@ -161,21 +168,8 @@ export default function EvalView() {
 
     // บันทึกอัตโนมัติ AUTOSAVE_SECONDS วินาทีหลังเริ่มแก้ ไม่แสดงตัวเลขนับถอยหลังทุกวินาทีเหมือนเดิมแล้ว
     // เพราะข้อความที่เปลี่ยนเองเกิน 5 วินาทีโดยหยุดไม่ได้ รบกวนคนที่ใช้โปรแกรมอ่านหน้าจอ
-    // และคนที่ต้องมีสมาธิขณะเขียนหลักฐาน (WCAG 2.2.2)
-    const autoSaveTimerRef = useRef(null);
-    const saveEvaluationsRef = useRef(null);
-
-    useEffect(() => {
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        if (isDirty && !saving) {
-            autoSaveTimerRef.current = setTimeout(() => {
-                saveEvaluationsRef.current?.(false);
-            }, AUTOSAVE_MS);
-        }
-        return () => {
-            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        };
-    }, [isDirty, saving]);
+    // และคนที่ต้องมีสมาธิขณะเขียนหลักฐาน (WCAG 2.2.2) ถ้าบันทึกไม่สำเร็จจะรอนานขึ้นก่อนลองใหม่
+    useAutosave({ dirty: isDirty, saving, save: () => saveEvaluations(false) });
 
     const handleEvidenceChange = (enrollmentId, loId, evidenceNote) => {
         setEvaluations(prev => {
@@ -197,19 +191,19 @@ export default function EvalView() {
                 updated_at: new Date().toISOString()
             }];
         });
-        editVersionRef.current += 1;
-        setIsDirty(true);
+        markDirty(enrollmentId, loId);
     };
 
     const saveEvaluations = async (showSuccessToast = true) => {
-        const versionAtStart = editVersionRef.current;
+        const sentCells = new Map(dirtyCellsRef.current);
+        const rowsToSave = evaluations.filter(item => sentCells.has(`${item.enrollment_id}:${item.lo_id}`));
         setSaving(true);
         try {
-            // 1. Save Evaluations
-            if (evaluations.length > 0) {
+            // 1. Save Evaluations เฉพาะช่องที่แก้
+            if (rowsToSave.length > 0) {
                 const { error: evalErr } = await supabase
                     .from('lo_evaluations')
-                    .upsert(evaluations, { onConflict: 'enrollment_id,lo_id' });
+                    .upsert(rowsToSave, { onConflict: 'enrollment_id,lo_id' });
                 if (evalErr) throw evalErr;
             }
 
@@ -225,19 +219,20 @@ export default function EvalView() {
                 setSubmission(revertedSubmission);
             }
 
-            // แก้ต่อระหว่างบันทึก ข้อความใหม่ยังไม่ถูกบันทึก ต้องค้างสถานะแก้ไขไว้ให้บันทึกรอบถัดไป
-            if (editVersionRef.current === versionAtStart) setIsDirty(false);
+            // ช่องที่ครูแก้ซ้ำระหว่างบันทึกยังค้างอยู่ รอบถัดไปจะบันทึกให้
+            sentCells.forEach((version, key) => { if (dirtyCellsRef.current.get(key) === version) dirtyCellsRef.current.delete(key); });
+            setIsDirty(dirtyCellsRef.current.size > 0);
             setLastSaved(new Date());
             if (showSuccessToast) toast.success('บันทึกข้อความแล้ว');
             return true;
         } catch (err) {
-            toast.error('บันทึกไม่สำเร็จ: ' + err.message);
+            // id เดียว บันทึกอัตโนมัติล้มซ้ำก็ขึ้นข้อความเดียว ไม่ซ้อนเป็นแถว
+            toast.error('บันทึกไม่สำเร็จ: ' + err.message + ' ข้อความที่พิมพ์ไว้ยังอยู่ ระบบจะลองใหม่เอง', { id: 'eval-save-error' });
             return false;
         } finally {
             setSaving(false);
         }
     };
-    saveEvaluationsRef.current = saveEvaluations;
 
     const scopedEnrollments = selectedRoom === 'all' ? enrollments : enrollments.filter(enrollment => enrollment.room === selectedRoom);
     const scopedEnrollmentIds = new Set(scopedEnrollments.map(enrollment => enrollment.enrollment_id));
@@ -275,8 +270,7 @@ export default function EvalView() {
             });
             return next;
         });
-        editVersionRef.current += 1;
-        setIsDirty(true);
+        displayedEnrollments.forEach(enrollment => markDirty(enrollment.enrollment_id, lo.lo_id));
         toast.success(`เติมข้อความ ${lo.lo_code || `LO ${lo.ability_no}`} ให้รายการที่แสดงแล้ว`);
     };
 

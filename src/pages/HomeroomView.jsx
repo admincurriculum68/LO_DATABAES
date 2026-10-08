@@ -49,6 +49,8 @@ export default function HomeroomView() {
     const [room, setRoom] = useState('');
     const [availableRooms, setAvailableRooms] = useState([]);
     const [roomsReady, setRoomsReady] = useState(false);
+    const [roomsError, setRoomsError] = useState('');
+    const [roomsRetry, setRoomsRetry] = useState(0);
     const [teaching, setTeaching] = useState({ rooms: [], accessBySubject: new Map() });
     const [loading, setLoading] = useState(false);
     const [loadError, setLoadError] = useState('');
@@ -76,12 +78,20 @@ export default function HomeroomView() {
                 return;
             }
             // ครูรายวิชาสรุปด้านของวิชาตัวเองได้ จึงต้องเห็นห้องที่ตัวเองสอน ไม่ใช่เฉพาะห้องประจำชั้น
-            const scope = await loadTeachingRooms({
-                teacherId: currentUser.teacher_id,
-                schoolId: currentUser.school_id,
-                academicYear,
-                semester,
-            }).catch(() => ({ rooms: [], accessBySubject: new Map() }));
+            setRoomsError('');
+            let scope;
+            try {
+                scope = await loadTeachingRooms({
+                    teacherId: currentUser.teacher_id,
+                    schoolId: currentUser.school_id,
+                    academicYear,
+                    semester,
+                });
+            } catch (error) {
+                // ค้นห้องไม่สำเร็จไม่ใช่ "ไม่มีห้อง" บอกตรง ๆ และให้ลองใหม่ได้ ครูจะไม่ต้องโทรหาฝ่ายวิชาการ
+                if (!cancelled) { setRoomsError(error.message || 'ไม่สามารถโหลดรายการห้องได้'); setRoomsReady(true); }
+                return;
+            }
             if (cancelled) return;
             setTeaching(scope);
             const homeroom = currentUser.homeroom || '';
@@ -92,7 +102,7 @@ export default function HomeroomView() {
         }
         fetchRooms();
         return () => { cancelled = true; };
-    }, [academicYear, currentUser, isAcademic, semester]);
+    }, [academicYear, currentUser, isAcademic, roomsRetry, semester]);
 
     const loadHomeroom = useCallback(async targetRoom => {
         const normalizedRoom = (targetRoom || '').trim();
@@ -342,7 +352,9 @@ export default function HomeroomView() {
                     <div className="rounded-xl border border-line bg-white px-4 py-3 text-sm shadow-sm"><span className="block text-xs font-semibold text-slate-500">รอบการประเมิน</span><strong className="text-slate-900">ภาคเรียนที่ {semester}/{academicYear}</strong></div>
                 </header>
 
-                {!isAcademic && roomsReady && !availableRooms.length ? (
+                {!isAcademic && roomsReady && roomsError ? (
+                    <section className="surface-danger rounded-2xl border border-rose-200 p-6" role="alert"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-rose-700" /><div><h2 className="font-bold text-rose-950">โหลดรายการห้องไม่สำเร็จ</h2><p className="mt-1 text-sm text-rose-800">{roomsError} (อาจเป็นเพราะอินเทอร์เน็ตสะดุด ไม่ได้แปลว่าไม่มีห้อง)</p><button onClick={() => { setRoomsReady(false); setRoomsRetry(count => count + 1); }} className="action-danger mt-3 min-h-11 rounded-lg px-4 text-sm font-bold">ลองอีกครั้ง</button></div></div></section>
+                ) : !isAcademic && roomsReady && !availableRooms.length ? (
                     <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-6 w-6 shrink-0 text-amber-800" /><div><h2 className="font-bold text-amber-950">ยังไม่มีห้องที่คุณรับผิดชอบ</h2><p className="mt-1 text-sm leading-6 text-amber-900">หน้านี้ใช้ได้เมื่อคุณเป็นครูประจำชั้น หรือมีชื่อเป็นครูผู้สอนของวิชาในภาคเรียนที่ {semester}/{academicYear} กรุณาติดต่อฝ่ายวิชาการเพื่อกำหนดห้องประจำชั้นหรือเพิ่มชื่อคุณในรายวิชา</p></div></div></section>
                 ) : (
                     <>
