@@ -57,7 +57,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                                 <td className="border border-black px-2 py-1.5">{row.area.replace(/^ความสามารถด้าน/, 'ด้าน')}</td>
                                 {report.hasExpected && <td className="border border-black px-2 py-1.5 text-center">{row.expected || '-'}</td>}
                                 <td className="border border-black px-2 py-1.5 text-center font-bold">{row.level || '-'}</td>
-                                <td className="border border-black px-2 py-1.5 text-justify">{row.summary || '-'}</td>
+                                <td className="border border-black px-2 py-1.5 text-left">{row.summary || '-'}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -92,7 +92,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                                 <tr key={`${item.area}-${item.subject}-${item.loCode}-${index}`} className="break-inside-avoid align-top">
                                     <td className="border border-black px-2 py-1.5">{item.subject}</td>
                                     <td className="border border-black px-2 py-1.5">{item.area.replace(/^ความสามารถด้าน/, '')}<br />{item.loCode}</td>
-                                    <td className="border border-black px-2 py-1.5 text-justify">{item.text}</td>
+                                    <td className="border border-black px-2 py-1.5 text-left">{item.text}</td>
                                 </tr>
                             ))}
                         </tbody>
