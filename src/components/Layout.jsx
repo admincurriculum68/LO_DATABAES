@@ -74,7 +74,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
             visible: hasRole(currentUser, 'teacher'),
             items: [
                 { label: 'งานของฉัน', path: '/', exact: true },
-                ...(currentUser?.homeroom ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
+                // ฝ่ายวิชาการเปิดงานประจำชั้นได้ทุกห้องจากเมนูวิชาการแล้ว ไม่แสดงซ้ำสองที่
+                ...(currentUser?.homeroom && !hasRole(currentUser, 'admin') ? [{ label: 'งานประจำชั้น', path: '/homeroom' }] : []),
             ],
         },
         {
@@ -92,6 +93,8 @@ export default function Layout({ children, title, onActionClick, actionText, act
                 { label: 'กลุ่มเรียน', path: '/admin/learning-groups' },
                 { label: 'ติดตามการรายงานผล', path: '/admin?tab=progress', tab: 'progress' },
                 { label: 'ตรวจผลรายด้าน', path: '/admin/approval' },
+                // บัญชีฝ่ายวิชาการแยกจากบัญชีครูได้ จึงต้องเข้าสรุปความสามารถและพิมพ์รายงานของทุกห้องได้เอง
+                { label: 'งานประจำชั้นทุกห้อง', path: '/homeroom' },
             ],
         },
         {

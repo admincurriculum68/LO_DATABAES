@@ -78,7 +78,7 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/homeroom" element={
-          <ProtectedRoute allowedRoles={['teacher']}>
+          <ProtectedRoute allowedRoles={['teacher', 'admin']}>
             <HomeroomView />
           </ProtectedRoute>
         } />
