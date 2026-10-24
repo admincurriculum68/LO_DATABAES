@@ -8,7 +8,8 @@ export default function SignatureRow({ school, teacherName, teacherRole, classNa
     const signers = buildSigners(school, { teacherName, teacherRole });
     const text = size === 'small' ? 'text-[13pt]' : 'text-lg';
     return (
-        <div className={`grid grid-cols-2 gap-x-10 gap-y-8 text-center ${text} ${className}`}>
+        // ช่องลงชื่อทั้ง 4 ช่องต้องอยู่หน้าเดียวกันเสมอ ไม่แยกไปคนละหน้า
+        <div className={`grid break-inside-avoid grid-cols-2 gap-x-10 gap-y-8 text-center ${text} ${className}`}>
             {signers.map(signer => (
                 <div key={signer.role}>
                     <p>ลงชื่อ ..............................................</p>

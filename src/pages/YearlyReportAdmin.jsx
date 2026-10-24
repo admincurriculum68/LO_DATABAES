@@ -361,7 +361,7 @@ export default function YearlyReportAdmin() {
                 </div>
 
                 {/* ─── Print Area (ปพ.6 Document) ──────────────────────── */}
-                <div ref={printRef} className="report-document print-area rounded-2xl border border-line bg-white p-6 shadow-sm font-['Sarabun',sans-serif] sm:p-8">
+                <div ref={printRef} className="report-document print-area print-official rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-8">
                     {!selectedStudent ? (
                         <div className="no-print text-center py-24 text-slate-500 font-medium">
                             พิมพ์ชื่อหรือรหัสในช่อง “ค้นหานักเรียน” แล้วเลือกนักเรียนจากรายการ เพื่อแสดงตัวอย่าง ปพ.๖

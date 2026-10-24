@@ -45,7 +45,6 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
 
     return (
         <main className="min-h-screen bg-slate-200 py-6 font-sans text-slate-900 print:bg-white print:py-0">
-            <style>{'@media print { @page { size: A4 portrait; margin: 25mm 20mm 20mm 30mm; } }'}</style>
             <div className="mx-auto mb-6 flex max-w-[210mm] flex-col gap-3 px-4 print:hidden sm:flex-row sm:items-center sm:justify-between">
                 <button type="button" onClick={() => navigate(-1)} className="btn-secondary w-fit"><ChevronLeft className="h-4 w-4" aria-hidden="true" />กลับ</button>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

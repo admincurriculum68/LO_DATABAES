@@ -207,7 +207,6 @@ export default function PhaseReportAdmin() {
                     body { background: white !important; }
                     .print-doc { box-shadow: none !important; margin: 0 !important; }
                 }
-                @page { margin: 1.5cm; }
             `}</style>
 
             <div>
@@ -333,7 +332,7 @@ export default function PhaseReportAdmin() {
                 </div>
 
                 {/* ─── Print Document ──────────────────────────────────── */}
-                <div className="report-document print-doc rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-8">
+                <div className="report-document print-doc print-official rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-8">
                     {!selectedStudent ? (
                         <div className="no-print text-center py-24 text-slate-500 font-medium">
                             เลือกนักเรียนเพื่อแสดงตัวอย่างเอกสาร
