@@ -4,6 +4,7 @@ import { School } from 'lucide-react';
 // ภาษาไทยไม่มีช่องว่างระหว่างคำ เบราว์เซอร์บางตัวจึงตัดบรรทัดกลางคำ จึงกำหนดบรรทัดเองและสั่งไม่ให้ตัดคำ
 //
 // variant = 'cover' ใช้กับปกแฟ้ม: ตราโรงเรียนกึ่งกลางบนสุดขนาดใหญ่ ชื่อโรงเรียนอยู่ใต้บรรทัดคำอธิบาย และไม่มีเส้นคั่น
+// ตราในหัวเอกสารกรอบสูงราว 3 ซม. (ไฟล์ตรามีขอบว่างในตัว ตราจริงจึงราว 2 ซม.) โรงเรียนขอให้ตราเห็นชัดกว่าเดิม
 // ขนาดตัวอักษรของปกเป็น pt ตามที่โรงเรียนเลือกจากปกที่พิมพ์จริง (หัวเรื่อง 38 · ชื่อโรงเรียน 24 · คำอธิบาย 20)
 const THAI_LINE = { wordBreak: 'keep-all', lineBreak: 'strict' };
 
@@ -36,7 +37,7 @@ export default function SchoolReportHeader({ school, title, subtitle, compact = 
 
     return (
         <header className={`school-report-header flex items-center border-b-2 border-slate-900 ${compact ? 'gap-4 pb-4' : 'gap-6 pb-6'}`}>
-            <SchoolLogo school={school} className={compact ? 'h-16 w-16' : 'h-24 w-24'} iconClassName={compact ? 'h-8 w-8' : 'h-11 w-11'} />
+            <SchoolLogo school={school} className={compact ? 'h-28 w-28' : 'h-32 w-32'} iconClassName={compact ? 'h-11 w-11' : 'h-14 w-14'} />
             <div className="min-w-0 flex-1 text-center">
                 <p className={`${compact ? 'text-lg' : 'text-2xl'} font-bold text-black`}>{school?.school_name || 'โรงเรียน'}</p>
                 <h1 className={`${compact ? 'mt-1 text-xl' : 'mt-3 text-3xl'} font-bold leading-snug text-black`} style={THAI_LINE}>
@@ -44,7 +45,7 @@ export default function SchoolReportHeader({ school, title, subtitle, compact = 
                 </h1>
                 {subtitle && <p className={`${compact ? 'mt-1 text-sm' : 'mt-2 text-lg'} text-black`}>{subtitle}</p>}
             </div>
-            <span className={`${compact ? 'h-16 w-16' : 'h-24 w-24'} shrink-0`} aria-hidden="true" />
+            <span className={`${compact ? 'h-28 w-28' : 'h-32 w-32'} shrink-0`} aria-hidden="true" />
         </header>
     );
 }
