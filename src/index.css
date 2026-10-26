@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
-/* ฟอนต์ TH Sarabun New สำหรับเอกสาร ปพ. ที่ต้องพิมพ์ออกกระดาษ
-   เก็บไฟล์ไว้ในโปรเจกต์เอง เพราะแหล่งภายนอกที่เคยใช้ (thai-web-fonts) ถูกถอดไฟล์ออกไปแล้ว
-   ตอบ 404 มาตลอด เอกสารจึงเคยตกไปใช้ฟอนต์สำรองโดยไม่มีใครรู้ */
+/* ฟอนต์ TH Sarabun New สำหรับเอกสารที่พิมพ์ออกกระดาษ เก็บไฟล์ไว้ในโปรเจกต์เอง
+   ใช้ไฟล์ TH Sarabun New 1.35 ของจริง แปลงเป็น woff2 ขนาดตัวอักษรตรงกับใน Word
+   ไฟล์ webfont ที่เคยใช้ (thai-web-fonts 1.3) วาดตัวใหญ่กว่าของจริงราว 1.5 เท่า ตั้ง 12 pt จึงออกมาเท่า 18 pt */
 @font-face {
   font-family: 'THSarabunNew';
-  src: url('/fonts/thsarabunnew-webfont.woff') format('woff');
+  src: url('/fonts/thsarabunnew-regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'THSarabunNew';
-  src: url('/fonts/thsarabunnew_bold-webfont.woff') format('woff');
+  src: url('/fonts/thsarabunnew-bold.woff2') format('woff2');
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -212,14 +212,25 @@ select {
     font-family: var(--font-sarabun-new);
     letter-spacing: 0;
   }
-  /* THSarabunNew ตัวเล็กกว่าฟอนต์ของระบบราวหนึ่งในสี่ ตอนพิมพ์จึงกำหนดขนาดเป็น pt แบบเอกสารราชการแทนขนาดของหน้าจอ */
-  .print-official { font-size: 12pt; }
-  .print-official .text-xs { font-size: 10.5pt; }
-  .print-official .text-sm { font-size: 11pt; }
-  .print-official .text-base { font-size: 12pt; }
-  .print-official .text-lg { font-size: 13pt; }
-  .print-official .text-xl { font-size: 15pt; }
-  .print-official .text-2xl { font-size: 16pt; }
+  /* ปพ.6 และผลจบช่วงชั้นบนจอใช้ขนาดของระบบ ตอนพิมพ์ใช้ขนาดแบบเอกสารราชการ (ดูชุดขนาดด้านล่าง) */
+  .print-official { font-size: 16pt; }
+  .print-official .text-xs { font-size: 12pt; }
+  .print-official .text-sm { font-size: 14pt; }
+  .print-official .text-base, .print-official .text-lg { font-size: 16pt; }
+  .print-official .text-xl { font-size: 18pt; }
+  .print-official .text-2xl { font-size: 20pt; }
   /* ช่องตารางบนกระดาษไม่ต้องเว้นมากเท่าบนจอ เอกสารจะได้ไม่ยาวเกินจำเป็น */
   .print-official th, .print-official td { padding-top: 3px !important; padding-bottom: 3px !important; }
 }
+
+/* เอกสารที่พิมพ์ด้วย TH Sarabun New ใช้ขนาดแบบเอกสารราชการ ทั้งตัวอย่างบนจอและบนกระดาษ
+   เนื้อหา 16 pt · ตารางและข้อความรอง 14 pt · หัวเรื่อง 18–20 pt ปก 28–32 pt
+   แปลงคลาสขนาดของ Tailwind (หน่วย px สำหรับฟอนต์บนจอ) เป็น pt ที่เดียว ไม่ต้องไล่แก้ทีละเอกสาร */
+.font-sarabun-new .text-xs { font-size: 12pt; }
+.font-sarabun-new .text-sm { font-size: 14pt; }
+.font-sarabun-new .text-base, .font-sarabun-new .text-lg { font-size: 16pt; }
+.font-sarabun-new .text-xl { font-size: 18pt; }
+.font-sarabun-new .text-2xl { font-size: 20pt; }
+.font-sarabun-new .text-3xl { font-size: 22pt; }
+.font-sarabun-new .text-4xl { font-size: 28pt; }
+.font-sarabun-new .text-5xl { font-size: 32pt; }
