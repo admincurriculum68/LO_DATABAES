@@ -51,10 +51,11 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scoped
                 variant="cover"
             />
             <div className="flex flex-col items-center text-center">
-                <p className="text-2xl">{learningFormatLabel(subject?.learning_format || 'subject')}</p>
-                <h2 className="mt-3 max-w-[160mm] text-5xl font-bold leading-tight">{subject?.subject_name || '-'}</h2>
-                {subject?.subject_code && <p className="mt-2 text-2xl">รหัสวิชา {subject.subject_code}</p>}
-                <dl className="mt-8 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 gap-y-3 text-left text-xl">
+                <p className="text-[24pt]">{learningFormatLabel(subject?.learning_format || 'subject')}</p>
+                {/* ชื่อยาวลดขนาดลง ปกจะได้จบในหน้าเดียวเสมอ */}
+                <h2 className={`max-w-[170mm] font-bold leading-[1.1] ${(subject?.subject_name || '').length > 24 ? 'text-[42pt]' : 'text-[52pt]'}`}>{subject?.subject_name || '-'}</h2>
+                {subject?.subject_code && <p className="mt-1 text-[22pt]">รหัสวิชา {subject.subject_code}</p>}
+                <dl className="mt-5 grid w-full max-w-[150mm] grid-cols-2 gap-x-8 text-left text-[22pt] leading-[1.35]">
                     <dt className="font-bold">ระดับชั้น</dt><dd>{subject?.grade_level || '-'}</dd>
                     <dt className="font-bold">ห้องเรียน</dt><dd>{formatRoomRange(scopedRooms) || '-'}</dd>
                     <dt className="font-bold">ภาคเรียน/ปีการศึกษา</dt><dd>{subject?.semester || '-'} / {subject?.academic_year || '-'}</dd>
@@ -62,7 +63,7 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scoped
                     <dt className="font-bold">ครูผู้สอน</dt><dd>{teacherNames.length ? teacherNames.join(', ') : '-'}</dd>
                 </dl>
             </div>
-            <SignatureRow className="break-inside-avoid" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} size="small" />
+            <SignatureRow className="break-inside-avoid" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} size="cover" />
         </article>
     );
 }

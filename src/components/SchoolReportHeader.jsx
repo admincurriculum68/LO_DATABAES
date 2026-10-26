@@ -4,6 +4,7 @@ import { School } from 'lucide-react';
 // ภาษาไทยไม่มีช่องว่างระหว่างคำ เบราว์เซอร์บางตัวจึงตัดบรรทัดกลางคำ จึงกำหนดบรรทัดเองและสั่งไม่ให้ตัดคำ
 //
 // variant = 'cover' ใช้กับปกแฟ้ม: ตราโรงเรียนกึ่งกลางบนสุดขนาดใหญ่ ชื่อโรงเรียนอยู่ใต้บรรทัดคำอธิบาย และไม่มีเส้นคั่น
+// ขนาดตัวอักษรของปกเป็น pt ตามที่โรงเรียนเลือกจากปกที่พิมพ์จริง (หัวเรื่อง 38 · ชื่อโรงเรียน 24 · คำอธิบาย 20)
 const THAI_LINE = { wordBreak: 'keep-all', lineBreak: 'strict' };
 
 function SchoolLogo({ school, className, iconClassName }) {
@@ -23,12 +24,12 @@ export default function SchoolReportHeader({ school, title, subtitle, compact = 
     if (variant === 'cover') {
         return (
             <header className="school-report-header flex flex-col items-center text-center text-black">
-                <SchoolLogo school={school} className="h-40 w-40" iconClassName="h-20 w-20" />
-                <h1 className="mt-5 text-4xl font-bold leading-snug" style={THAI_LINE}>
+                <SchoolLogo school={school} className="h-32 w-32" iconClassName="h-16 w-16" />
+                <h1 className="mt-4 text-[38pt] font-bold leading-[1.1]" style={THAI_LINE}>
                     {titleLines.map((line, index) => <span key={line} className={index === 0 ? 'block' : 'mt-1 block'}>{line}</span>)}
                 </h1>
-                {subtitle && <p className="mt-2 text-xl" style={THAI_LINE}>{subtitle}</p>}
-                <p className="mt-2 text-2xl font-bold" style={THAI_LINE}>{school?.school_name || 'โรงเรียน'}</p>
+                {subtitle && <p className="mt-1 text-[20pt]" style={THAI_LINE}>{subtitle}</p>}
+                <p className="text-[24pt] font-bold" style={THAI_LINE}>{school?.school_name || 'โรงเรียน'}</p>
             </header>
         );
     }

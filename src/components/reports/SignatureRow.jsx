@@ -6,7 +6,8 @@ import { buildSigners, signerNameLine } from '../../lib/reportSigners';
  */
 export default function SignatureRow({ school, teacherName, teacherRole, className = '', size = 'normal' }) {
     const signers = buildSigners(school, { teacherName, teacherRole });
-    const text = size === 'small' ? 'text-[14pt]' : 'text-lg';
+    // ปกแฟ้มใช้ตัวใหญ่กว่าเอกสารเนื้อหา ให้เข้ากับหัวเรื่องของปก
+    const text = { small: 'text-[14pt]', cover: 'text-[18pt]' }[size] || 'text-lg';
     return (
         // ช่องลงชื่อทั้ง 4 ช่องต้องอยู่หน้าเดียวกันเสมอ ไม่แยกไปคนละหน้า
         <div className={`grid break-inside-avoid grid-cols-2 gap-x-10 gap-y-8 text-center ${text} ${className}`}>
