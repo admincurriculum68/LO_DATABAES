@@ -6,7 +6,7 @@ import { toThaiDigits } from '../../lib/parentReport';
 // แผ่นรายงานผลการพัฒนาความสามารถสำหรับผู้ปกครอง ขนาด A4
 // หน้าแรก: ผลรายด้านพร้อมคำบรรยายของครูประจำชั้น กิจกรรม และช่องลงชื่อรับทราบของผู้ปกครอง
 // หน้าแนบ (เลือกได้): ข้อความพฤติกรรมราย LO จากครูผู้สอนแต่ละวิชา
-// ฟอนต์ TH Sarabun New ขนาดแบบเอกสารราชการ: ข้อมูลนักเรียน 16 pt ตาราง ส่วนของผู้ปกครอง และช่องลงชื่อ 14 pt
+// ฟอนต์ TH Sarabun New ขนาดแบบเอกสารราชการ: ข้อมูลนักเรียน 16 pt ตาราง 15 pt ส่วนของผู้ปกครองและช่องลงชื่อ 14 pt
 // ขอบกระดาษตั้งรวมใน index.css · แถวผลรายด้านไม่ถูกตัดข้ามหน้า
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
@@ -40,7 +40,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                     <dt className="font-bold">ครูประจำชั้น</dt><dd>{homeroomName || '-'}</dd>
                 </dl>
 
-                <table className="mt-3 w-full border-collapse text-[14pt] leading-[1.15]">
+                <table className="mt-3 w-full border-collapse text-[15pt] leading-[1.15]">
                     <thead>
                         <tr>
                             <th className="w-10 border border-black px-1.5 py-1">ที่</th>
@@ -65,7 +65,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                     </tbody>
                 </table>
 
-                <table className="mt-3 w-full border-collapse text-[14pt]">
+                <table className="mt-3 w-full border-collapse text-[15pt]">
                     <tbody>
                         <tr><td className="w-1/2 border border-black px-1.5 py-1 font-bold">กิจกรรมพัฒนาผู้เรียน</td><td className="border border-black px-1.5 py-1"><CheckBox checked={activities?.activity_status === 'ผ่าน'} label="ผ่าน" /><CheckBox checked={activities?.activity_status === 'ไม่ผ่าน'} label="ไม่ผ่าน" /></td></tr>
                         <tr><td className="border border-black px-1.5 py-1 font-bold">คุณลักษณะอันพึงประสงค์</td><td className="border border-black px-1.5 py-1"><CheckBox checked={activities?.character_status === 'ผ่าน'} label="ผ่าน" /><CheckBox checked={activities?.character_status === 'ไม่ผ่าน'} label="ไม่ผ่าน" /></td></tr>
@@ -84,7 +84,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
             </article>
 
             {includeEvidence && report.evidence.length > 0 && (
-                <article className="break-before-page mx-auto mb-8 max-w-[210mm] bg-white p-10 font-sarabun-new text-[14pt] leading-[1.15] text-black shadow-2xl print:mb-0 print:p-0 print:shadow-none sm:p-12">
+                <article className="break-before-page mx-auto mb-8 max-w-[210mm] bg-white p-10 font-sarabun-new text-[15pt] leading-[1.15] text-black shadow-2xl print:mb-0 print:p-0 print:shadow-none sm:p-12">
                     <h2 className="text-[16pt] font-bold">ข้อความพฤติกรรมจากครูผู้สอนรายวิชา</h2>
                     <p>{fullName(student)} · {toThaiDigits(report.room)} · {termLabel}</p>
                     <table className="mt-3 w-full border-collapse">

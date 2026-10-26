@@ -215,7 +215,7 @@ select {
   /* ปพ.6 และผลจบช่วงชั้นบนจอใช้ขนาดของระบบ ตอนพิมพ์ใช้ขนาดแบบเอกสารราชการ (ดูชุดขนาดด้านล่าง) */
   .print-official { font-size: 16pt; }
   .print-official .text-xs { font-size: 12pt; }
-  .print-official .text-sm { font-size: 14pt; }
+  .print-official .text-sm { font-size: 15pt; }
   .print-official .text-base, .print-official .text-lg { font-size: 16pt; }
   .print-official .text-xl { font-size: 18pt; }
   .print-official .text-2xl { font-size: 20pt; }
@@ -224,7 +224,7 @@ select {
 }
 
 /* เอกสารที่พิมพ์ด้วย TH Sarabun New ใช้ขนาดแบบเอกสารราชการ ทั้งตัวอย่างบนจอและบนกระดาษ
-   เนื้อหา 16 pt · ตารางและข้อความรอง 14 pt · หัวเรื่อง 18–20 pt ปก 28–32 pt
+   เนื้อหา 16 pt · ตาราง 15 pt (ใหญ่กว่าบรรทัดชื่อวิชา 14 pt ตามที่โรงเรียนขอ) · หัวเรื่อง 18–20 pt ปก 28–32 pt
    แปลงคลาสขนาดของ Tailwind (หน่วย px สำหรับฟอนต์บนจอ) เป็น pt ที่เดียว ไม่ต้องไล่แก้ทีละเอกสาร */
 .font-sarabun-new .text-xs { font-size: 12pt; }
 .font-sarabun-new .text-sm { font-size: 14pt; }
