@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, Loader2, Printer } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Printer } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import useDocumentTitle from '../../lib/useDocumentTitle';
 import { loadParentReports } from '../../lib/parentReportApi';
@@ -16,6 +16,32 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
     const [includeEvidence, setIncludeEvidence] = useState(false);
     // พิมพ์ทีละคนจากหน้าพิมพ์ทั้งห้อง ครูไม่ต้องกลับไปหาปุ่มในหน้างานประจำชั้น
     const [soloStudentId, setSoloStudentId] = useState('');
+    // ชื่อคนที่เพิ่งส่งพิมพ์ ใช้บอกครูว่าระบบเลื่อนมาคนถัดไปให้แล้ว
+    const [lastPrinted, setLastPrinted] = useState(null);
+
+    const showSolo = id => {
+        setSoloStudentId(id);
+        setLastPrinted(null);
+        window.scrollTo(0, 0);
+    };
+
+    // พิมพ์ทีละคนเสร็จแล้วเลื่อนไปคนถัดไปให้เลย ครูกดพิมพ์ต่อได้ทันที
+    useEffect(() => {
+        if (!soloStudentId) return undefined;
+        const onAfterPrint = () => {
+            const index = state.reports.findIndex(report => report.student.student_id === soloStudentId);
+            const printed = state.reports[index];
+            const next = state.reports[index + 1];
+            if (!printed) return;
+            if (next) {
+                setSoloStudentId(next.student.student_id);
+                window.scrollTo(0, 0);
+            }
+            setLastPrinted({ name: fullName(printed.student), advanced: Boolean(next) });
+        };
+        window.addEventListener('afterprint', onAfterPrint);
+        return () => window.removeEventListener('afterprint', onAfterPrint);
+    }, [soloStudentId, state.reports]);
 
     useEffect(() => {
         let active = true;
@@ -38,10 +64,13 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
         );
     }
 
-    const soloReport = state.reports.find(report => report.student.student_id === soloStudentId) || null;
+    const soloIndex = state.reports.findIndex(report => report.student.student_id === soloStudentId);
+    const soloReport = state.reports[soloIndex] || null;
+    const prevReport = state.reports[soloIndex - 1];
+    const nextReport = state.reports[soloIndex + 1];
     const visibleReports = soloReport ? [soloReport] : state.reports;
     const draftCount = visibleReports.filter(report => !report.allPublished).length;
-    const studentName = report => `${report.student?.prefix || ''}${report.student?.first_name || ''} ${report.student?.last_name || ''}`.trim();
+    const studentName = report => fullName(report.student);
 
     return (
         <main className="min-h-screen bg-slate-200 py-6 font-sans text-slate-900 print:bg-white print:py-0">
@@ -61,9 +90,20 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
                 {isRoom && ' · ถ้าต้องการพิมพ์ทีละคน กดปุ่ม "พิมพ์เฉพาะคนนี้" เหนือใบรายงานของคนนั้น'}
             </p>
             {soloReport && (
-                <div className="mx-4 mb-4 flex max-w-[210mm] items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm font-bold text-indigo-950 sm:mx-auto print:hidden">
-                    <span>กำลังเตรียมพิมพ์เฉพาะ {studentName(soloReport)}</span>
-                    <button type="button" onClick={() => setSoloStudentId('')} className="btn-secondary">กลับไปทั้งห้อง</button>
+                <div className="mx-4 mb-4 flex max-w-[210mm] flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950 sm:mx-auto print:hidden">
+                    {lastPrinted && (
+                        <p role="status" className="font-semibold text-emerald-800">
+                            ส่งพิมพ์ของ {lastPrinted.name} แล้ว{lastPrinted.advanced ? ' · ตอนนี้แสดงคนถัดไป กดพิมพ์ต่อได้เลย' : ' · คนนี้เป็นคนสุดท้ายของห้องแล้ว'}
+                        </p>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="font-bold">คนที่ {soloIndex + 1} จาก {state.reports.length} · {studentName(soloReport)}</span>
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={() => showSolo(prevReport.student.student_id)} disabled={!prevReport} className="btn-secondary"><ChevronLeft className="h-4 w-4" aria-hidden="true" />คนก่อนหน้า</button>
+                            <button type="button" onClick={() => showSolo(nextReport.student.student_id)} disabled={!nextReport} className="btn-secondary">คนถัดไป<ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => showSolo('')} className="btn-secondary">กลับไปทั้งห้อง</button>
+                        </div>
+                    </div>
                 </div>
             )}
             {state.error && <p className="mx-4 mb-4 max-w-[210mm] rounded-xl border border-rose-200 sm:mx-auto bg-rose-50 p-4 text-sm font-bold text-rose-900 print:hidden" role="alert">{state.error}</p>}
@@ -79,7 +119,7 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
                 <div key={report.student.student_id}>
                     {isRoom && !soloReport && (
                         <div className="mx-4 mb-2 flex max-w-[210mm] justify-end sm:mx-auto print:hidden">
-                            <button type="button" onClick={() => setSoloStudentId(report.student.student_id)} className="btn-secondary">
+                            <button type="button" onClick={() => showSolo(report.student.student_id)} className="btn-secondary">
                                 <Printer className="h-4 w-4" aria-hidden="true" />พิมพ์เฉพาะคนนี้
                             </button>
                         </div>
@@ -96,4 +136,8 @@ export default function ParentReportPage({ studentId = '', room = '', academicYe
             ))}
         </main>
     );
+}
+
+function fullName(student) {
+    return `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
 }
