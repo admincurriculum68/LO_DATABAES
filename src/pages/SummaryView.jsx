@@ -43,7 +43,7 @@ function SubjectCover({ school, subject, teacherNames, rooms, roomFilter, scoped
     const roomHours = singleRoom ? hoursForRoom(subject, roomFilter) : null;
     const hoursText = singleRoom ? (roomHours === null ? '' : `${roomHours} ชั่วโมง`) : summarizeRoomHours(subject, rooms);
     return (
-        <article className="summary-print-only summary-cover hidden h-[250mm] flex-col justify-between font-sarabun-new text-black">
+        <article className="summary-print-only summary-cover hidden h-[258mm] flex-col justify-between font-sarabun-new text-black">
             <SchoolReportHeader
                 school={school}
                 title={['แฟ้มหลักฐาน', 'การประเมินผลลัพธ์การเรียนรู้']}
@@ -89,9 +89,9 @@ function SubjectEvidenceReport({ school, subject, teacherNames, enrollments, lea
                 <p><strong>ครูผู้สอน:</strong> {teacherNames.length ? teacherNames.join(', ') : '-'}</p>
                 <p><strong>ผู้เรียน:</strong> {enrollments.length} คน · <strong>LO:</strong> {learningOutcomes.length} ข้อ</p>
             </div>
-            <table className="mt-4 w-full border-collapse text-[13pt] leading-[1.3]">
+            <table className="mt-4 w-full border-collapse text-[12pt] leading-[1.25]">
                 <thead><tr><th className="w-[10mm] border border-black px-1.5 py-1">ที่</th><th className="w-[38mm] border border-black px-1.5 py-1">ผู้เรียน</th><th className="w-[32mm] border border-black px-1.5 py-1">LO</th><th className="border border-black px-1.5 py-1">ข้อความสะท้อนพฤติกรรม</th></tr></thead>
-                <tbody>{rows.map(row => <tr key={row.key} className="break-inside-avoid"><td className="border border-black px-1.5 py-1 text-center">{row.loIndex === 0 ? row.studentIndex + 1 : ''}</td><td className="border border-black px-1.5 py-1 align-top">{row.loIndex === 0 ? <><strong>{studentName(row.enrollment.users_students)}</strong><br /><span>{row.enrollment.users_students?.student_code || '-'} · {row.enrollment.room || '-'}</span></> : ''}</td><td className="border border-black px-1.5 py-1 align-top"><strong>{row.lo.lo_code || `LO ${row.lo.ability_no}`}</strong><br /><span>{row.lo.competency_area || 'ไม่ระบุด้าน'}</span></td><td className="border border-black px-1.5 py-1 align-top">{row.evidence || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}</td></tr>)}</tbody>
+                <tbody>{rows.map(row => <tr key={row.key} className="break-inside-avoid"><td className="border border-black px-1.5 py-1 text-center">{row.loIndex === 0 ? row.studentIndex + 1 : ''}</td><td className="border border-black px-1.5 py-1 align-top">{row.loIndex === 0 ? <><strong>{studentName(row.enrollment.users_students)}</strong><br /><span>{row.enrollment.users_students?.student_code || '-'} · {row.enrollment.room || '-'}</span></> : ''}</td><td className="border border-black px-1.5 py-1 align-top"><strong className="text-[11pt]">{row.lo.lo_code || `LO ${row.lo.ability_no}`}</strong><br /><span className="text-[10pt]">{row.lo.competency_area || 'ไม่ระบุด้าน'}</span></td><td className="border border-black px-1.5 py-1 align-top">{row.evidence || 'ยังไม่มีข้อความสะท้อนพฤติกรรม'}</td></tr>)}</tbody>
             </table>
             <SignatureRow className="mt-8 break-inside-avoid" school={school} teacherName={teacherNames.length === 1 ? teacherNames[0] : ''} size="small" />
         </article>

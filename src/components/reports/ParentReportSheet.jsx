@@ -6,8 +6,8 @@ import { toThaiDigits } from '../../lib/parentReport';
 // แผ่นรายงานผลการพัฒนาความสามารถสำหรับผู้ปกครอง ขนาด A4
 // หน้าแรก: ผลรายด้านพร้อมคำบรรยายของครูประจำชั้น กิจกรรม และช่องลงชื่อรับทราบของผู้ปกครอง
 // หน้าแนบ (เลือกได้): ข้อความพฤติกรรมราย LO จากครูผู้สอนแต่ละวิชา
-// จัดตามรูปแบบหนังสือราชการ: ฟอนต์ TH Sarabun New ขอบกระดาษ บน 2.5 ซ้าย 3 ขวา 2 ล่าง 2 ซม. (ตั้งใน ParentReportPage)
-// ข้อมูลนักเรียน 14 pt ตารางและส่วนของผู้ปกครอง 13 pt โรงเรียนขอให้เล็กกว่า 16 pt ของหนังสือทั่วไป เพราะคำบรรยายยาวหลายด้าน
+// ฟอนต์ TH Sarabun New ขอบกระดาษตั้งรวมใน index.css
+// ข้อมูลนักเรียน 13 pt ตารางและส่วนของผู้ปกครอง 12 pt โรงเรียนขอให้เล็กลงสองรอบ เพราะคำบรรยายยาวหลายด้าน
 // แถวผลรายด้านต่อข้ามหน้าได้ คำบรรยายยาวมาก ถ้าห้ามตัดแถวหน้าแรกจะเหลือที่ว่างครึ่งหน้า
 
 const fullName = student => `${student?.prefix || ''}${student?.first_name || ''} ${student?.last_name || ''}`.trim();
@@ -27,7 +27,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
 
     return (
         <div className={isLast ? '' : 'break-after-page'}>
-            <article className="mx-auto mb-8 flex min-h-[297mm] max-w-[210mm] flex-col bg-white p-10 font-sarabun-new text-[14pt] leading-[1.3] text-black shadow-2xl print:mb-0 print:min-h-0 print:p-0 print:shadow-none sm:p-12">
+            <article className="mx-auto mb-8 flex min-h-[297mm] max-w-[210mm] flex-col bg-white p-10 font-sarabun-new text-[13pt] leading-[1.3] text-black shadow-2xl print:mb-0 print:min-h-0 print:p-0 print:shadow-none sm:p-12">
                 <SchoolReportHeader school={school} title="รายงานผลการพัฒนาความสามารถของผู้เรียน" subtitle={termLabel} compact />
 
                 {!report.allPublished && (
@@ -41,7 +41,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                     <dt className="font-bold">ครูประจำชั้น</dt><dd>{homeroomName || '-'}</dd>
                 </dl>
 
-                <table className="mt-3 w-full border-collapse text-[13pt] leading-[1.3]">
+                <table className="mt-3 w-full border-collapse text-[12pt] leading-[1.3]">
                     <thead>
                         <tr>
                             <th className="w-10 border border-black px-1.5 py-1">ที่</th>
@@ -66,14 +66,14 @@ export default function ParentReportSheet({ school, report, academicYear, semest
                     </tbody>
                 </table>
 
-                <table className="mt-3 w-full border-collapse text-[13pt]">
+                <table className="mt-3 w-full border-collapse text-[12pt]">
                     <tbody>
                         <tr><td className="w-1/2 border border-black px-1.5 py-1 font-bold">กิจกรรมพัฒนาผู้เรียน</td><td className="border border-black px-1.5 py-1"><CheckBox checked={activities?.activity_status === 'ผ่าน'} label="ผ่าน" /><CheckBox checked={activities?.activity_status === 'ไม่ผ่าน'} label="ไม่ผ่าน" /></td></tr>
                         <tr><td className="border border-black px-1.5 py-1 font-bold">คุณลักษณะอันพึงประสงค์</td><td className="border border-black px-1.5 py-1"><CheckBox checked={activities?.character_status === 'ผ่าน'} label="ผ่าน" /><CheckBox checked={activities?.character_status === 'ไม่ผ่าน'} label="ไม่ผ่าน" /></td></tr>
                     </tbody>
                 </table>
                 <SignatureRow className="mt-auto pt-8" school={school} teacherName={homeroomName} teacherRole={HOMEROOM_ROLE} size="small" />
-                <section className="mt-5 border-t-2 border-black pt-2 text-[13pt]" aria-label="ส่วนของผู้ปกครอง">
+                <section className="mt-5 border-t-2 border-black pt-2 text-[12pt]" aria-label="ส่วนของผู้ปกครอง">
                     <p className="font-bold">ส่วนของผู้ปกครอง</p>
                     <p className="mt-1">ข้าพเจ้าได้รับทราบผลการพัฒนาความสามารถของ {fullName(student) || 'นักเรียน'} แล้ว</p>
                     <p className="mt-1">ความคิดเห็นเพิ่มเติม ...........................................................................................................................</p>
@@ -85,7 +85,7 @@ export default function ParentReportSheet({ school, report, academicYear, semest
             </article>
 
             {includeEvidence && report.evidence.length > 0 && (
-                <article className="break-before-page mx-auto mb-8 max-w-[210mm] bg-white p-10 font-sarabun-new text-[13pt] leading-[1.3] text-black shadow-2xl print:mb-0 print:p-0 print:shadow-none sm:p-12">
+                <article className="break-before-page mx-auto mb-8 max-w-[210mm] bg-white p-10 font-sarabun-new text-[12pt] leading-[1.3] text-black shadow-2xl print:mb-0 print:p-0 print:shadow-none sm:p-12">
                     <h2 className="text-[16pt] font-bold">ข้อความพฤติกรรมจากครูผู้สอนรายวิชา</h2>
                     <p>{fullName(student)} · {toThaiDigits(report.room)} · {termLabel}</p>
                     <table className="mt-3 w-full border-collapse">
