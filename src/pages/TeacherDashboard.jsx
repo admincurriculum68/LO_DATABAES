@@ -350,11 +350,6 @@ export default function TeacherDashboard() {
                                                     <span>·</span>
                                                     <span>จำนวน <strong className="text-slate-800 font-bold">{progress.loCount}</strong> LO</span>
                                                     {!hasLo && <span className="chip chip-warning">ยังไม่เลือก LO</span>}
-                                                    {hasLo && (
-                                                        <button type="button" onClick={() => navigate(loSetupPath)} className="inline-flex min-h-8 items-center rounded-md px-1.5 text-xs font-bold text-indigo-800 underline-offset-2 hover:bg-indigo-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
-                                                            แก้ LO
-                                                        </button>
-                                                    )}
                                                 </div>
                                             </div>
 
@@ -386,6 +381,16 @@ export default function TeacherDashboard() {
                                                         className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-800 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                                                     >
                                                         บันทึกข้อความ LO <ArrowRight className="h-3.5 w-3.5" />
+                                                    </button>
+                                                ) : null}
+                                                {/* ปุ่มแก้ LO เป็นปุ่มเต็มข้างปุ่มบันทึก ครูหาเจอได้ทันทีเมื่อเลือก LO ผิด */}
+                                                {hasLo ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => navigate(loSetupPath)}
+                                                        className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-indigo-300 bg-white px-4 py-2.5 text-xs font-bold text-indigo-800 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                                    >
+                                                        <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />แก้ LO / เลือกใหม่
                                                     </button>
                                                 ) : (
                                                     <button
